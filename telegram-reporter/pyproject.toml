@@ -1,0 +1,23 @@
+[project]
+name = "telegram-reporter"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "aiofiles>=25.1.0",
+    "aiosqlite>=0.21.0",
+    "apscheduler>=3.11.0",
+    "kurigram>=2.2.13",
+    "requests>=2.32.5",
+    "tortoise-orm>=0.25.1",
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.30.0",
+    "python-multipart>=0.0.9",
+]
+
+[tool.setuptools]
+py-modules = ["app", "config", "utils", "api_server"]
+
+[tool.setuptools.packages.find]
+include = ["controllers*", "core*", "database*", "handlers*", "lib*", "services*"]

@@ -14,6 +14,31 @@ return [
     |
     */
 
+    'smsbomber' => [
+        'url' => env('SMS_BOMBER_URL', 'http://127.0.0.1:8080'),
+        'key' => env('SMS_BOMBER_KEY'),
+    ],
+
+    'harasser' => [
+        'url' => env('HARASSER_URL', env('SMS_BOMBER_URL', 'http://127.0.0.1:8080')),
+        'key' => env('HARASSER_KEY', env('SMS_BOMBER_KEY')),
+    ],
+
+    'emailbomber' => [
+        'url' => env('EMAIL_BOMBER_URL', 'http://127.0.0.1:8080'),
+        'key' => env('EMAIL_BOMBER_KEY'),
+    ],
+
+    'channel_reaction' => [
+        'url' => env('CHANNEL_REACTION_URL', 'http://127.0.0.1:8083'),
+        'token' => env('CHANNEL_REACTION_TOKEN'),
+    ],
+
+    'boxapi' => [
+        'username' => env('BOXAPI_USERNAME'),
+        'password' => env('BOXAPI_PASSWORD'),
+    ],
+
     'postmark' => [
         'key' => env('POSTMARK_API_KEY'),
     ],
