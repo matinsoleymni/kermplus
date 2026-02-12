@@ -4,6 +4,7 @@ namespace App\Telegram\Commands;
 
 use App\Models\User;
 use App\Services\ReferralService;
+use App\Services\SubscriptionService;
 use App\Telegram\Keyboards\StartKeyboard;
 use Illuminate\Support\Str;
 use SergiX44\Nutgram\Handlers\Type\Command;
@@ -63,27 +64,49 @@ class StartCommand extends Command
             return;
         }
 
+        $hasActiveSubscription = app(SubscriptionService::class)->hasActiveSubscription($local);
+
         $bot->sendMessage(
             "❀ کرم پلاس ❀\n\nاگه کسی اذیتت کرده ...\nبا ربات ما توهم می‌تونی حسابی اذیتش کنی :)\n\nبرای شروع یکی از گزینه‌های زیر رو انتخاب کن:",
-            reply_markup: StartKeyboard::make()
+            reply_markup: StartKeyboard::make($hasActiveSubscription)
         );
     }
 
     private function extractReferralCode(string $messageText): ?string
     {
-        $payload = trim((string) Str::after($messageText, '/start'));
+        $text = trim($messageText);
+        if ($text === '' || !str_starts_with($text, '/start')) {
+            return null;
+        }
+
+        // Formats we accept:
+        // /start CODE
+        // /start@BotName CODE
+        // /start ref=CODE
+        // /start ?ref=CODE
+        $payload = (string) preg_replace('/^\/start(?:@\w+)?/u', '', $text, 1);
+        $payload = trim($payload);
         if ($payload === '') {
             return null;
         }
 
-        $payload = ltrim($payload);
         $payload = ltrim($payload, '?');
+        $payload = urldecode($payload);
+
         if (str_starts_with($payload, 'ref=')) {
             $payload = substr($payload, 4);
         }
 
         $payload = trim($payload);
 
-        return $payload !== '' ? $payload : null;
+        if ($payload === '') {
+            return null;
+        }
+
+        if (!preg_match('/^[A-Za-z0-9_-]{4,32}$/', $payload)) {
+            return null;
+        }
+
+        return Str::upper($payload);
     }
 }

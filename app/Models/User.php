@@ -32,6 +32,7 @@ class User extends Authenticatable
         'last_active_at',
         'free_sms_used',
         'free_email_used',
+        'referrals_redeemed',
     ];
 
     /**
@@ -61,6 +62,7 @@ class User extends Authenticatable
             'last_active_at' => 'datetime',
             'free_sms_used' => 'boolean',
             'free_email_used' => 'boolean',
+            'referrals_redeemed' => 'integer',
         ];
     }
 

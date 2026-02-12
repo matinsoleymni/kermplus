@@ -7,9 +7,9 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 
 class StartKeyboard
 {
-    public static function make(): InlineKeyboardMarkup
+    public static function make(bool $hasActiveSubscription = false): InlineKeyboardMarkup
     {
-        return InlineKeyboardMarkup::make()
+        $keyboard = InlineKeyboardMarkup::make()
             ->addRow(
                 InlineKeyboardButton::make('👤 حساب من 👤', callback_data: 'user_profile')
             )
@@ -21,9 +21,14 @@ class StartKeyboard
             )
             ->addRow(
                 InlineKeyboardButton::make('🤍 لیست سفید 🤍', callback_data: 'whitelist_menu')
-            )
-            ->addRow(
+            );
+
+        if (!$hasActiveSubscription) {
+            $keyboard->addRow(
                 InlineKeyboardButton::make('🎗 ارتقا به نسخه پلاس', callback_data: 'buy_subscription')
             );
+        }
+
+        return $keyboard;
     }
 }

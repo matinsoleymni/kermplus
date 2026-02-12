@@ -7,7 +7,7 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 
 class ReferralKeyboard
 {
-    public static function make(string $referralLink, string $shareText): InlineKeyboardMarkup
+    public static function make(string $referralLink, string $shareText, bool $canClaimReward = false): InlineKeyboardMarkup
     {
         $keyboard = InlineKeyboardMarkup::make()
             ->addRow(
@@ -18,6 +18,12 @@ class ReferralKeyboard
             $shareUrl = 'https://t.me/share/url?url=' . urlencode($referralLink) . '&text=' . urlencode($shareText);
             $keyboard->addRow(
                 InlineKeyboardButton::make('📨 ارسال برای دوستان', url: $shareUrl)
+            );
+        }
+
+        if ($canClaimReward) {
+            $keyboard->addRow(
+                InlineKeyboardButton::make('🎁 دریافت اشتراک هدیه', callback_data: 'referral_claim')
             );
         }
 

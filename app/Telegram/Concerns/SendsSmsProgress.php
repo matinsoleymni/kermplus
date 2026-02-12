@@ -12,8 +12,8 @@ trait SendsSmsProgress
         $delayPerStep = 1;
         $active = max(1, min(18, (int)ceil($count / 5)));
         $retry = max(0, (int)floor($count * 0.1));
-
-        $progressMsg = $bot->sendMessage($this->buildSmsProcessingMessage(
+        $imagePath = public_path('images/bomber.png');
+        $initialMessage = $this->buildSmsProcessingMessage(
             percent: 0,
             step: 1,
             totalSteps: $totalSteps,
@@ -29,7 +29,26 @@ trait SendsSmsProgress
             eta: '~' . gmdate('H:i:s', $delayPerStep * ($totalSteps - 1)),
             statuses: $this->buildSmsStatusLines(1),
             meta: $meta
-        ));
+        );
+
+        $usePhoto = false;
+        $progressMsg = null;
+
+        try {
+            if (is_readable($imagePath)) {
+                $progressMsg = $bot->sendPhoto(
+                    photo: \SergiX44\Nutgram\Telegram\Types\Internal\InputFile::make($imagePath, 'bomber.png'),
+                    caption: $initialMessage
+                );
+                $usePhoto = (bool)($progressMsg->message_id ?? false);
+            }
+        } catch (\Throwable) {
+            $progressMsg = null;
+        }
+
+        if (!$progressMsg) {
+            $progressMsg = $bot->sendMessage($initialMessage);
+        }
 
         if (!$progressMsg || !isset($progressMsg->message_id)) {
             return;
@@ -75,11 +94,19 @@ trait SendsSmsProgress
             );
 
             try {
-                $bot->editMessageText(
-                    chat_id: $bot->user()->id,
-                    message_id: $progressMsg->message_id,
-                    text: $messageText
-                );
+                if ($usePhoto) {
+                    $bot->editMessageCaption(
+                        chat_id: $bot->user()->id,
+                        message_id: $progressMsg->message_id,
+                        caption: $messageText
+                    );
+                } else {
+                    $bot->editMessageText(
+                        chat_id: $bot->user()->id,
+                        message_id: $progressMsg->message_id,
+                        text: $messageText
+                    );
+                }
             } catch (\Throwable $e) {
                 // ignore edit errors to avoid breaking the flow
             }

@@ -60,4 +60,9 @@ return [
         ],
     ],
 
+    'referral' => [
+        'reward_threshold' => env('REFERRAL_REWARD_THRESHOLD', 20),
+        'reward_plan_id' => env('REFERRAL_REWARD_PLAN_ID'),
+    ],
+
 ];

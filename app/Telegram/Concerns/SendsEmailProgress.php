@@ -13,8 +13,8 @@ trait SendsEmailProgress
         $delayPerStep = 1;
         $active = max(1, min(18, (int)ceil($count / 5)));
         $retry = max(0, (int)floor($count * 0.1));
-
-        $progressMsg = $bot->sendMessage($this->buildEmailProcessingMessage(
+        $imagePath = public_path('images/bomber.png');
+        $initialMessage = $this->buildEmailProcessingMessage(
             percent: 0,
             step: 1,
             totalSteps: $totalSteps,
@@ -29,7 +29,26 @@ trait SendsEmailProgress
             elapsed: '00:00:00',
             eta: '~' . gmdate('H:i:s', $delayPerStep * ($totalSteps - 1)),
             statuses: $this->buildEmailStatusLines(1)
-        ));
+        );
+
+        $usePhoto = false;
+        $progressMsg = null;
+
+        try {
+            if (is_readable($imagePath)) {
+                $progressMsg = $bot->sendPhoto(
+                    photo: InputFile::make($imagePath, 'bomber.png'),
+                    caption: $initialMessage
+                );
+                $usePhoto = (bool)($progressMsg->message_id ?? false);
+            }
+        } catch (\Throwable $e) {
+            $progressMsg = null;
+        }
+
+        if (!$progressMsg) {
+            $progressMsg = $bot->sendMessage($initialMessage);
+        }
 
         if (!$progressMsg || !isset($progressMsg->message_id)) {
             return;
@@ -74,11 +93,19 @@ trait SendsEmailProgress
             );
 
             try {
-                $bot->editMessageText(
-                    chat_id: $bot->user()->id,
-                    message_id: $progressMsg->message_id,
-                    text: $messageText
-                );
+                if ($usePhoto) {
+                    $bot->editMessageCaption(
+                        chat_id: $bot->user()->id,
+                        message_id: $progressMsg->message_id,
+                        caption: $messageText
+                    );
+                } else {
+                    $bot->editMessageText(
+                        chat_id: $bot->user()->id,
+                        message_id: $progressMsg->message_id,
+                        text: $messageText
+                    );
+                }
             } catch (\Throwable $e) {
                 // ignore edit errors to keep the flow running
             }

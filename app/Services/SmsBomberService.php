@@ -19,7 +19,6 @@ class SmsBomberService
     }
 
     /**
-     * ارسال بمب اس ام اس
      * @param string $phone
      * @param int $batchSize
      * @param int $totalBatches

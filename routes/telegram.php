@@ -115,6 +115,7 @@ $bot->onCallbackQueryData('buy_subscription', BuySubscriptionHandler::class);
 $bot->onCallbackQueryData('buy_sub_crypto', BuySubscriptionHandler::class);
 $bot->onCallbackQueryData('buy_sub_star', BuySubscriptionHandler::class);
 $bot->onCallbackQueryData('user_referral', ReferralHandler::class);
+$bot->onCallbackQueryData('referral_claim', ReferralHandler::class);
 $bot->onCallbackQueryData('select_plan_{id}', SelectPlanHandler::class);
 $bot->onCallbackQueryData('pay_crypto_{id}', SelectPlanHandler::class);
 $bot->onCallbackQueryData('pay_star_{id}', SelectPlanHandler::class);

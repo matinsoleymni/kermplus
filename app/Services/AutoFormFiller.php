@@ -20,20 +20,13 @@ class AutoFormFiller
 
     public function __construct()
     {
-        // تغییر 1: غیرفعال کردن بررسی SSL برای سایت‌های ایرانی
         $this->client = new HttpBrowser(HttpClient::create([
             'verify_peer' => false,
             'verify_host' => false,
-            'timeout' => 30 // افزایش تایم‌اوت
+            'timeout' => (float) config('autofill.http_timeout', 60)
         ]));
 
         $this->faker = Faker::create('fa_IR');
-
-        $this->configs = [
-            'kazhwa.com' => [
-                // 'input_4' => 'PHONE',
-            ],
-        ];
     }
 
     public function setDebug(bool $status)

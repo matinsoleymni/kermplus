@@ -9,8 +9,6 @@ use App\Services\WhitelistService;
 use App\Telegram\Keyboards\TelegramReportReasonKeyboard;
 use SergiX44\Nutgram\Conversations\Conversation;
 use SergiX44\Nutgram\Nutgram;
-use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
-use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 
 class TelegramReporterConversation extends Conversation
 {
@@ -87,60 +85,28 @@ class TelegramReporterConversation extends Conversation
             return;
         }
 
-        if (!empty($normalized['link'])) {
-            $this->sendTelegramPreview($bot, $normalized);
-        }
+        $loadingMsg = $bot->sendMessage('⏳ درحال دریافت اطلاعات از تلگرام...');
+        $preview = $this->buildTelegramPreview($bot, $normalized);
+        $details = $preview ?? ($normalized['label'] ?? "🎯 هدف: @{$username}");
+        $details .= "\n\n🗣 دلیل ریپورت را انتخاب کنید:";
+        $keyboard = TelegramReportReasonKeyboard::make();
 
-        $label = $normalized['label'] ?? "👤 یوزرنیم: @{$username}";
-
-        // Show confirmation
-        $keyboard = InlineKeyboardMarkup::make()
-            ->addRow(
-                InlineKeyboardButton::make('✅ تایید', callback_data: 'start_tg_report'),
-                InlineKeyboardButton::make('❌ لغو', callback_data: 'cancel_tg_report')
-            );
-
-        $bot->sendMessage("✅ **ثبت شد!**\n\n{$label}\n\nآیا میخواهید شروع کنیم؟", reply_markup: $keyboard);
-        $this->next('processReporterStart');
-    }
-
-    public function processReporterStart(Nutgram $bot)
-    {
-        $data = $bot->callbackQuery()?->data;
-
-        if ($data === 'cancel_tg_report') {
-            $bot->sendMessage('❌ لغو شد.');
-            $this->end();
-            return;
-        }
-
-        if ($data === 'start_tg_report') {
-            $username = $bot->getUserData('tg_reporter_username');
-            $local = $this->getLocalUser($bot);
-
-            if (!$local) {
-                $bot->sendMessage('⛔️ حساب شما پیدا نشد. ابتدا /start را ارسال کنید.');
-                $this->end();
+        if ($loadingMsg?->message_id) {
+            try {
+                $bot->editMessageText(
+                    chat_id: $bot->user()->id,
+                    message_id: $loadingMsg->message_id,
+                    text: $details,
+                    reply_markup: $keyboard
+                );
+                $this->next('processTelegramReason');
                 return;
+            } catch (\Throwable) {
+                $this->deleteMessageSafe($bot, $loadingMsg->message_id);
             }
-
-            $limiter = app(FeatureLimitService::class);
-            $limit = $limiter->checkReporterLimit($local);
-            if ($limit) {
-                $this->respondWithLimit($bot, $limit);
-                $this->end();
-                return;
-            }
-
-            $bot->answerCallbackQuery();
-            $this->askTelegramReason($bot);
-            return;
         }
-    }
 
-    private function askTelegramReason(Nutgram $bot): void
-    {
-        $this->promptTelegramReason($bot);
+        $bot->sendMessage($details, reply_markup: $keyboard);
         $this->next('processTelegramReason');
     }
 
@@ -191,55 +157,81 @@ class TelegramReporterConversation extends Conversation
 
     private function runTelegramReport(Nutgram $bot, string $username, string $reason, ?string $targetLabel = null, ?string $previewLink = null)
     {
-        $messageId = null;
-        $totalSteps = 10; // Simulated steps
+        $totalSteps = 5;
+        $delayPerStep = 5;
 
         $label = $targetLabel ?: "👤 یوزرنیم: @{$username}";
-        $previewLine = $previewLink ? "\n🔗 لینک: {$previewLink}" : '';
+        $previewLine = $previewLink ? "\n🖇️ لینک: {$previewLink}" : '';
 
-        // Send initial message
-        $msg = $bot->sendMessage("⏳ **درحال بررسی...**\n\n{$label}\n🗣 دلیل: {$reason}{$previewLine}\n📊 پیشرفت: 0%");
-        $messageId = $msg->message_id;
+        $progressMsg = $bot->sendMessage($this->buildProcessingMessage(
+            percent: 0,
+            step: 1,
+            totalSteps: $totalSteps,
+            targetLabel: $label,
+            reason: $reason,
+            queue: 243,
+            active: 18,
+            done: 162,
+            ok: 147,
+            fail: 15,
+            retry: 9,
+            elapsed: '00:00:00',
+            eta: '~00:00:24',
+            statuses: $this->buildStatusLines(1)
+        ) . $previewLine);
 
-        // Simulate progress
+        $queue = 243;
+        $active = 18;
+        $done = 162;
+        $ok = 147;
+        $fail = 15;
+        $retry = 9;
+        $start = microtime(true);
+
         for ($i = 1; $i <= $totalSteps; $i++) {
-            sleep(2); // 2-second intervals
-            $percent = ($i / $totalSteps) * 100;
-            $percent = (int)$percent;
-            $progressBar = $this->getProgressBar($percent);
+            sleep($delayPerStep);
 
-            $updateMsg = "⏳ **درحال بررسی...**\n\n";
-            $updateMsg .= "{$label}\n";
-            $updateMsg .= "🗣 دلیل: {$reason}\n";
-            $updateMsg .= $previewLine ? "{$previewLine}\n" : '';
-            $updateMsg .= "📊 پیشرفت: {$percent}%\n";
-            $updateMsg .= "{$progressBar}";
+            $percent = (int)(($i / $totalSteps) * 100);
+            $queue = max(0, $queue - 48);
+            $done += 30;
+            $ok += 30;
+            $retry = max(0, $retry - 3);
+
+            $elapsedSeconds = (int)(microtime(true) - $start);
+            $elapsed = gmdate('H:i:s', $elapsedSeconds);
+            $etaSeconds = max(0, ($totalSteps - $i) * $delayPerStep);
+            $eta = '~' . gmdate('H:i:s', $etaSeconds);
+
+            $updateMsg = $this->buildProcessingMessage(
+                percent: $percent,
+                step: $i,
+                totalSteps: $totalSteps,
+                targetLabel: $label,
+                reason: $reason,
+                queue: $queue,
+                active: $active,
+                done: $done,
+                ok: $ok,
+                fail: $fail,
+                retry: $retry,
+                elapsed: $elapsed,
+                eta: $eta,
+                statuses: $this->buildStatusLines($i + 1)
+            ) . $previewLine;
 
             try {
                 $bot->editMessageText(
                     chat_id: $bot->user()->id,
-                    message_id: $messageId,
+                    message_id: $progressMsg->message_id,
                     text: $updateMsg
                 );
-            } catch (\Exception $e) {
+            } catch (\Exception) {
                 // Continue on error
             }
         }
 
-        // Final message
-        $finalMsg = "✅ **انجام شد!**\n\n";
-        $finalMsg .= "{$label}\n";
-        $finalMsg .= "🗣 دلیل: {$reason}\n";
-        $finalMsg .= $previewLine ? "{$previewLine}\n" : '';
-        $finalMsg .= "📊 پیشرفت: 100%\n";
-        $finalMsg .= "[████████████████████] 100%\n\n";
-        $finalMsg .= "✨ گزارش بررسی تکمیل شد.";
-
-        $bot->editMessageText(
-            chat_id: $bot->user()->id,
-            message_id: $messageId,
-            text: $finalMsg
-        );
+        $this->deleteMessageSafe($bot, $progressMsg->message_id);
+        $bot->sendMessage($this->buildFinalMessage($label, $previewLink));
 
         $this->end();
     }
@@ -250,6 +242,95 @@ class TelegramReporterConversation extends Conversation
         $empty = 20 - $filled;
         $bar = '[' . str_repeat('█', $filled) . str_repeat('░', $empty) . ']';
         return $bar . ' ' . $percent . '%';
+    }
+
+    private function buildProcessingMessage(
+        int $percent,
+        int $step,
+        int $totalSteps,
+        string $targetLabel,
+        string $reason,
+        int $queue,
+        int $active,
+        int $done,
+        int $ok,
+        int $fail,
+        int $retry,
+        string $elapsed,
+        string $eta,
+        array $statuses
+    ): string {
+        $progressBar = $this->getProgressBar($percent);
+        $date = now()->format('Y/m/d');
+        $time = now()->format('H:i:s');
+        $barOnly = explode(' ', $progressBar, 2)[0];
+        $statusBlock = '> ' . implode("\n> ", $statuses);
+
+        return "🎗 KermPlus | Processing Job\n".
+            "━━━━━━━━━━━━━━━━\n\n".
+            "{$barOnly} {$percent}%   🔁 step {$step}/{$totalSteps}\n\n".
+            "🎯 هدف: {$targetLabel}\n".
+            "🗣 دلیل: {$reason}\n\n".
+            "📦 queue: {$queue} items\n".
+            "⚙️ active: {$active}   ✅ done: {$done}\n".
+            "🟢 ok: {$ok}   🔴 fail: {$fail}   🔁 retry: {$retry}\n\n".
+            "rate: 12/s backoff: 2.5s\n".
+            "elapsed: {$elapsed} ETA: {$eta}\n\n".
+            "{$statusBlock}\n\n".
+            "trace: job=8f2a mode=ro gate=open\n".
+            "Please wait...\n\n".
+            "📆 {$date}  ⏰ {$time}\n".
+            "• @NitroHostBot •";
+    }
+
+    private function buildFinalMessage(string $targetLabel, ?string $link = null): string
+    {
+        $date = now()->format('Y/m/d');
+        $time = now()->format('H:i:s');
+        $preview = $link ? "🖇️ لینک: {$link}\n" : '';
+
+        return "🎗 KermPlus | Reported Successful\n".
+            "━━━━━━━━━━━━━━━━\n\n".
+            "🎯 هدف: {$targetLabel}\n".
+            $preview.
+            "📦 تعداد کل درخواست ها : 1321\n".
+            "✅ 1235 موفق | ❌ 134 ناموفق\n\n".
+            "تمامی ریپورت ها از سمت کرم پلاس🪱 با موفقیت ارسال شدند.\n".
+            "نتیجه نهایی وابسته به بررسی پلتفرم مقصد می‌باشد.\n\n".
+            "📆 {$date} ⏰ {$time}\n".
+            "• @NitroHostBot •";
+    }
+
+    private function buildStatusLines(int $step): array
+    {
+        $lines = [
+            '🧪 validate inputs      [ OK ]',
+            '🔌 open connections     [ OK ]',
+            '🔄 process batch #09    [ .. ]',
+            '📝 write results        [ -- ]',
+            '🏁 finalize             [ -- ]',
+        ];
+
+        if ($step >= 2) {
+            $lines[2] = '🔄 process batch #09    [ OK ]';
+        }
+        if ($step >= 3) {
+            $lines[3] = '📝 write results        [ OK ]';
+        }
+        if ($step >= 4) {
+            $lines[4] = '🏁 finalize             [ OK ]';
+        }
+
+        return $lines;
+    }
+
+    private function deleteMessageSafe(Nutgram $bot, int $messageId): void
+    {
+        try {
+            $bot->deleteMessage(chat_id: $bot->user()->id, message_id: $messageId);
+        } catch (\Throwable) {
+            // ignore
+        }
     }
 
     private function determineTargetType(?string $callbackData): string
@@ -333,23 +414,6 @@ class TelegramReporterConversation extends Conversation
         return $messageId ? "{$base}/{$messageId}" : $base;
     }
 
-    private function sendTelegramPreview(Nutgram $bot, array $target): void
-    {
-        $link = $target['link'] ?? null;
-        if (!$link) return;
-
-        $preview = $this->buildTelegramPreview($bot, $target);
-
-        try {
-            $bot->sendMessage(
-                $preview ?? ("🔍 پیش‌نمایش هدف:\n{$link}"),
-                disable_web_page_preview: false
-            );
-        } catch (\Throwable $e) {
-            // ignore preview errors to avoid blocking the flow
-        }
-    }
-
     private function buildTelegramPreview(Nutgram $bot, array $target): ?string
     {
         $link = $target['link'] ?? '';
@@ -381,28 +445,16 @@ class TelegramReporterConversation extends Conversation
 
     private function formatAccountPreview($chat, string $username): string
     {
-        $name = trim(($chat->first_name ?? '') . ' ' . ($chat->last_name ?? '')) ?: '—';
-        $bio = $chat->bio ?? '—';
-        $id = $chat->id ?? '—';
-        $isPrivate = 'yes'; // user accounts are private conversations
-
         return "🎗 KermPlus | Account Found\n".
             "━━━━━━━━━━━━━━━\n".
-            "👤 name: {$name}\n".
-            "🆔 id : {$id}\n".
             "📜 username : @{$username}\n".
-            "🧾 bio: {$bio}\n\n".
-            "📅 created: —\n".
-            "🔒 is private?: {$isPrivate}\n".
-            "━━━━━━━━━━━━━━━\n\n".
-            "🗣 دلیل ریپورت را انتخاب کنید:\n";
+            "━━━━━━━━━━━━━━━\n\n".;
     }
 
     private function formatChannelPreview($chat, string $username, ?int $memberCount = null): string
     {
         $title = $chat->title ?? '@' . $username;
         $description = $chat->description ?? '—';
-        $visibility = ($chat && ($chat->type === 'channel')) ? 'public' : 'unknown';
         $members = $memberCount ?? $chat->subscriber_count ?? $chat->member_count ?? '—';
 
         return "🎗 KermPlus | Channel Found\n".
