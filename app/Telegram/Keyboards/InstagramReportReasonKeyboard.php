@@ -35,7 +35,7 @@ class InstagramReportReasonKeyboard
                 InlineKeyboardButton::make('ازش خوشم نمیاد', callback_data: 'instagram_reason_dislike')
             )
             ->addRow(
-                InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'reporter_menu')
+                InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'reporter_instagram_menu')
             );
     }
 }

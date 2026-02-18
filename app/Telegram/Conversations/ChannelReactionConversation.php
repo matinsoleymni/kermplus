@@ -46,9 +46,10 @@ class ChannelReactionConversation extends Conversation
         $keyboard = InlineKeyboardMarkup::make()
             ->addRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'main_menu'));
 
-        $bot->sendMessage(
+        $this->sendOrEditMessage(
+            $bot,
             "🔗 لینک پست کانال تلگرام را بفرست (مثلا https://t.me/channel/123):",
-            reply_markup: $keyboard
+            $keyboard
         );
 
         $this->next('askEmoji');
@@ -185,5 +186,26 @@ class ChannelReactionConversation extends Conversation
         app(StartCommand::class)->handle($bot);
 
         return true;
+    }
+
+    private function sendOrEditMessage(Nutgram $bot, string $text, ?InlineKeyboardMarkup $keyboard = null): void
+    {
+        $messageId = $bot->callbackQuery()?->message?->message_id;
+
+        if ($messageId) {
+            try {
+                $bot->editMessageText(
+                    chat_id: $bot->user()->id,
+                    message_id: $messageId,
+                    text: $text,
+                    reply_markup: $keyboard
+                );
+                return;
+            } catch (\Throwable) {
+                // fallback to sending a new message
+            }
+        }
+
+        $bot->sendMessage($text, reply_markup: $keyboard);
     }
 }

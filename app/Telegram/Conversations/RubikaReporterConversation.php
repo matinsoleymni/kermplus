@@ -5,6 +5,7 @@ namespace App\Telegram\Conversations;
 use App\Models\User;
 use App\Services\FeatureLimitService;
 use App\Services\WhitelistService;
+use App\Telegram\Keyboards\RubikaReporterMenuKeyboard;
 use SergiX44\Nutgram\Conversations\Conversation;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Types\Internal\InputFile;
@@ -28,7 +29,6 @@ class RubikaReporterConversation extends Conversation
     public function start(Nutgram $bot)
     {
         $bot->setUserData('rb_cleanup_messages', []);
-        $this->addCleanupMessage($bot, $bot->callbackQuery()?->message?->message_id);
 
         $local = $this->getLocalUser($bot);
         if (!$local) {
@@ -57,13 +57,29 @@ class RubikaReporterConversation extends Conversation
         $bot->setUserData('rb_reporter_type', $targetType);
 
         $targetLabel = $this->getTargetLabel($targetType);
-        $prompt = $bot->sendMessage("👤 لطفا یوزرنیم {$targetLabel} روبیکا را وارد کنید (بدون @):");
-        $this->addCleanupMessage($bot, $prompt->message_id ?? $bot->getLastMessageId());
+        $this->sendOrEditMessage(
+            $bot,
+            "👤 لطفا یوزرنیم {$targetLabel} روبیکا را وارد کنید (بدون @):",
+            $this->targetInputKeyboard()
+        );
         $this->next('awaitUsername');
     }
 
     public function awaitUsername(Nutgram $bot)
     {
+        $callbackData = $bot->callbackQuery()?->data;
+        if ($callbackData === 'reporter_rubika_menu') {
+            $bot->answerCallbackQuery();
+            $this->showRubikaReporterMenu($bot);
+            $this->end();
+            return;
+        }
+
+        if ($callbackData) {
+            $bot->answerCallbackQuery(text: '⛔️ ابتدا یوزرنیم را به صورت متن ارسال کن.');
+            return;
+        }
+
         $username = $bot->message()?->text;
         if (!$username || strlen($username) < 3) {
             $bot->sendMessage('⛔️ یوزرنیم نامعتبر است. لطفا حداقل 3 کاراکتر وارد کنید.');
@@ -168,6 +184,13 @@ class RubikaReporterConversation extends Conversation
         $data = $bot->callbackQuery()?->data;
         $reasons = $this->rubikaReasons();
 
+        if ($data === 'reporter_rubika_menu') {
+            $bot->answerCallbackQuery();
+            $this->showRubikaReporterMenu($bot);
+            $this->end();
+            return;
+        }
+
         if (!$data || !isset($reasons[$data])) {
             $bot->answerCallbackQuery(text: '⛔️ گزینه نامعتبر است. از دکمه‌ها استفاده کن.');
             $this->promptRubikaReason($bot);
@@ -198,69 +221,65 @@ class RubikaReporterConversation extends Conversation
 
         $limiter->recordReporterUsage($local);
         $bot->answerCallbackQuery(text: '✅ دلیل ثبت شد.');
+        $baseMessageId = $bot->callbackQuery()?->message?->message_id;
+        $baseUsesCaption = $this->isCallbackMessagePhoto($bot);
 
         $targetType = $bot->getUserData('rb_reporter_type') ?? self::TARGET_ACCOUNT;
-        $this->clearPreviousMessages($bot);
-        $this->clearCleanupMessages($bot);
-        $this->runRubikaReport($bot, $username, $targetType, $reasons[$data]);
+        $this->runRubikaReport($bot, $username, $targetType, $reasons[$data], $baseMessageId, $baseUsesCaption);
     }
 
-    private function runRubikaReport(Nutgram $bot, string $username, string $targetType, string $reason): void
+    private function runRubikaReport(
+        Nutgram $bot,
+        string $username,
+        string $targetType,
+        string $reason,
+        ?int $baseMessageId = null,
+        bool $baseUsesCaption = false
+    ): void
     {
         $totalSteps = 5;
         $delayPerStep = 5;
 
         $targetLabel = $this->getTargetLabel($targetType);
         $label = "🎯 نوع هدف: {$targetLabel} | 👤 یوزرنیم: @{$username}";
+        $initialText = $this->buildProcessingMessage(
+            percent: 0,
+            step: 1,
+            totalSteps: $totalSteps,
+            targetLabel: $label,
+            reason: $reason,
+            queue: 243,
+            active: 18,
+            done: 162,
+            ok: 147,
+            fail: 15,
+            retry: 9,
+            elapsed: '00:00:00',
+            eta: '~00:00:24',
+            statuses: $this->buildStatusLines(1)
+        );
 
-        $reporterPhoto = $this->getReporterPhoto();
-        $progressMsg = null;
-        $usePhoto = false;
+        $progressMessageId = $baseMessageId;
+        $useCaption = $baseUsesCaption;
 
-        if ($reporterPhoto) {
+        if ($progressMessageId) {
             try {
-                $progressMsg = $bot->sendPhoto(
-                    photo: $reporterPhoto,
-                    caption: $this->buildProcessingMessage(
-                        percent: 0,
-                        step: 1,
-                        totalSteps: $totalSteps,
-                        targetLabel: $label,
-                        reason: $reason,
-                        queue: 243,
-                        active: 18,
-                        done: 162,
-                        ok: 147,
-                        fail: 15,
-                        retry: 9,
-                        elapsed: '00:00:00',
-                        eta: '~00:00:24',
-                        statuses: $this->buildStatusLines(1)
-                    )
-                );
-                $usePhoto = (bool)($progressMsg->message_id ?? false);
+                $this->editMessageByType($bot, $progressMessageId, $initialText, $useCaption, null, true);
             } catch (\Throwable) {
-                $progressMsg = null;
+                $progressMessageId = null;
             }
         }
 
-        if (!$progressMsg) {
-            $progressMsg = $bot->sendMessage($this->buildProcessingMessage(
-                percent: 0,
-                step: 1,
-                totalSteps: $totalSteps,
-                targetLabel: $label,
-                reason: $reason,
-                queue: 243,
-                active: 18,
-                done: 162,
-                ok: 147,
-                fail: 15,
-                retry: 9,
-                elapsed: '00:00:00',
-                eta: '~00:00:24',
-                statuses: $this->buildStatusLines(1)
-            ));
+        if (!$progressMessageId) {
+            $sent = $bot->sendMessage($initialText, parse_mode: 'HTML');
+            $progressMessageId = $sent->message_id ?? null;
+            $useCaption = false;
+        }
+
+        if (!$progressMessageId) {
+            $bot->sendMessage('⛔️ خطا در ایجاد پیام وضعیت. دوباره تلاش کن.');
+            $this->end();
+            return;
         }
 
         $queue = 243;
@@ -303,41 +322,20 @@ class RubikaReporterConversation extends Conversation
             );
 
             try {
-                if ($usePhoto) {
-                    $bot->editMessageCaption(
-                        chat_id: $bot->user()->id,
-                        message_id: $progressMsg->message_id,
-                        caption: $updateMsg
-                    );
-                } else {
-                    $bot->editMessageText(
-                        chat_id: $bot->user()->id,
-                        message_id: $progressMsg->message_id,
-                        text: $updateMsg
-                    );
-                }
-            } catch (\Exception $e) {
+                $this->editMessageByType($bot, $progressMessageId, $updateMsg, $useCaption, null, true);
+            } catch (\Throwable) {
                 // Continue on error
             }
         }
 
-        $this->deleteMessageSafe($bot, $progressMsg->message_id);
-        $finalMsg = null;
-        if ($reporterPhoto) {
-            try {
-                $finalMsg = $bot->sendPhoto(
-                    photo: $this->getReporterPhoto(),
-                    caption: $this->buildFinalMessage($label, null)
-                );
-            } catch (\Throwable) {
-                $finalMsg = null;
-            }
+        $finalText = $this->buildFinalMessage($label, null);
+        try {
+            $this->editMessageByType($bot, $progressMessageId, $finalText, $useCaption);
+        } catch (\Throwable) {
+            $bot->sendMessage($finalText);
         }
 
-        if (!$finalMsg) {
-            $bot->sendMessage($this->buildFinalMessage($label, null));
-        }
-
+        $bot->setUserData('rb_cleanup_messages', []);
         $this->end();
     }
 
@@ -394,10 +392,21 @@ class RubikaReporterConversation extends Conversation
 
     private function promptRubikaReason(Nutgram $bot): void
     {
-        $bot->sendMessage(
-            '🗣 دلیل ریپورت رو انتخاب کن :',
-            reply_markup: $this->rubikaReasonKeyboard()
-        );
+        $text = '🗣 دلیل ریپورت رو انتخاب کن :';
+        $keyboard = $this->rubikaReasonKeyboard();
+        $messageId = $bot->callbackQuery()?->message?->message_id;
+        $useCaption = $this->isCallbackMessagePhoto($bot);
+
+        if ($messageId) {
+            try {
+                $this->editMessageByType($bot, $messageId, $text, $useCaption, $keyboard);
+                return;
+            } catch (\Throwable) {
+                // fallback to sending a new message
+            }
+        }
+
+        $bot->sendMessage($text, reply_markup: $keyboard);
     }
 
     private function rubikaReasonKeyboard(): InlineKeyboardMarkup
@@ -406,7 +415,7 @@ class RubikaReporterConversation extends Conversation
         foreach ($this->rubikaReasons() as $key => $title) {
             $keyboard->addRow(InlineKeyboardButton::make($title, callback_data: $key));
         }
-        $keyboard->addRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'reporter_menu'));
+        $keyboard->addRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'reporter_rubika_menu'));
 
         return $keyboard;
     }
@@ -431,23 +440,28 @@ class RubikaReporterConversation extends Conversation
         $date = now()->format('Y/m/d');
         $time = now()->format('H:i:s');
         $barOnly = explode(' ', $progressBar, 2)[0];
-        $statusBlock = '> ' . implode("\n> ", $statuses);
-
-        return "🎗 KermPlus | Processing Job\n".
-            "━━━━━━━━━━━━━━━━\n\n".
-            "{$barOnly} {$percent}%   🔁 step {$step}/{$totalSteps}\n\n".
-            "🎯 هدف: {$targetLabel}\n".
-            "🗣 دلیل: {$reason}\n\n".
-            "📦 queue: {$queue} items\n".
-            "⚙️ active: {$active}   ✅ done: {$done}\n".
-            "🟢 ok: {$ok}   🔴 fail: {$fail}   🔁 retry: {$retry}\n\n".
+        $statusBlock = implode("\n", $statuses);
+        $safeTargetLabel = htmlspecialchars($targetLabel, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $safeReason = htmlspecialchars($reason, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $quotedSection = "<blockquote>".
             "rate: 12/s backoff: 2.5s\n".
             "elapsed: {$elapsed} ETA: {$eta}\n\n".
             "{$statusBlock}\n\n".
             "trace: job=8f2a mode=ro gate=open\n".
             "Please wait...\n\n".
             "📆 {$date}  ⏰ {$time}\n".
-            "• @NitroHostBot •";
+            "• @NitroHostBot •".
+            "</blockquote>";
+
+        return "🎗 KermPlus | Processing Job\n".
+            "━━━━━━━━━━━━━━━━\n\n".
+            "{$barOnly} {$percent}%   🔁 step {$step}/{$totalSteps}\n\n".
+            "🎯 هدف: {$safeTargetLabel}\n".
+            "🗣 دلیل: {$safeReason}\n\n".
+            "📦 queue: {$queue} items\n".
+            "⚙️ active: {$active}   ✅ done: {$done}\n".
+            "🟢 ok: {$ok}   🔴 fail: {$fail}   🔁 retry: {$retry}\n\n".
+            $quotedSection;
     }
 
     private function buildFinalMessage(string $targetLabel, ?string $link = null): string
@@ -514,12 +528,74 @@ class RubikaReporterConversation extends Conversation
         $bot->setUserData('rb_cleanup_messages', []);
     }
 
-    private function clearPreviousMessages(Nutgram $bot): void
+    private function editMessageByType(
+        Nutgram $bot,
+        int $messageId,
+        string $text,
+        bool $useCaption,
+        ?InlineKeyboardMarkup $keyboard = null,
+        bool $parseHtml = false
+    ): void {
+        $parseMode = $parseHtml ? 'HTML' : null;
+
+        if ($useCaption) {
+            $bot->editMessageCaption(
+                chat_id: $bot->user()->id,
+                message_id: $messageId,
+                caption: $text,
+                parse_mode: $parseMode,
+                reply_markup: $keyboard
+            );
+            return;
+        }
+
+        $bot->editMessageText(
+            chat_id: $bot->user()->id,
+            message_id: $messageId,
+            text: $text,
+            parse_mode: $parseMode,
+            reply_markup: $keyboard
+        );
+    }
+
+    private function targetInputKeyboard(): InlineKeyboardMarkup
+    {
+        return InlineKeyboardMarkup::make()
+            ->addRow(
+                InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'reporter_rubika_menu')
+            );
+    }
+
+    private function sendOrEditMessage(Nutgram $bot, string $text, ?InlineKeyboardMarkup $keyboard = null): void
     {
         $messageId = $bot->callbackQuery()?->message?->message_id;
+
         if ($messageId) {
-            $this->deleteMessageSafe($bot, $messageId);
+            try {
+                $bot->editMessageText(
+                    chat_id: $bot->user()->id,
+                    message_id: $messageId,
+                    text: $text,
+                    reply_markup: $keyboard
+                );
+                return;
+            } catch (\Throwable) {
+                // fallback to sending a new message
+            }
         }
+
+        $bot->sendMessage($text, reply_markup: $keyboard);
+    }
+
+    private function showRubikaReporterMenu(Nutgram $bot): void
+    {
+        $msg = "❀ کرم پلاس ❀\n\n🟧 ریپورتر روبیکا 🤝\nبرای ادامه یکی از گزینه های زیر رو انتخاب کن :";
+        $this->sendOrEditMessage($bot, $msg, RubikaReporterMenuKeyboard::make());
+    }
+
+    private function isCallbackMessagePhoto(Nutgram $bot): bool
+    {
+        return (bool)$bot->callbackQuery()?->message?->photo;
     }
 
     private function deleteMessageSafe(Nutgram $bot, int $messageId): void

@@ -38,7 +38,7 @@ class TelegramReportReasonKeyboard
                 InlineKeyboardButton::make('غیرقانونی نیست ، اما باید حذف شود', callback_data: 'telegram_reason_other')
             )
             ->addRow(
-                InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'reporter_menu')
+                InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'reporter_telegram_menu')
             );
     }
 }

@@ -7,8 +7,11 @@ use App\Models\WhitelistedTarget;
 use App\Services\FeatureLimitService;
 use App\Services\WhitelistService;
 use App\Telegram\Keyboards\TelegramReportReasonKeyboard;
+use App\Telegram\Keyboards\TelegramReporterMenuKeyboard;
 use SergiX44\Nutgram\Conversations\Conversation;
 use SergiX44\Nutgram\Nutgram;
+use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
+use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 
 class TelegramReporterConversation extends Conversation
 {
@@ -54,12 +57,25 @@ class TelegramReporterConversation extends Conversation
             default => '👤 لطفا یوزرنیم تلگرام را وارد کنید (بدون @):',
         };
 
-        $bot->sendMessage($prompt);
+        $this->sendOrEditMessage($bot, $prompt, $this->targetInputKeyboard());
         $this->next('awaitTargetInput');
     }
 
     public function awaitTargetInput(Nutgram $bot)
     {
+        $callbackData = $bot->callbackQuery()?->data;
+        if ($callbackData === 'reporter_telegram_menu') {
+            $bot->answerCallbackQuery();
+            $this->showTelegramReporterMenu($bot);
+            $this->end();
+            return;
+        }
+
+        if ($callbackData) {
+            $bot->answerCallbackQuery(text: '⛔️ ابتدا هدف را به صورت متن ارسال کن.');
+            return;
+        }
+
         $input = trim((string)$bot->message()?->text);
         if ($input === '') {
             $bot->sendMessage('⛔️ لطفا مقدار معتبری وارد کنید.');
@@ -115,6 +131,13 @@ class TelegramReporterConversation extends Conversation
         $data = $bot->callbackQuery()?->data;
         $reasons = $this->telegramReasons();
 
+        if ($data === 'reporter_telegram_menu') {
+            $bot->answerCallbackQuery();
+            $this->showTelegramReporterMenu($bot);
+            $this->end();
+            return;
+        }
+
         if (!$data || !isset($reasons[$data])) {
             $bot->answerCallbackQuery(text: '⛔️ گزینه نامعتبر است. از دکمه‌ها استفاده کن.');
             $this->promptTelegramReason($bot);
@@ -151,11 +174,19 @@ class TelegramReporterConversation extends Conversation
             $username,
             $reasons[$data],
             $target['label'] ?? null,
-            $target['link'] ?? null
+            $target['link'] ?? null,
+            $bot->callbackQuery()?->message?->message_id
         );
     }
 
-    private function runTelegramReport(Nutgram $bot, string $username, string $reason, ?string $targetLabel = null, ?string $previewLink = null)
+    private function runTelegramReport(
+        Nutgram $bot,
+        string $username,
+        string $reason,
+        ?string $targetLabel = null,
+        ?string $previewLink = null,
+        ?int $baseMessageId = null
+    )
     {
         $totalSteps = 5;
         $delayPerStep = 5;
@@ -163,7 +194,7 @@ class TelegramReporterConversation extends Conversation
         $label = $targetLabel ?: "👤 یوزرنیم: @{$username}";
         $previewLine = $previewLink ? "\n🖇️ لینک: {$previewLink}" : '';
 
-        $progressMsg = $bot->sendMessage($this->buildProcessingMessage(
+        $initialText = $this->buildProcessingMessage(
             percent: 0,
             step: 1,
             totalSteps: $totalSteps,
@@ -178,7 +209,14 @@ class TelegramReporterConversation extends Conversation
             elapsed: '00:00:00',
             eta: '~00:00:24',
             statuses: $this->buildStatusLines(1)
-        ) . $previewLine);
+        ) . $previewLine;
+
+        $progressMessageId = $this->prepareProgressMessage($bot, $initialText, $baseMessageId);
+        if (!$progressMessageId) {
+            $bot->sendMessage('⛔️ خطا در ایجاد پیام وضعیت. دوباره تلاش کن.');
+            $this->end();
+            return;
+        }
 
         $queue = 243;
         $active = 18;
@@ -222,15 +260,16 @@ class TelegramReporterConversation extends Conversation
             try {
                 $bot->editMessageText(
                     chat_id: $bot->user()->id,
-                    message_id: $progressMsg->message_id,
-                    text: $updateMsg
+                    message_id: $progressMessageId,
+                    text: $updateMsg,
+                    parse_mode: 'HTML'
                 );
             } catch (\Exception) {
                 // Continue on error
             }
         }
 
-        $this->deleteMessageSafe($bot, $progressMsg->message_id);
+        $this->deleteMessageSafe($bot, $progressMessageId);
         $bot->sendMessage($this->buildFinalMessage($label, $previewLink));
 
         $this->end();
@@ -264,23 +303,28 @@ class TelegramReporterConversation extends Conversation
         $date = now()->format('Y/m/d');
         $time = now()->format('H:i:s');
         $barOnly = explode(' ', $progressBar, 2)[0];
-        $statusBlock = '> ' . implode("\n> ", $statuses);
-
-        return "🎗 KermPlus | Processing Job\n".
-            "━━━━━━━━━━━━━━━━\n\n".
-            "{$barOnly} {$percent}%   🔁 step {$step}/{$totalSteps}\n\n".
-            "🎯 هدف: {$targetLabel}\n".
-            "🗣 دلیل: {$reason}\n\n".
-            "📦 queue: {$queue} items\n".
-            "⚙️ active: {$active}   ✅ done: {$done}\n".
-            "🟢 ok: {$ok}   🔴 fail: {$fail}   🔁 retry: {$retry}\n\n".
+        $statusBlock = implode("\n", $statuses);
+        $safeTargetLabel = htmlspecialchars($targetLabel, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $safeReason = htmlspecialchars($reason, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $quotedSection = "<blockquote>".
             "rate: 12/s backoff: 2.5s\n".
             "elapsed: {$elapsed} ETA: {$eta}\n\n".
             "{$statusBlock}\n\n".
             "trace: job=8f2a mode=ro gate=open\n".
             "Please wait...\n\n".
             "📆 {$date}  ⏰ {$time}\n".
-            "• @NitroHostBot •";
+            "• @NitroHostBot •".
+            "</blockquote>";
+
+        return "🎗 KermPlus | Processing Job\n".
+            "━━━━━━━━━━━━━━━━\n\n".
+            "{$barOnly} {$percent}%   🔁 step {$step}/{$totalSteps}\n\n".
+            "🎯 هدف: {$safeTargetLabel}\n".
+            "🗣 دلیل: {$safeReason}\n\n".
+            "📦 queue: {$queue} items\n".
+            "⚙️ active: {$active}   ✅ done: {$done}\n".
+            "🟢 ok: {$ok}   🔴 fail: {$fail}   🔁 retry: {$retry}\n\n".
+            $quotedSection;
     }
 
     private function buildFinalMessage(string $targetLabel, ?string $link = null): string
@@ -512,10 +556,80 @@ class TelegramReporterConversation extends Conversation
 
     private function promptTelegramReason(Nutgram $bot): void
     {
-        $bot->sendMessage(
-            '🗣 دلیل ریپورت رو انتخاب کن :',
-            reply_markup: TelegramReportReasonKeyboard::make()
-        );
+        $text = '🗣 دلیل ریپورت رو انتخاب کن :';
+        $keyboard = TelegramReportReasonKeyboard::make();
+        $messageId = $bot->callbackQuery()?->message?->message_id;
+
+        if ($messageId) {
+            try {
+                $bot->editMessageText(
+                    chat_id: $bot->user()->id,
+                    message_id: $messageId,
+                    text: $text,
+                    reply_markup: $keyboard
+                );
+                return;
+            } catch (\Throwable) {
+                // fallback to sending a new message
+            }
+        }
+
+        $bot->sendMessage($text, reply_markup: $keyboard);
+    }
+
+    private function prepareProgressMessage(Nutgram $bot, string $text, ?int $baseMessageId = null): ?int
+    {
+        if ($baseMessageId) {
+            try {
+                $bot->editMessageText(
+                    chat_id: $bot->user()->id,
+                    message_id: $baseMessageId,
+                    text: $text,
+                    parse_mode: 'HTML'
+                );
+                return $baseMessageId;
+            } catch (\Throwable) {
+                // fallback to sending a new message
+            }
+        }
+
+        $sent = $bot->sendMessage($text, parse_mode: 'HTML');
+        return $sent->message_id ?? null;
+    }
+
+    private function targetInputKeyboard(): InlineKeyboardMarkup
+    {
+        return InlineKeyboardMarkup::make()
+            ->addRow(
+                InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'reporter_telegram_menu')
+            );
+    }
+
+    private function sendOrEditMessage(Nutgram $bot, string $text, ?InlineKeyboardMarkup $keyboard = null): void
+    {
+        $messageId = $bot->callbackQuery()?->message?->message_id;
+
+        if ($messageId) {
+            try {
+                $bot->editMessageText(
+                    chat_id: $bot->user()->id,
+                    message_id: $messageId,
+                    text: $text,
+                    reply_markup: $keyboard
+                );
+                return;
+            } catch (\Throwable) {
+                // fallback to sending a new message
+            }
+        }
+
+        $bot->sendMessage($text, reply_markup: $keyboard);
+    }
+
+    private function showTelegramReporterMenu(Nutgram $bot): void
+    {
+        $msg = "❀ کرم پلاس ❀\n\n🟦 ریپورتر تلگرام 🤝\nبرای ادامه یکی از گزینه های زیر رو انتخاب کن :";
+        $this->sendOrEditMessage($bot, $msg, TelegramReporterMenuKeyboard::make());
     }
 
     private function fetchChannelMemberCount(Nutgram $bot, string $username): ?int

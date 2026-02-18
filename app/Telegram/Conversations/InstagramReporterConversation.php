@@ -7,6 +7,7 @@ use App\Models\WhitelistedTarget;
 use App\Services\FeatureLimitService;
 use App\Services\WhitelistService;
 use App\Telegram\Keyboards\InstagramReportReasonKeyboard;
+use App\Telegram\Keyboards\InstagramReporterMenuKeyboard;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Carbon;
 use SergiX44\Nutgram\Conversations\Conversation;
@@ -26,7 +27,6 @@ class InstagramReporterConversation extends Conversation
 
     public function start(Nutgram $bot)
     {
-        $this->addCleanupMessage($bot, $bot->callbackQuery()?->message?->message_id);
         $local = $this->getLocalUser($bot);
         if (!$local) {
             $bot->sendMessage('⛔️ حساب شما پیدا نشد. ابتدا /start را ارسال کنید.');
@@ -54,18 +54,31 @@ class InstagramReporterConversation extends Conversation
         $bot->setUserData('ig_reporter_target_type', $targetType);
         $bot->setUserData('ig_reporter_media', null);
         $bot->setUserData('ig_reporter_post_link', null);
+        $bot->setUserData('ig_cleanup_messages', []);
 
         $promptText = $targetType === 'post'
             ? '📮 لینک یا شناسه پست اینستاگرام را بفرست (مثال: https://www.instagram.com/p/xxxx یا کد کوتاه).'
             : '👤 لطفا یوزرنیم اینستاگرام را وارد کنید (بدون @):';
 
-        $prompt = $bot->sendMessage($promptText);
-        $this->addCleanupMessage($bot, $prompt->message_id ?? $bot->getLastMessageId());
+        $this->sendOrEditMessage($bot, $promptText, $this->targetInputKeyboard());
         $this->next($targetType === 'post' ? 'awaitPostLink' : 'awaitUsername');
     }
 
     public function awaitUsername(Nutgram $bot)
     {
+        $callbackData = $bot->callbackQuery()?->data;
+        if ($callbackData === 'reporter_instagram_menu') {
+            $bot->answerCallbackQuery();
+            $this->showInstagramReporterMenu($bot);
+            $this->end();
+            return;
+        }
+
+        if ($callbackData) {
+            $bot->answerCallbackQuery(text: '⛔️ ابتدا یوزرنیم را به صورت متن ارسال کن.');
+            return;
+        }
+
         $username = $bot->message()?->text;
         if (!$username || strlen($username) < 3) {
             $bot->sendMessage('⛔️ یوزرنیم نامعتبر است. لطفا حداقل 3 کاراکتر وارد کنید.');
@@ -123,6 +136,19 @@ class InstagramReporterConversation extends Conversation
 
     public function awaitPostLink(Nutgram $bot)
     {
+        $callbackData = $bot->callbackQuery()?->data;
+        if ($callbackData === 'reporter_instagram_menu') {
+            $bot->answerCallbackQuery();
+            $this->showInstagramReporterMenu($bot);
+            $this->end();
+            return;
+        }
+
+        if ($callbackData) {
+            $bot->answerCallbackQuery(text: '⛔️ ابتدا لینک پست را به صورت متن ارسال کن.');
+            return;
+        }
+
         $link = trim((string)$bot->message()?->text);
         if ($link === '') {
             $bot->sendMessage('⛔️ لینک نامعتبر است. دوباره تلاش کن.');
@@ -187,8 +213,16 @@ class InstagramReporterConversation extends Conversation
         $data = $bot->callbackQuery()?->data;
         $reasons = $this->instagramReasons();
 
+        if ($data === 'reporter_instagram_menu') {
+            $bot->answerCallbackQuery();
+            $this->showInstagramReporterMenu($bot);
+            $this->end();
+            return;
+        }
+
         if (!isset($reasons[$data])) {
             $bot->answerCallbackQuery(text: '⛔️ گزینه نامعتبر است.');
+            $this->promptInstagramReason($bot);
             return;
         }
 
@@ -216,6 +250,8 @@ class InstagramReporterConversation extends Conversation
 
         $limiter->recordReporterUsage($local);
         $bot->answerCallbackQuery(text: '✅ دلیل ثبت شد.');
+        $baseMessageId = $bot->callbackQuery()?->message?->message_id;
+        $baseUsesCaption = $this->isCallbackMessagePhoto($bot);
 
         $targetType = $bot->getUserData('ig_reporter_target_type') ?? 'page';
 
@@ -230,27 +266,32 @@ class InstagramReporterConversation extends Conversation
             }
 
             $owner = data_get($media, 'owner.username', $username);
-            $this->runInstagramReport($bot, $owner, $reasons[$data], 'post', $media, $link);
+            $this->runInstagramReport($bot, $owner, $reasons[$data], 'post', $media, $link, $baseMessageId, $baseUsesCaption);
             return;
         }
 
-        $this->runInstagramReport($bot, $username, $reasons[$data], 'page');
+        $this->runInstagramReport($bot, $username, $reasons[$data], 'page', null, null, $baseMessageId, $baseUsesCaption);
     }
 
-    private function runInstagramReport(Nutgram $bot, string $username, string $reason, string $targetType = 'page', ?array $media = null, ?string $link = null)
+    private function runInstagramReport(
+        Nutgram $bot,
+        string $username,
+        string $reason,
+        string $targetType = 'page',
+        ?array $media = null,
+        ?string $link = null,
+        ?int $baseMessageId = null,
+        bool $baseUsesCaption = false
+    )
     {
-        $this->clearPreviousMessages($bot);
-        $this->clearCleanupMessages($bot);
-
         $totalSteps = 5;
         $delayPerStep = 5; // seconds, ~25s total
 
         $label = $targetType === 'post'
             ? "📮 پست: @{$username}"
             : "📸 یوزرنیم: @{$username}";
-        $previewLine = $link ? "\n🖇️ لینک: {$link}" : '';
-
-        $progressMsg = $bot->sendMessage($this->buildProcessingMessage(
+        $previewLine = $link ? "\n🖇️ لینک: " . htmlspecialchars($link, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') : '';
+        $initialText = $this->buildProcessingMessage(
             percent: 0,
             step: 1,
             totalSteps: $totalSteps,
@@ -265,7 +306,30 @@ class InstagramReporterConversation extends Conversation
             elapsed: '00:00:00',
             eta: '~00:00:24',
             statuses: $this->buildStatusLines(1)
-        ) . $previewLine);
+        ) . $previewLine;
+
+        $progressMessageId = $baseMessageId;
+        $useCaption = $baseUsesCaption;
+
+        if ($progressMessageId) {
+            try {
+                $this->editMessageByType($bot, $progressMessageId, $initialText, $useCaption, null, true);
+            } catch (\Throwable) {
+                $progressMessageId = null;
+            }
+        }
+
+        if (!$progressMessageId) {
+            $sent = $bot->sendMessage($initialText, parse_mode: 'HTML');
+            $progressMessageId = $sent->message_id ?? null;
+            $useCaption = false;
+        }
+
+        if (!$progressMessageId) {
+            $bot->sendMessage('⛔️ خطا در ایجاد پیام وضعیت. دوباره تلاش کن.');
+            $this->end();
+            return;
+        }
 
         $queue = 243;
         $active = 18;
@@ -307,19 +371,20 @@ class InstagramReporterConversation extends Conversation
             ) . $previewLine;
 
             try {
-                $bot->editMessageText(
-                    chat_id: $bot->user()->id,
-                    message_id: $progressMsg->message_id,
-                    text: $updateMsg
-                );
-            } catch (\Exception $e) {
+                $this->editMessageByType($bot, $progressMessageId, $updateMsg, $useCaption, null, true);
+            } catch (\Throwable) {
                 // Continue on error
             }
         }
 
-        $this->deleteMessageSafe($bot, $progressMsg->message_id);
-        $bot->sendMessage($this->buildFinalMessage($label, $link));
+        $finalText = $this->buildFinalMessage($label, $link);
+        try {
+            $this->editMessageByType($bot, $progressMessageId, $finalText, $useCaption);
+        } catch (\Throwable) {
+            $bot->sendMessage($finalText);
+        }
 
+        $bot->setUserData('ig_cleanup_messages', []);
         $this->end();
     }
 
@@ -400,6 +465,25 @@ class InstagramReporterConversation extends Conversation
         ];
     }
 
+    private function promptInstagramReason(Nutgram $bot): void
+    {
+        $text = '🗣 دلیل ریپورت رو انتخاب کن :';
+        $keyboard = InstagramReportReasonKeyboard::make();
+        $messageId = $bot->callbackQuery()?->message?->message_id;
+        $useCaption = $this->isCallbackMessagePhoto($bot);
+
+        if ($messageId) {
+            try {
+                $this->editMessageByType($bot, $messageId, $text, $useCaption, $keyboard);
+                return;
+            } catch (\Throwable) {
+                // fallback to sending a new message
+            }
+        }
+
+        $bot->sendMessage($text, reply_markup: $keyboard);
+    }
+
     private function buildProcessingMessage(
         int $percent,
         int $step,
@@ -416,28 +500,32 @@ class InstagramReporterConversation extends Conversation
         string $eta,
         array $statuses
     ): string {
-        $progressBar = $this->getProgressBar($percent);
         $date = now()->format('Y/m/d');
         $time = now()->format('H:i:s');
         $progressBar = $this->getProgressBar($percent);
         $barOnly = explode(' ', $progressBar, 2)[0];
-        $statusBlock = '> ' . implode("\n> ", $statuses);
-
-        return "🎗 KermPlus | Processing Job\n".
-            "━━━━━━━━━━━━━━━━\n\n".
-            "{$barOnly} {$percent}%   🔁 step {$step}/{$totalSteps}\n\n".
-            "🎯 هدف: {$targetLabel}\n".
-            "🗣 دلیل: {$reason}\n\n".
-            "📦 queue: {$queue} items\n".
-            "⚙️ active: {$active}   ✅ done: {$done}\n".
-            "🟢 ok: {$ok}   🔴 fail: {$fail}   🔁 retry: {$retry}\n\n".
+        $statusBlock = implode("\n", $statuses);
+        $safeTargetLabel = htmlspecialchars($targetLabel, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $safeReason = htmlspecialchars($reason, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $quotedSection = "<blockquote>".
             "rate: 12/s backoff: 2.5s\n".
             "elapsed: {$elapsed} ETA: {$eta}\n\n".
             "{$statusBlock}\n\n".
             "trace: job=8f2a mode=ro gate=open\n".
             "Please wait...\n\n".
             "📆 {$date}  ⏰ {$time}\n".
-            "• @NitroHostBot •";
+            "• @NitroHostBot •".
+            "</blockquote>";
+
+        return "🎗 KermPlus | Processing Job\n".
+            "━━━━━━━━━━━━━━━━\n\n".
+            "{$barOnly} {$percent}%   🔁 step {$step}/{$totalSteps}\n\n".
+            "🎯 هدف: {$safeTargetLabel}\n".
+            "🗣 دلیل: {$safeReason}\n\n".
+            "📦 queue: {$queue} items\n".
+            "⚙️ active: {$active}   ✅ done: {$done}\n".
+            "🟢 ok: {$ok}   🔴 fail: {$fail}   🔁 retry: {$retry}\n\n".
+            $quotedSection;
     }
 
     private function buildFinalMessage(string $targetLabel, ?string $link = null): string
@@ -481,12 +569,74 @@ class InstagramReporterConversation extends Conversation
         return $lines;
     }
 
-    private function clearPreviousMessages(Nutgram $bot): void
+    private function editMessageByType(
+        Nutgram $bot,
+        int $messageId,
+        string $text,
+        bool $useCaption,
+        ?InlineKeyboardMarkup $keyboard = null,
+        bool $parseHtml = false
+    ): void {
+        $parseMode = $parseHtml ? 'HTML' : null;
+
+        if ($useCaption) {
+            $bot->editMessageCaption(
+                chat_id: $bot->user()->id,
+                message_id: $messageId,
+                caption: $text,
+                parse_mode: $parseMode,
+                reply_markup: $keyboard
+            );
+            return;
+        }
+
+        $bot->editMessageText(
+            chat_id: $bot->user()->id,
+            message_id: $messageId,
+            text: $text,
+            parse_mode: $parseMode,
+            reply_markup: $keyboard
+        );
+    }
+
+    private function targetInputKeyboard(): InlineKeyboardMarkup
+    {
+        return InlineKeyboardMarkup::make()
+            ->addRow(
+                InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'reporter_instagram_menu')
+            );
+    }
+
+    private function sendOrEditMessage(Nutgram $bot, string $text, ?InlineKeyboardMarkup $keyboard = null): void
     {
         $messageId = $bot->callbackQuery()?->message?->message_id;
+
         if ($messageId) {
-            $this->deleteMessageSafe($bot, $messageId);
+            try {
+                $bot->editMessageText(
+                    chat_id: $bot->user()->id,
+                    message_id: $messageId,
+                    text: $text,
+                    reply_markup: $keyboard
+                );
+                return;
+            } catch (\Throwable) {
+                // fallback to sending a new message
+            }
         }
+
+        $bot->sendMessage($text, reply_markup: $keyboard);
+    }
+
+    private function showInstagramReporterMenu(Nutgram $bot): void
+    {
+        $msg = "❀ کرم پلاس ❀\n\n🟥 ریپورتر اینستاگرام 🤝\nبرای ادامه یکی از گزینه های زیر رو انتخاب کن :";
+        $this->sendOrEditMessage($bot, $msg, InstagramReporterMenuKeyboard::make());
+    }
+
+    private function isCallbackMessagePhoto(Nutgram $bot): bool
+    {
+        return (bool)$bot->callbackQuery()?->message?->photo;
     }
 
     private function deleteMessageSafe(Nutgram $bot, int $messageId): void

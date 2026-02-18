@@ -18,9 +18,9 @@ class NotImplementedHandler
         // }
 
         try {
-            $bot->editMessageText('🔧 این گزینه فعلا فعال نیست. برای اطلاعات بیشتر با @kermsup تماس بگیرید.', reply_markup: BackToMainKeyboard::make());
+            $bot->editMessageText('🔧 این گزینه فعلا فعال نیست.', reply_markup: BackToMainKeyboard::make());
         } catch (Exception $e) {
-            $bot->sendMessage('🔧 این گزینه فعلا فعال نیست. برای اطلاعات بیشتر با @kermsup تماس بگیرید.', reply_markup: BackToMainKeyboard::make());
+            $bot->sendMessage('🔧 این گزینه فعلا فعال نیست.', reply_markup: BackToMainKeyboard::make());
             logger()->error('Error in NotImplementedHandler: ' . $e->getMessage());
         }
     }

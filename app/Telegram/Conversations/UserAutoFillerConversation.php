@@ -208,6 +208,7 @@ class UserAutoFillerConversation extends Conversation
         return InlineKeyboardMarkup::make()
             ->addRow(InlineKeyboardButton::make('وارد کردن اسم دلخواه ➥', callback_data: 'autofill_custom_name'))
             ->addRow(InlineKeyboardButton::make('انتخاب اسم رندوم ➥', callback_data: 'autofill_random_name'))
+            ->addRow(InlineKeyboardButton::make('آموزش نحوه استفاده', url: 'https://t.me/kermpluslearn/9'))
             ->addRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'main_menu'));
     }
 

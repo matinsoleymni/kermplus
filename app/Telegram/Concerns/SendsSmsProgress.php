@@ -38,7 +38,8 @@ trait SendsSmsProgress
             if (is_readable($imagePath)) {
                 $progressMsg = $bot->sendPhoto(
                     photo: \SergiX44\Nutgram\Telegram\Types\Internal\InputFile::make($imagePath, 'bomber.png'),
-                    caption: $initialMessage
+                    caption: $initialMessage,
+                    parse_mode: 'HTML'
                 );
                 $usePhoto = (bool)($progressMsg->message_id ?? false);
             }
@@ -47,7 +48,7 @@ trait SendsSmsProgress
         }
 
         if (!$progressMsg) {
-            $progressMsg = $bot->sendMessage($initialMessage);
+            $progressMsg = $bot->sendMessage($initialMessage, parse_mode: 'HTML');
         }
 
         if (!$progressMsg || !isset($progressMsg->message_id)) {
@@ -98,13 +99,15 @@ trait SendsSmsProgress
                     $bot->editMessageCaption(
                         chat_id: $bot->user()->id,
                         message_id: $progressMsg->message_id,
-                        caption: $messageText
+                        caption: $messageText,
+                        parse_mode: 'HTML'
                     );
                 } else {
                     $bot->editMessageText(
                         chat_id: $bot->user()->id,
                         message_id: $progressMsg->message_id,
-                        text: $messageText
+                        text: $messageText,
+                        parse_mode: 'HTML'
                     );
                 }
             } catch (\Throwable $e) {
@@ -135,26 +138,31 @@ trait SendsSmsProgress
     ): string {
         $progressBar = $this->getProgressBar($percent);
         $barOnly = explode(' ', $progressBar, 2)[0];
-        $statusBlock = '> ' . implode("\n> ", $statuses);
+        $statusBlock = implode("\n", $statuses);
         $date = now()->format('Y/m/d');
         $time = now()->format('H:i:s');
         $metaLine = $this->buildSmsMetaLine($meta);
-
-        return "🎗 KermPlus | Processing Job\n" .
-            "━━━━━━━━━━━━━━━━\n\n" .
-            "{$barOnly} {$percent}%   🔁 step {$step}/{$totalSteps}\n\n" .
-            "📱 target: {$phone}\n" .
-            "📨 count: {$count}" . ($metaLine ? " ({$metaLine})" : '') . "\n\n" .
-            "📦 queue: {$queue} items\n" .
-            "⚙️ active: {$active}   ✅ done: {$done}\n" .
-            "🟢 ok: {$ok}   🔴 fail: {$fail}   🔁 retry: {$retry}\n\n" .
+        $safePhone = htmlspecialchars($phone, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $safeMetaLine = $metaLine ? htmlspecialchars($metaLine, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') : null;
+        $quotedSection = "<blockquote>" .
             "rate: 12/s backoff: 2.5s\n" .
             "elapsed: {$elapsed} ETA: {$eta}\n\n" .
             "{$statusBlock}\n\n" .
             "trace: job=sms mode=queue gate=open\n" .
             "Please wait...\n\n" .
             "📆 {$date}  ⏰ {$time}\n" .
-            "• @NitroHostBot •";
+            "• @NitroHostBot •" .
+            "</blockquote>";
+
+        return "🎗 KermPlus | Processing Job\n" .
+            "━━━━━━━━━━━━━━━━\n\n" .
+            "{$barOnly} {$percent}%   🔁 step {$step}/{$totalSteps}\n\n" .
+            "📱 target: {$safePhone}\n" .
+            "📨 count: {$count}" . ($safeMetaLine ? " ({$safeMetaLine})" : '') . "\n\n" .
+            "📦 queue: {$queue} items\n" .
+            "⚙️ active: {$active}   ✅ done: {$done}\n" .
+            "🟢 ok: {$ok}   🔴 fail: {$fail}   🔁 retry: {$retry}\n\n" .
+            $quotedSection;
     }
 
     private function buildSmsStatusLines(int $step): array

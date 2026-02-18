@@ -37,7 +37,8 @@ trait SendsHarasserProgress
             if (is_readable($imagePath)) {
                 $progressMsg = $bot->sendPhoto(
                     photo: \SergiX44\Nutgram\Telegram\Types\Internal\InputFile::make($imagePath, 'mozahem.png'),
-                    caption: $initialMessage
+                    caption: $initialMessage,
+                    parse_mode: 'HTML'
                 );
                 $usePhoto = (bool)($progressMsg->message_id ?? false);
             }
@@ -46,7 +47,7 @@ trait SendsHarasserProgress
         }
 
         if (!$progressMsg) {
-            $progressMsg = $bot->sendMessage($initialMessage);
+            $progressMsg = $bot->sendMessage($initialMessage, parse_mode: 'HTML');
         }
 
         if (!$progressMsg || !isset($progressMsg->message_id)) {
@@ -96,13 +97,15 @@ trait SendsHarasserProgress
                     $bot->editMessageCaption(
                         chat_id: $bot->user()->id,
                         message_id: $progressMessageId,
-                        caption: $messageText
+                        caption: $messageText,
+                        parse_mode: 'HTML'
                     );
                 } else {
                     $bot->editMessageText(
                         chat_id: $bot->user()->id,
                         message_id: $progressMessageId,
-                        text: $messageText
+                        text: $messageText,
+                        parse_mode: 'HTML'
                     );
                 }
             } catch (\Throwable $e) {
@@ -140,25 +143,30 @@ trait SendsHarasserProgress
     ): string {
         $progressBar = $this->getProgressBar($percent);
         $barOnly = explode(' ', $progressBar, 2)[0];
-        $statusBlock = '> ' . implode("\n> ", $statuses);
+        $statusBlock = implode("\n", $statuses);
         $date = now()->format('Y/m/d');
         $time = now()->format('H:i:s');
-
-        return "🎗 KermPlus | Processing Job\n" .
-            "━━━━━━━━━━━━━━━━\n\n" .
-            "{$barOnly} {$percent}%   🔁 step {$step}/{$totalSteps}\n\n" .
-            "👤 target: {$name}\n" .
-            "📱 phone: {$phone}\n\n" .
-            "📦 queue: {$queue} items\n" .
-            "⚙️ active: {$active}   ✅ done: {$done}\n" .
-            "🟢 ok: {$ok}   🔴 fail: {$fail}   🔁 retry: {$retry}\n\n" .
+        $safeName = htmlspecialchars($name, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $safePhone = htmlspecialchars($phone, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $quotedSection = "<blockquote>" .
             "rate: 12/s backoff: 2.5s\n" .
             "elapsed: {$elapsed} ETA: {$eta}\n\n" .
             "{$statusBlock}\n\n" .
             "trace: job=harasser mode=queue gate=open\n" .
             "Please wait...\n\n" .
             "📆 {$date}  ⏰ {$time}\n" .
-            "• @NitroHostBot •";
+            "• @NitroHostBot •" .
+            "</blockquote>";
+
+        return "🎗 KermPlus | Processing Job\n" .
+            "━━━━━━━━━━━━━━━━\n\n" .
+            "{$barOnly} {$percent}%   🔁 step {$step}/{$totalSteps}\n\n" .
+            "👤 target: {$safeName}\n" .
+            "📱 phone: {$safePhone}\n\n" .
+            "📦 queue: {$queue} items\n" .
+            "⚙️ active: {$active}   ✅ done: {$done}\n" .
+            "🟢 ok: {$ok}   🔴 fail: {$fail}   🔁 retry: {$retry}\n\n" .
+            $quotedSection;
     }
 
     private function buildHarasserStatusLines(int $step): array
