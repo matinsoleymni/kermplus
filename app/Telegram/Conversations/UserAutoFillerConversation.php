@@ -5,6 +5,7 @@ namespace App\Telegram\Conversations;
 use App\Models\User;
 use App\Telegram\Concerns\SendsHarasserProgress;
 use App\Telegram\Keyboards\BackToMainKeyboard;
+use App\Telegram\Keyboards\PlusRequiredKeyboard;
 use App\Services\FeatureLimitService;
 use App\Services\AutoFillerRunner;
 use SergiX44\Nutgram\Conversations\Conversation;
@@ -76,21 +77,7 @@ class UserAutoFillerConversation extends Conversation
         $limiter = app(FeatureLimitService::class);
         $limit = $limiter->checkHarasserLimit($local);
         if ($limit) {
-            $keyboard = InlineKeyboardMarkup::make();
-            $requiresPlus = str_contains($limit, 'نسخه پلاس');
-
-            if ($requiresPlus) {
-                $keyboard
-                    ->addRow(InlineKeyboardButton::make('🩸 نسخه پلاس چیه؟', callback_data: 'plus_info'))
-                    ->addRow(
-                        InlineKeyboardButton::make('🎗 ارتقا به نسخه پلاس🎗', callback_data: 'buy_subscription'),
-                        InlineKeyboardButton::make('📞 پشتیبانی 📞', url: 'https://t.me/kermsup')
-                    );
-            }
-
-            $keyboard->addRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'main_menu'));
-
-            $this->replyWithEditPreferred($bot, $limit, $keyboard);
+            $this->replyWithEditPreferred($bot, $limit, PlusRequiredKeyboard::make('main_menu'));
             $this->end();
             return;
         }
@@ -147,7 +134,7 @@ class UserAutoFillerConversation extends Conversation
         $limiter = app(FeatureLimitService::class);
         $limit = $limiter->checkHarasserLimit($local);
         if ($limit) {
-            $this->replyWithEditPreferred($bot, $limit, BackToMainKeyboard::make());
+            $this->replyWithEditPreferred($bot, $limit, PlusRequiredKeyboard::make('main_menu'));
             $this->end();
             return;
         }

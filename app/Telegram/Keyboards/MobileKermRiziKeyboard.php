@@ -19,7 +19,7 @@ class MobileKermRiziKeyboard
                 InlineKeyboardButton::make('🗑️ دیلیتر 🗑️', callback_data: 'not_implemented')
             )
             ->addRow(
-                InlineKeyboardButton::make('✍️ آموزش استفاده از کرم ریزی رو موبایل ✍️', callback_data: 'not_implemented')
+                InlineKeyboardButton::make('✍️ آموزش استفاده از کرم ریزی رو موبایل ✍️', url: 'https://t.me/kermpluslearn/14')
             )
             ->addRow(
                 InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'kerm_menu')

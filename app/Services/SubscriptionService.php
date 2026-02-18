@@ -10,6 +10,11 @@ use App\Models\SubscriptionHistory;
 
 class SubscriptionService
 {
+    public const FEATURE_BOMBER = 'bomber';
+    public const FEATURE_REPORTER = 'reporter';
+    public const FEATURE_HARASSER = 'harasser';
+    public const FEATURE_WHITELIST = 'whitelist';
+
     /**
      * ایجاد اشتراک جدید برای کاربر
      */
@@ -66,14 +71,34 @@ class SubscriptionService
             ->first();
     }
 
+    public function getActivePlan(User $user): ?SubscriptionPlan
+    {
+        return $this->getActiveSubscription($user)?->plan;
+    }
+
+    public function hasFeatureAccess(User $user, string $feature): bool
+    {
+        $plan = $this->getActivePlan($user);
+
+        if (!$plan) {
+            return false;
+        }
+
+        return $plan->hasFeature($feature);
+    }
+
+    public function isPlus(User $user): bool
+    {
+        $plan = $this->getActivePlan($user);
+        return $plan !== null && mb_strtolower($plan->name) === 'plus';
+    }
+
     /**
      * بررسی اینکه کاربر می‌تواند SMS ارسال کند (subscription یا مجانی)
      */
     public function canSendSms(User $user): bool
     {
-        $subscription = $this->getActiveSubscription($user);
-
-        if ($subscription && $subscription->plan->hasSmsFeature()) {
+        if ($this->hasFeatureAccess($user, self::FEATURE_BOMBER) || $this->hasFeatureAccess($user, 'sms')) {
             return true;
         }
 
@@ -86,9 +111,7 @@ class SubscriptionService
      */
     public function canSendEmail(User $user): bool
     {
-        $subscription = $this->getActiveSubscription($user);
-
-        if ($subscription && $subscription->plan->hasEmailFeature()) {
+        if ($this->hasFeatureAccess($user, self::FEATURE_BOMBER) || $this->hasFeatureAccess($user, 'email')) {
             return true;
         }
 

@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\SubscriptionService;
 use App\Services\WhitelistService;
 use App\Telegram\Concerns\SendsSmsProgress;
+use App\Telegram\Keyboards\PlusRequiredKeyboard;
 
 class SmsBombConversation extends Conversation
 {
@@ -48,15 +49,7 @@ class SmsBombConversation extends Conversation
         if (!$service->canSendSms($local)) {
             $msg = "❗️✨ این بخش نیازمند به نسخه پلاس رباتمونه 😚\n\n";
             $msg .= "برای ارتقای نسخه ربات به \"نسخه پلاس🎗\" از طریق دکمه های زیر اقدام کنید :";
-
-            $keyboard = \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup::make()
-                ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('🩸 نسخه پلاس چیه؟🩸', callback_data: 'plus_info'))
-                ->addRow(
-                    \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('🎗 ارتقا به نسخه پلاس🎗', callback_data: 'buy_subscription'),
-                    \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('📞 پشتیبانی 📞', url: 'https://t.me/kermsup')
-                );
-
-            $bot->sendMessage($msg, reply_markup: $keyboard);
+            $bot->sendMessage($msg, reply_markup: PlusRequiredKeyboard::make('main_menu'));
             $this->end();
             return;
         }

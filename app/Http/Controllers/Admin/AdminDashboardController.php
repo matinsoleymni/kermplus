@@ -25,9 +25,12 @@ class AdminDashboardController extends Controller
             'total_users' => User::count(),
             'total_admins' => User::whereIn('role', ['admin', 'super_admin'])->count(),
             'active_subscriptions' => Subscription::where('is_active', true)
-                ->where('expires_at', '>', now())
+                ->where(function ($q) {
+                    $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
+                })
                 ->count(),
-            'expired_subscriptions' => Subscription::where('expires_at', '<=', now())
+            'expired_subscriptions' => Subscription::whereNotNull('expires_at')
+                ->where('expires_at', '<=', now())
                 ->where('is_active', true)
                 ->count(),
             'total_revenue' => Subscription::sum('subscription_plans.price'),

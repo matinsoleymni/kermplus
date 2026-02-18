@@ -16,7 +16,9 @@ class SubscriptionHelper
     {
         $subscription = $user->subscriptions()
             ->where('is_active', true)
-            ->where('expires_at', '>', Carbon::now())
+            ->where(function ($q) {
+                $q->whereNull('expires_at')->orWhere('expires_at', '>', Carbon::now());
+            })
             ->latest()
             ->first();
 
@@ -32,8 +34,10 @@ class SubscriptionHelper
         return [
             'is_active' => true,
             'plan_name' => $subscription->plan->name,
-            'remaining_days' => $subscription->getRemainingDays(),
-            'message' => "✅ اشتراک فعال: {$subscription->plan->name} ({$subscription->getRemainingDays()} روز باقی)",
+            'remaining_days' => $subscription->expires_at ? $subscription->getRemainingDays() : 'نامحدود',
+            'message' => $subscription->expires_at
+                ? "✅ اشتراک فعال: {$subscription->plan->name} ({$subscription->getRemainingDays()} روز باقی)"
+                : "✅ اشتراک فعال: {$subscription->plan->name} (نامحدود)",
             'subscription' => $subscription,
         ];
     }
@@ -46,9 +50,12 @@ class SubscriptionHelper
         return [
             'total' => Subscription::count(),
             'active' => Subscription::where('is_active', true)
-                ->where('expires_at', '>', Carbon::now())
+                ->where(function ($q) {
+                    $q->whereNull('expires_at')->orWhere('expires_at', '>', Carbon::now());
+                })
                 ->count(),
             'expired' => Subscription::where('is_active', true)
+                ->whereNotNull('expires_at')
                 ->where('expires_at', '<=', Carbon::now())
                 ->count(),
         ];
@@ -60,7 +67,9 @@ class SubscriptionHelper
     public static function getActiveUsers(): int
     {
         return Subscription::where('is_active', true)
-            ->where('expires_at', '>', Carbon::now())
+            ->where(function ($q) {
+                $q->whereNull('expires_at')->orWhere('expires_at', '>', Carbon::now());
+            })
             ->distinct('user_id')
             ->count();
     }
@@ -98,7 +107,7 @@ class SubscriptionHelper
                     'user' => $sub->user->name,
                     'plan' => $sub->plan->name,
                     'status' => $sub->isActive() ? '✅ فعال' : '❌ منقضی',
-                    'expires' => $sub->expires_at->format('Y-m-d'),
+                    'expires' => $sub->expires_at?->format('Y-m-d') ?? 'نامحدود',
                 ];
             })
             ->toArray();

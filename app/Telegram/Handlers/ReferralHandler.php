@@ -9,10 +9,14 @@ use App\Services\SubscriptionService;
 use App\Telegram\Keyboards\ReferralKeyboard;
 use Illuminate\Support\Facades\DB;
 use SergiX44\Nutgram\Nutgram;
+use SergiX44\Nutgram\Telegram\Exceptions\TelegramException;
+use SergiX44\Nutgram\Telegram\Types\Internal\InputFile;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 
 class ReferralHandler
 {
+    private const REFERRAL_REWARD_DURATION_DAYS = 30;
+
     public function __invoke(Nutgram $bot): void
     {
         $tgUser = $bot->user();
@@ -38,32 +42,66 @@ class ReferralHandler
         $local = $referralService->ensureUserHasCode($local);
 
         $referralLink = $this->buildReferralLink($bot, $local->referral_code);
-        $referralCount = $referralService->totalReferrals($local);
+        $points = $referralService->totalReferrals($local);
         $threshold = $referralService->rewardThreshold();
         $availableRewards = $referralService->availableRewardCycles($local);
-        $remainingToNext = $referralService->referralsUntilNextReward($local);
-        $shareText = "🔥 بیا توی ربات تست امنیت. با لینک من مستقیم وارد شو:\n{$referralLink}";
+        $claimHint = $availableRewards > 0
+            ? "\n\n❁ {$availableRewards} اشتراک هدیه آماده دریافت داری؛ از دکمه «دریافت اشتراک هدیه» استفاده کن."
+            : '';
+        $shareText = "🪱 کرم پلاس 🪱\n\nبا ربات زیر میتونی هرکی اذیتت کرده رو حسابی اذیتش کنی و ازش انتقام بگیری 👀\n\n• امکان پروندن پیج اینستای شخص\n• ریست کردن گوشی شخص\n• ارسال هزاران مزاحم تلفنی برای شخص\nو کلییی قابلیت خفن دیگه 😙\n\n{$referralLink}";
 
-        $msg = "🎁 باشگاه دعوت دوستان\n\n";
-        $msg .= "🔑 کد اختصاصی: {$local->referral_code}\n";
-        $msg .= "🔗 لینک دعوت: {$referralLink}\n";
-        $msg .= "👥 ورودی‌های ثبت‌شده: {$referralCount}\n\n";
-        $msg .= "🎯 هر {$threshold} دعوت = 1 اشتراک هدیه\n";
-        $msg .= "🎁 پاداش آماده دریافت: {$availableRewards}\n";
+        $promoMessage = "🪱 کرم پلاس 🪱\n\n";
+        $promoMessage .= "با ربات زیر میتونی هرکی اذیتت کرده رو حسابی اذیتش کنی و ازش انتقام بگیری 👀\n\n";
+        $promoMessage .= "• امکان پروندن پیج اینستای شخص\n";
+        $promoMessage .= "• ریست کردن گوشی شخص\n";
+        $promoMessage .= "• ارسال هزاران مزاحم تلفنی برای شخص\n";
+        $promoMessage .= "و کلییی قابلیت خفن دیگه 😙\n\n";
+        $promoMessage .= "• {$referralLink} •\n\n";
+        $promoMessage .= "کلی قراره به دردت بخوره ؛)";
 
-        if ($remainingToNext > 0) {
-            $msg .= "📌 تا پاداش بعدی: {$remainingToNext} دعوت\n\n";
-        } else {
-            $msg .= "📌 شما به حد نصاب یک پاداش رسیده‌اید.\n\n";
+        if ($this->shouldSendPromo($bot)) {
+            $this->sendPromoMessage($bot, $promoMessage);
         }
 
-        $msg .= "برای دعوت کافی است این پیام را فروارد کنی یا از دکمه اشتراک‌گذاری استفاده کنی. لینک تو مستقیماً /start را با کد رفرال اجرا می‌کند.";
+        $msg = "❁ لینک اختصاصیت ساخته شد 🥰\n\n";
+        $msg .= "{$referralLink}\n\n";
+        $msg .= "• با دعوت هر یک نفر از دوستات میتونی 1 امتیاز دریافت کنی 😍\n";
+        $msg .= "• میتونی با دعوت {$threshold} نفر از دوستات اشتراک پلاس رباتمون رو به صورت رایگان دریافت کنی 😉\n\n";
+        $msg .= "❁ تا الان {$points} امتیاز داری ❁\n\n";
+        $msg .= "برای این که دوستات رو به ربات دعوت کنی میتونی از لینک اختصاصیت استفاده کنی😗❕\n\n";
+        $msg .= "🎈 همین الان ربات کرم‌پلاس رو با دوستانتون به‌اشتراک بگذارید تا امتیاز دریافت کنید!";
+        $msg .= $claimHint;
 
         $this->replyWithEditPreferred(
             $bot,
             $msg,
             ReferralKeyboard::make($referralLink, $shareText, $availableRewards > 0)
         );
+    }
+
+    private function shouldSendPromo(Nutgram $bot): bool
+    {
+        $currentText = (string) ($bot->callbackQuery()?->message?->text ?? '');
+        if ($currentText !== '' && str_contains($currentText, '❁ تا الان')) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private function sendPromoMessage(Nutgram $bot, string $promoMessage): void
+    {
+        $imagePath = public_path('images/bot-thumb.png');
+        if (is_readable($imagePath)) {
+            $bot->sendPhoto(
+                photo: InputFile::make($imagePath, 'bot-thumb.png'),
+                caption: $promoMessage
+            );
+
+            return;
+        }
+
+        $bot->sendMessage($promoMessage);
     }
 
     private function claimReward(Nutgram $bot, User $local): void
@@ -94,7 +132,12 @@ class ReferralHandler
                 return ['ok' => false, 'message' => '⛔️ پلن هدیه برای رفرال تنظیم نشده است.'];
             }
 
-            $subscriptionService->createSubscription($lockedUser, $rewardPlan, $rewardPlan->duration_days, $lockedUser->id);
+            $subscriptionService->createSubscription(
+                $lockedUser,
+                $rewardPlan,
+                self::REFERRAL_REWARD_DURATION_DAYS,
+                $lockedUser->id
+            );
             $referralService->consumeOneRewardCycle($lockedUser);
 
             return ['ok' => true, 'message' => "✅ اشتراک هدیه «{$rewardPlan->name}» با موفقیت برای شما فعال شد."];
@@ -133,8 +176,18 @@ class ReferralHandler
 
     private function replyWithEditPreferred(Nutgram $bot, string $text, InlineKeyboardMarkup $keyboard): void
     {
-        if ($bot->callbackQuery()?->message) {
-            $bot->editMessageText($text, reply_markup: $keyboard);
+        try {
+            if ($bot->callbackQuery()?->message) {
+                $bot->editMessageText($text, reply_markup: $keyboard);
+                return;
+            }
+        } catch (TelegramException $e) {
+            if (!str_contains($e->getMessage(), 'message is not modified')) {
+                throw $e;
+            }
+
+            // Prevent Telegram 400 from breaking the whole update.
+            $bot->answerCallbackQuery(text: 'اطلاعات همین الان هم به‌روز است.');
             return;
         }
 

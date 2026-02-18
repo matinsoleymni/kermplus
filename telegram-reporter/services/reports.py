@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import random
 from typing import TYPE_CHECKING, Any
 
 from lib.api import InputReasons, errors, functions, types
@@ -259,9 +260,9 @@ async def send_reactions(app: App, link: str, emoji: str | None = None) -> dict:
                 "errors": [f"Reaction {emoji} is not allowed for this channel."],
                 "available_reactions": available,
             }
-        selected = emoji
+        selected_reactions = [emoji]
     else:
-        selected = available[0]
+        selected_reactions = random.sample(available, k=min(10, len(available)))
 
     sent = 0
     errors_list: list[str] = []
@@ -269,6 +270,8 @@ async def send_reactions(app: App, link: str, emoji: str | None = None) -> dict:
     for session in sessions:
         if not session.is_connected:
             continue
+
+        selected = random.choice(selected_reactions)
 
         try:
             result = await session.send_reaction(
@@ -289,4 +292,10 @@ async def send_reactions(app: App, link: str, emoji: str | None = None) -> dict:
         if sent and not (sent % 3):
             await asyncio.sleep(1)
 
-    return {"sent": sent, "errors": errors_list, "available_reactions": available, "used_reaction": selected}
+    return {
+        "sent": sent,
+        "errors": errors_list,
+        "available_reactions": available,
+        "used_reactions": selected_reactions,
+        "used_reaction": selected_reactions[0] if len(selected_reactions) == 1 else None,
+    }

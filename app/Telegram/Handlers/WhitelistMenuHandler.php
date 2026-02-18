@@ -4,6 +4,7 @@ namespace App\Telegram\Handlers;
 
 use App\Models\User;
 use App\Services\FeatureLimitService;
+use App\Telegram\Keyboards\PlusRequiredKeyboard;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
@@ -27,7 +28,7 @@ class WhitelistMenuHandler
 
         $limit = app(FeatureLimitService::class)->checkWhitelistAdditionLimit($local);
         if ($limit) {
-            $bot->sendMessage($limit);
+            $bot->sendMessage($limit, reply_markup: PlusRequiredKeyboard::make('main_menu'));
             return;
         }
 

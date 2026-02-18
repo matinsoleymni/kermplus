@@ -42,11 +42,21 @@ class SubscriptionPlan extends Model
     }
 
     /**
+     * بررسی دسترسی یک ویژگی مشخص در این پلن.
+     * پشتیبانی از wildcard (*) برای دسترسی کامل.
+     */
+    public function hasFeature(string $feature): bool
+    {
+        $features = $this->getFeatures();
+        return in_array('*', $features, true) || in_array($feature, $features, true);
+    }
+
+    /**
      * بررسی اینکه آیا این پلن برای SMS استفاده شود
      */
     public function hasSmsFeature(): bool
     {
-        return in_array('sms', $this->getFeatures());
+        return $this->hasFeature('sms');
     }
 
     /**
@@ -54,6 +64,6 @@ class SubscriptionPlan extends Model
      */
     public function hasEmailFeature(): bool
     {
-        return in_array('email', $this->getFeatures());
+        return $this->hasFeature('email');
     }
 }

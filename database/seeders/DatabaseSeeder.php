@@ -2,7 +2,6 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
 use App\Models\SubscriptionPlan;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
@@ -16,39 +15,37 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // User::factory(10)->create();
-
-        // User::factory()->create([
-        //     'name' => 'Test User',
-        //     'email' => 'test@example.com',
-        // ]);
-
-        SubscriptionPlan::firstOrCreate(
-            ['name' => 'Basic'],
+        $plusPlan = SubscriptionPlan::updateOrCreate(
+            ['name' => 'plus'],
             [
-                'description' => 'پلن پیش‌فرض ۳۰ روزه',
+                'description' => 'دسترسی کامل به همه ویژگی‌ها',
                 'price' => 10.00,
-                'duration_days' => 30,
-                'max_sms_per_day' => 100,
-                'max_email_per_day' => 50,
-                'max_requests_per_day' => 1000,
-                'features' => ['sms', 'email'],
+                'duration_days' => 0, // بدون انقضا
+                'max_sms_per_day' => 0,
+                'max_email_per_day' => 0,
+                'max_requests_per_day' => 0,
+                'features' => ['*', 'bomber', 'reporter', 'harasser', 'whitelist', 'sms', 'email'],
                 'is_active' => true,
             ]
         );
 
-        SubscriptionPlan::firstOrCreate(
-            ['name' => 'f'],
+        $proPlan = SubscriptionPlan::updateOrCreate(
+            ['name' => 'pro'],
             [
-                'description' => null,
-                'price' => 0.5,
-                'duration_days' => 30,
-                'max_sms_per_day' => 100,
-                'max_email_per_day' => 50,
-                'max_requests_per_day' => 1000,
-                'features' => ['sms', 'email'],
+                'description' => 'دسترسی به بمبرها و ریپورتر',
+                'price' => 5.00,
+                'duration_days' => 0, // بدون انقضا
+                'max_sms_per_day' => 0,
+                'max_email_per_day' => 0,
+                'max_requests_per_day' => 0,
+                'features' => ['bomber', 'reporter', 'sms', 'email'],
                 'is_active' => true,
             ]
         );
+
+        // فقط دو پلن اصلی فعال باشند.
+        SubscriptionPlan::query()
+            ->whereNotIn('id', [$plusPlan->id, $proPlan->id])
+            ->update(['is_active' => false]);
     }
 }

@@ -20,7 +20,7 @@ class ReporterMenuKeyboard
                 InlineKeyboardButton::make('🟥 ریپورتر اینستاگرام 🟥', callback_data: 'reporter_instagram_menu')
             )
             ->addRow(
-                InlineKeyboardButton::make('✍️ آموزش استفاده از ریپورتر ✍️', callback_data: 'not_implemented')
+                InlineKeyboardButton::make('✍️ آموزش استفاده از ریپورتر ✍️', url: 'https://t.me/kermpluslearn/7')
             )
             ->addRow(
                 InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'kerm_menu')

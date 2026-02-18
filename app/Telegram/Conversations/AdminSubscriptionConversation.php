@@ -98,7 +98,9 @@ class AdminSubscriptionConversation extends Conversation
                 InlineKeyboardButton::make('↩️ بازگشت', callback_data: 'admin_sub_back')
             );
 
-        $text = "📋 اشتراک کاربر: {$sub->user->name}\nپلن: {$sub->plan->name}\nشروع: {$sub->started_at->format('Y-m-d H:i')}\nپایان: {$sub->expires_at->format('Y-m-d H:i')}\nروزهای باقی‌مانده: {$sub->getRemainingDays()}";
+        $endAt = $sub->expires_at?->format('Y-m-d H:i') ?? 'نامحدود';
+        $remaining = $sub->expires_at ? (string) $sub->getRemainingDays() : 'نامحدود';
+        $text = "📋 اشتراک کاربر: {$sub->user->name}\nپلن: {$sub->plan->name}\nشروع: {$sub->started_at->format('Y-m-d H:i')}\nپایان: {$endAt}\nروزهای باقی‌مانده: {$remaining}";
 
         $bot->sendMessage($text, reply_markup: $kb);
         $this->next('detailHandler');

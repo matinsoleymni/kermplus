@@ -448,7 +448,7 @@ class TelegramReporterConversation extends Conversation
         return "🎗 KermPlus | Account Found\n".
             "━━━━━━━━━━━━━━━\n".
             "📜 username : @{$username}\n".
-            "━━━━━━━━━━━━━━━\n\n".;
+            "━━━━━━━━━━━━━━━\n\n";
     }
 
     private function formatChannelPreview($chat, string $username, ?int $memberCount = null): string

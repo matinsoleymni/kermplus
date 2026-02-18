@@ -7,6 +7,7 @@ use App\Services\ReferralService;
 use App\Services\SubscriptionService;
 use App\Telegram\Keyboards\UserProfileKeyboard;
 use SergiX44\Nutgram\Nutgram;
+use SergiX44\Nutgram\Telegram\Exceptions\TelegramException;
 
 class UserProfileHandler
 {
@@ -34,7 +35,7 @@ class UserProfileHandler
 
         $msg = "❁ نام : {$local->name}\n";
         $msg .= "❁ یوزرنیم : " . ($tgUser?->username ?? 'ندارد') . "\n";
-        $msg .= "❁ ایدی عددی : {$local->id}\n";
+        $msg .= "❁ ایدی عددی : {$tgUser->id}\n";
         $msg .= "❁ تعداد دعوت ها: {$referralCount} نفر\n";
         $msg .= "❁ پاداش قابل دریافت: {$availableRewards}\n";
         $msg .= "❁ قانون پاداش: هر {$threshold} دعوت = 1 اشتراک هدیه\n";
@@ -46,6 +47,20 @@ class UserProfileHandler
             $msg .= "❁ نوع اشتراک : رایگان";
         }
 
-        $bot->editMessageText($msg, reply_markup: UserProfileKeyboard::make($subscription !== null));
+        try {
+            if ($bot->callbackQuery()?->message) {
+                $bot->editMessageText($msg, reply_markup: UserProfileKeyboard::make($subscription !== null));
+                return;
+            }
+        } catch (TelegramException $e) {
+            if (!str_contains($e->getMessage(), 'message is not modified')) {
+                throw $e;
+            }
+
+            $bot->answerCallbackQuery(text: 'اطلاعات حساب شما به‌روز است.');
+            return;
+        }
+
+        $bot->sendMessage($msg, reply_markup: UserProfileKeyboard::make($subscription !== null));
     }
 }

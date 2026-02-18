@@ -58,6 +58,7 @@ use SergiX44\Nutgram\Nutgram;
 */
 
 $bot->onCommand('start', StartCommand::class);
+$bot->onText('/start {code}', StartCommand::class);
 $bot->onCommand('admin', AdminCommand::class);
 $bot->onCallbackQueryData('admin_panel', AdminPanelConversation::class);
 $bot->onCallbackQueryData('admin_manage_subscriptions', AdminSubscriptionConversation::class);
@@ -80,6 +81,7 @@ $bot->onCallbackQueryData('admin_broadcast', BroadcastConversation::class);
 $bot->onCallbackQueryData('user_autofiller', UserAutoFillerConversation::class);
 $bot->onCallbackQueryData('whitelist_add', WhitelistConversation::class);
 $bot->onCallbackQueryData('whitelist_menu', WhitelistConversation::class);
+$bot->onCallbackQueryData('whitelist_edit', WhitelistConversation::class);
 $bot->onCallbackQueryData('reporter_telegram', TelegramReporterConversation::class);
 $bot->onCallbackQueryData('reporter_instagram', InstagramReporterConversation::class);
 $bot->onCallbackQueryData('reporter_rubika_menu', RubikaReporterMenuHandler::class);
@@ -127,3 +129,5 @@ $bot->onSuccessfulPayment(App\Telegram\Handlers\PaymentSuccessHandler::class);
 
 $bot->onCallbackQueryData('admin_requests', AdminRequestsHandler::class);
 $bot->onCallbackQueryData('admin_exit', AdminExitHandler::class);
+
+$bot->fallback(NotImplementedHandler::class);

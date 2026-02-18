@@ -4,6 +4,7 @@ namespace App\Telegram\Conversations;
 
 use App\Models\User;
 use App\Services\ChannelReactionService;
+use App\Telegram\Commands\StartCommand;
 use App\Telegram\Keyboards\BackToMainKeyboard;
 use SergiX44\Nutgram\Conversations\Conversation;
 use SergiX44\Nutgram\Nutgram;
@@ -56,6 +57,10 @@ class ChannelReactionConversation extends Conversation
     public function askEmoji(Nutgram $bot)
     {
         $link = trim((string)($bot->message()?->text));
+        if ($this->interceptStart($bot, $link)) {
+            return;
+        }
+
         if (!$this->isValidPostLink($link)) {
             $bot->sendMessage('❌ لینک نامعتبر است. نمونه: https://t.me/channel/123');
             return;
@@ -92,6 +97,10 @@ class ChannelReactionConversation extends Conversation
             $bot->answerCallbackQuery(text: 'با اولین ری‌اکشن مجاز ادامه دادیم.');
         } else {
             $emojiText = trim((string)($bot->message()?->text));
+            if ($this->interceptStart($bot, $emojiText)) {
+                return;
+            }
+
             if ($emojiText === '') {
                 $bot->sendMessage('❌ ایموجی نامعتبر است. دوباره ارسال کنید یا «انتخاب خودکار» را بزنید.');
                 return;
@@ -119,6 +128,9 @@ class ChannelReactionConversation extends Conversation
             $msg = "⚠️ {$result['error']}";
             if (isset($result['status'])) {
                 $msg .= "\nکد: {$result['status']}";
+            }
+            if (!empty($result['details'])) {
+                $msg .= "\nجزییات اتصال: {$result['details']}";
             }
             if (!empty($result['body'])) {
                 $body = is_array($result['body']) ? json_encode($result['body']) : (string)$result['body'];
@@ -158,5 +170,20 @@ class ChannelReactionConversation extends Conversation
         }
 
         return (bool)preg_match('#^(https?://)?(t\.me|telegram\.me)/[^/]+/\\d+#', $link);
+    }
+
+    protected function interceptStart(Nutgram $bot, ?string $text): bool
+    {
+        $text = trim((string) $text);
+        if (!str_starts_with($text, '/start')) {
+            return false;
+        }
+
+        $this->end();
+        $bot->setUserData('conversation', null);
+        $bot->setUserData('step', null);
+        app(StartCommand::class)->handle($bot);
+
+        return true;
     }
 }

@@ -5,6 +5,7 @@ namespace App\Telegram\Handlers;
 use App\Models\User;
 use App\Services\SubscriptionService;
 use App\Telegram\Keyboards\BackToMainKeyboard;
+use App\Telegram\Keyboards\PlusRequiredKeyboard;
 use SergiX44\Nutgram\Nutgram;
 
 class SubscriptionInfoHandler
@@ -33,15 +34,7 @@ class SubscriptionInfoHandler
         } else {
             $msg = "❗️✨ این بخش نیازمند به نسخه پلاس رباتمونه 😚\n\n";
             $msg .= "برای ارتقای نسخه ربات به \"نسخه پلاس🎗\" از طریق دکمه های زیر اقدام کنید :";
-
-            $keyboard = \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup::make()
-                ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('🩸 نسخه پلاس چیه؟🩸', callback_data: 'plus_info'))
-                ->addRow(
-                    \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('🎗 ارتقا به نسخه پلاس🎗', callback_data: 'buy_subscription'),
-                    \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('📞 پشتیبانی 📞', url: 'https://t.me/kermsup')
-                );
-
-            $bot->editMessageText($msg, reply_markup: $keyboard);
+            $bot->editMessageText($msg, reply_markup: PlusRequiredKeyboard::make('main_menu'));
             return;
         }
 

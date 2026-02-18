@@ -12,6 +12,7 @@ class FeatureLimitService
     public const TYPE_HARASSER = 'harasser';
     public const TYPE_NEGATIVE_REACTION = 'negative_reaction';
     public const TYPE_WHITELIST_ADD = 'whitelist_add';
+    public const WHITELIST_ALREADY_ADDED_MESSAGE = '⛔️ هر اکانت پلاس فقط یک بار می‌تواند به وایت‌لیست اضافه کند.';
 
     public function __construct(private SubscriptionService $subscriptionService) {}
 
@@ -25,7 +26,7 @@ class FeatureLimitService
             ->where('user_id', $user->id)
             ->where('type', self::TYPE_REPORTER);
 
-        if ($this->isPlus($user)) {
+        if ($this->hasReporterAccess($user)) {
             $last = (clone $query)->latest()->first();
             if ($last && $last->created_at->gt($now->copy()->subHours(8))) {
                 return 'هر 8 ساعت فقط یک درخواست ریپورت میتونی ثبت کنی عزیزم 🥺♥️';
@@ -59,7 +60,7 @@ class FeatureLimitService
      */
     public function checkHarasserLimit(User $user): ?string
     {
-        if (!$this->isPlus($user)) {
+        if (!$this->hasPlusOnlyAccess($user, SubscriptionService::FEATURE_HARASSER)) {
             return "❗️✨ این بخش نیازمند به نسخه پلاس رباتمونه 😚\n\nبرای ارتقای نسخه ربات به \"نسخه پلاس🎗\" از طریق دکمه های ربات اقدام کنید.";
         }
 
@@ -109,38 +110,67 @@ class FeatureLimitService
      */
     public function checkWhitelistAdditionLimit(User $user): ?string
     {
-        if (!$this->isPlus($user)) {
+        if (!$this->hasPlusOnlyAccess($user, SubscriptionService::FEATURE_WHITELIST)) {
             return "❗️✨ این بخش نیازمند به نسخه پلاس رباتمونه 😚\n\nبرای ارتقای نسخه ربات به \"نسخه پلاس🎗\" از طریق دکمه های ربات اقدام کنید.";
         }
 
-        $alreadyAdded = UsageRecord::query()
-            ->where('user_id', $user->id)
-            ->where('type', self::TYPE_WHITELIST_ADD)
-            ->exists();
-
-        if ($alreadyAdded) {
-            return '⛔️ هر اکانت پلاس فقط یک بار می‌تواند به وایت‌لیست اضافه کند.';
+        if ($this->hasWhitelistAddition($user)) {
+            return self::WHITELIST_ALREADY_ADDED_MESSAGE;
         }
 
         return null;
     }
 
-    public function recordWhitelistAddition(User $user): void
+    public function hasWhitelistAddition(User $user): bool
     {
-        $this->record($user, self::TYPE_WHITELIST_ADD, 1);
+        return UsageRecord::query()
+            ->where('user_id', $user->id)
+            ->where('type', self::TYPE_WHITELIST_ADD)
+            ->exists();
     }
 
-    private function record(User $user, string $type, int $count): void
+    public function getWhitelistAddedTarget(User $user): ?string
+    {
+        return UsageRecord::query()
+            ->where('user_id', $user->id)
+            ->where('type', self::TYPE_WHITELIST_ADD)
+            ->latest('id')
+            ->value('target');
+    }
+
+    public function updateWhitelistAddedTarget(User $user, string $target): void
+    {
+        UsageRecord::query()
+            ->where('user_id', $user->id)
+            ->where('type', self::TYPE_WHITELIST_ADD)
+            ->latest('id')
+            ->first()
+            ?->update(['target' => $target]);
+    }
+
+    public function recordWhitelistAddition(User $user, ?string $target = null): void
+    {
+        $this->record($user, self::TYPE_WHITELIST_ADD, 1, $target);
+    }
+
+    private function record(User $user, string $type, int $count, ?string $target = null): void
     {
         UsageRecord::create([
             'user_id' => $user->id,
             'type' => $type,
+            'target' => $target,
             'count' => $count,
         ]);
     }
 
-    private function isPlus(User $user): bool
+    private function hasReporterAccess(User $user): bool
     {
-        return $this->subscriptionService->hasActiveSubscription($user);
+        return $this->subscriptionService->hasFeatureAccess($user, SubscriptionService::FEATURE_REPORTER);
+    }
+
+    private function hasPlusOnlyAccess(User $user, string $feature): bool
+    {
+        return $this->subscriptionService->isPlus($user)
+            && $this->subscriptionService->hasFeatureAccess($user, $feature);
     }
 }

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\User;
 use App\Services\FeatureLimitService;
 use Illuminate\Support\Facades\Http;
+use Throwable;
 
 class ChannelReactionService
 {
@@ -28,9 +29,16 @@ class ChannelReactionService
             return ['error' => 'Channel reaction service URL is not configured.'];
         }
 
-        $response = $this->http()->post($this->apiUrl . '/channels', [
-            'links' => $links,
-        ]);
+        try {
+            $response = $this->http()->post($this->apiUrl . '/channels', [
+                'links' => $links,
+            ]);
+        } catch (Throwable $e) {
+            return [
+                'error' => 'Channel reaction service is unavailable.',
+                'details' => $e->getMessage(),
+            ];
+        }
 
         if ($response->failed()) {
             return [
@@ -67,7 +75,14 @@ class ChannelReactionService
             $payload['emoji'] = $emoji;
         }
 
-        $response = $this->http()->post($this->apiUrl . '/reactions', $payload);
+        try {
+            $response = $this->http()->post($this->apiUrl . '/reactions', $payload);
+        } catch (Throwable $e) {
+            return [
+                'error' => 'Channel reaction service is unavailable.',
+                'details' => $e->getMessage(),
+            ];
+        }
 
         if ($response->failed()) {
             return [
@@ -89,6 +104,6 @@ class ChannelReactionService
             $headers['Authorization'] = 'Bearer ' . $this->apiToken;
         }
 
-        return Http::withHeaders($headers);
+        return Http::withHeaders($headers)->timeout(10)->connectTimeout(3);
     }
 }

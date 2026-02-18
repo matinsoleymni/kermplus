@@ -18,6 +18,10 @@ class StartCommand extends Command
 
     public function handle(Nutgram $bot): void
     {
+        // Always reset any pending conversation/step to avoid users getting stuck.
+        $bot->setUserData('conversation', null);
+        $bot->setUserData('step', null);
+
         $tgUser = $bot->user();
         if (!$tgUser) {
             $bot->sendMessage('⛔️ خطا در دریافت اطلاعات تلگرام.');

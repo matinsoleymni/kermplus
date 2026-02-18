@@ -24,7 +24,7 @@ class BomberMenuKeyboard
                 InlineKeyboardButton::make('📧 ایمیل بمبر پلاس 📧', callback_data: 'user_emailbomb')
             )
             ->addRow(
-                InlineKeyboardButton::make('✍️ آموزش استفاده از بمبر ✍️', callback_data: 'not_implemented')
+                InlineKeyboardButton::make('✍️ آموزش استفاده از بمبر ✍️', url: 'https://t.me/kermpluslearn/6')
             )
             ->addRow(
                 InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'kerm_menu')
