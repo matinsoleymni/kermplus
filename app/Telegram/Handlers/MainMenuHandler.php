@@ -5,6 +5,7 @@ namespace App\Telegram\Handlers;
 use App\Models\User;
 use App\Services\SubscriptionService;
 use App\Telegram\Keyboards\MainMenuKeyboard;
+use Throwable;
 use SergiX44\Nutgram\Nutgram;
 
 class MainMenuHandler
@@ -20,11 +21,16 @@ class MainMenuHandler
             ? app(SubscriptionService::class)->hasActiveSubscription($local)
             : false;
 
-        $bot->editMessageText('❀ کرم پلاس ❀
+        $message = "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> <b>کرم پلاس</b> <tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji>\n\nاگه کسی اذیتت کرده ...\nبا ربات ما توهم می‌تونی حسابی اذیتش کنی :)\n\n<tg-emoji emoji-id='4927295007204836791'>🪱</tg-emoji> برای شروع یکی از گزینه‌های زیر رو انتخاب کن:";
+        $keyboard = MainMenuKeyboard::make($hasActiveSubscription);
 
-اگه کسی اذیتت کرده ...
-با ربات ما توهم می‌تونی حسابی اذیتش کنی :)
-
-برای شروع یکی از گزینه‌های زیر رو انتخاب کن:', reply_markup: MainMenuKeyboard::make($hasActiveSubscription));
+        try {
+            $bot->editMessageText($message, parse_mode: 'HTML', reply_markup: $keyboard);
+        } catch (Throwable $e) {
+            logger()->warning('Failed to edit main menu message, sending a new message instead.', [
+                'error' => $e->getMessage(),
+            ]);
+            $bot->sendMessage($message, parse_mode: 'HTML', reply_markup: $keyboard);
+        }
     }
 }

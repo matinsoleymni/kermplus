@@ -10,7 +10,7 @@ class SelectPlanKeyboard
     public static function make(): InlineKeyboardMarkup
     {
         return InlineKeyboardMarkup::make()
-            ->addRow(InlineKeyboardButton::make('👤 پروفایل', callback_data: 'user_profile'))
-            ->addRow(InlineKeyboardButton::make('🔙 منو', callback_data: 'main_menu'));
+            ->addRow(InlineKeyboardButton::make('پروفایل', callback_data: 'user_profile', style: 'danger', icon: '4904848288345228262'))
+            ->addRow(InlineKeyboardButton::make('منو', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747'));
     }
 }

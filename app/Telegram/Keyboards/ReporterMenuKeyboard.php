@@ -11,19 +11,19 @@ class ReporterMenuKeyboard
     {
         return InlineKeyboardMarkup::make()
             ->addRow(
-                InlineKeyboardButton::make('🟦 ریپورتر تلگرام 🟦', callback_data: 'reporter_telegram_menu')
+                InlineKeyboardButton::make('ریپورتر تلگرام', callback_data: 'reporter_telegram_menu', style: 'danger', icon: '5330237710655306682')
             )
             ->addRow(
-                InlineKeyboardButton::make('🟧 ریپورتر روبیکا 🟧', callback_data: 'reporter_rubika_menu')
+                InlineKeyboardButton::make('ریپورتر روبیکا', callback_data: 'reporter_rubika_menu', style: 'danger', icon: '4978973209056511046')
             )
             ->addRow(
-                InlineKeyboardButton::make('🟥 ریپورتر اینستاگرام 🟥', callback_data: 'reporter_instagram_menu')
+                InlineKeyboardButton::make('ریپورتر اینستاگرام', callback_data: 'reporter_instagram_menu', style: 'danger', icon: '5319160079465857105')
             )
             ->addRow(
-                InlineKeyboardButton::make('✍️ آموزش استفاده از ریپورتر ✍️', url: 'https://t.me/kermpluslearn/7')
+                InlineKeyboardButton::make('آموزش استفاده از ریپورتر', url: 'https://t.me/kermpluslearn/7', style: 'danger', icon: '5470060791883374114')
             )
             ->addRow(
-                InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'kerm_menu')
+                InlineKeyboardButton::make('بازگشت', callback_data: 'kerm_menu', style: 'danger', icon: '5352759161945867747')
             );
     }
 }

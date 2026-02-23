@@ -14,11 +14,11 @@ class FormManagerConversation extends Conversation
     {
         $keyboard = InlineKeyboardMarkup::make()
             ->addRow(
-                InlineKeyboardButton::make('📋 لیست فرم‌ها', callback_data: 'form_list'),
-                InlineKeyboardButton::make('➕ ایجاد فرم', callback_data: 'form_create')
+                InlineKeyboardButton::make('📋 لیست فرم‌ها', callback_data: 'form_list', style: 'danger'),
+                InlineKeyboardButton::make('➕ ایجاد فرم', callback_data: 'form_create', style: 'danger')
             )
             ->addRow(
-                InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'admin_panel')
+                InlineKeyboardButton::make('بازگشت', callback_data: 'admin_panel', style: 'danger', icon: '5352759161945867747')
             );
         $bot->sendMessage('📝 مدیریت فرم‌ها:', reply_markup: $keyboard);
         $this->next('handleMenu');
@@ -45,12 +45,12 @@ class FormManagerConversation extends Conversation
             $keyboard = InlineKeyboardMarkup::make();
             foreach ($forms as $form) {
                 $keyboard->addRow(
-                    InlineKeyboardButton::make("✏️ {$form->name}", callback_data: "form_view_{$form->id}"),
-                    InlineKeyboardButton::make($form->is_active ? '❌' : '✅', callback_data: "form_toggle_{$form->id}"),
-                    InlineKeyboardButton::make('🗑️', callback_data: "form_delete_{$form->id}")
+                    InlineKeyboardButton::make("✏️ {$form->name}", callback_data: "form_view_{$form->id}", style: 'danger'),
+                    InlineKeyboardButton::make($form->is_active ? '❌' : '✅', callback_data: "form_toggle_{$form->id}", style: 'danger'),
+                    InlineKeyboardButton::make('🗑️', callback_data: "form_delete_{$form->id}", style: 'danger')
                 );
             }
-            $keyboard->addRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'admin_panel'));
+            $keyboard->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'admin_panel', style: 'danger', icon: '5352759161945867747'));
             $bot->sendMessage($msg, reply_markup: $keyboard);
         } elseif ($data === 'form_create') {
             $bot->sendMessage('📝 نام فرم را وارد کنید:');
@@ -84,7 +84,7 @@ class FormManagerConversation extends Conversation
                 }
             }
             $keyboard = InlineKeyboardMarkup::make()
-                ->addRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'form_list'));
+                ->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'form_list', style: 'danger', icon: '5352759161945867747'));
             $bot->sendMessage($msg ?? '❌ فرم پیدا نشد.', reply_markup: $keyboard);
         } else {
             $this->start($bot);
@@ -145,12 +145,12 @@ class FormManagerConversation extends Conversation
 
         $keyboard = InlineKeyboardMarkup::make()
             ->addRow(
-                InlineKeyboardButton::make('📝 متن', callback_data: 'field_type_text'),
-                InlineKeyboardButton::make('🔢 عدد', callback_data: 'field_type_number')
+                InlineKeyboardButton::make('📝 متن', callback_data: 'field_type_text', style: 'danger'),
+                InlineKeyboardButton::make('🔢 عدد', callback_data: 'field_type_number', style: 'danger')
             )
             ->addRow(
-                InlineKeyboardButton::make('📧 ایمیل', callback_data: 'field_type_email'),
-                InlineKeyboardButton::make('📱 تلفن', callback_data: 'field_type_phone')
+                InlineKeyboardButton::make('📧 ایمیل', callback_data: 'field_type_email', style: 'danger'),
+                InlineKeyboardButton::make('📱 تلفن', callback_data: 'field_type_phone', style: 'danger')
             );
 
         $bot->sendMessage('🎯 نوع فیلد را انتخاب کنید:', reply_markup: $keyboard);

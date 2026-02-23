@@ -28,9 +28,9 @@ class AssignPlanConversation extends Conversation
         $msg .= "یکی از گزینه های زیر را انتخاب کن";
 
         $keyboard = \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup::make()
-            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('➕ افزودن اشتراک', callback_data: 'assign_plan_set'))
-            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('🗑 حذف اشتراک', callback_data: 'assign_plan_remove'))
-            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('⬅️ بازگشت به منوی ادمین', callback_data: 'admin_panel'));
+            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('➕ افزودن اشتراک', callback_data: 'assign_plan_set', style: 'danger'))
+            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('🗑 حذف اشتراک', callback_data: 'assign_plan_remove', style: 'danger'))
+            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('⬅️ بازگشت به منوی ادمین', callback_data: 'admin_panel', style: 'danger', icon: '5352759161945867747'));
 
         $bot->sendMessage($msg, reply_markup: $keyboard);
         $this->next('menu');

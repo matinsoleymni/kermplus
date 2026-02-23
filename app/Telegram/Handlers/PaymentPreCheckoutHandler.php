@@ -5,7 +5,6 @@ namespace App\Telegram\Handlers;
 use App\Models\SubscriptionPayment;
 use App\Models\SubscriptionPlan;
 use App\Models\User;
-use App\Services\TelegramStarService;
 use SergiX44\Nutgram\Nutgram;
 
 class PaymentPreCheckoutHandler
@@ -25,7 +24,7 @@ class PaymentPreCheckoutHandler
 
         $localUser = User::where('telegram_id', $query->from->id)->first();
         if (!$localUser) {
-            $bot->answerPreCheckoutQuery(ok: false, error_message: 'کاربر یافت نشد. لطفا با پشتیبانی تماس بگیرید.');
+            $bot->answerPreCheckoutQuery(ok: false, error_message: 'کاربر یافت نشد. لطفا به @kermsup پیام بدید.');
             return;
         }
 
@@ -52,7 +51,7 @@ class PaymentPreCheckoutHandler
             return;
         }
 
-        $expectedStars = TelegramStarService::make()->usdToStars((float) $plan->price);
+        $expectedStars = $plan->starsPrice();
         if ($query->total_amount !== $expectedStars || ($query->currency ?? '') !== 'XTR') {
             $bot->answerPreCheckoutQuery(ok: false, error_message: 'مبلغ پرداخت نامعتبر است.');
             return;
@@ -72,8 +71,8 @@ class PaymentPreCheckoutHandler
                 'user_id' => $localUser->id,
                 'subscription_plan_id' => $plan->id,
                 'status' => 'pre_checkout',
-                'price_amount' => $plan->price,
-                'price_currency' => 'usd',
+                'price_amount' => $expectedStars,
+                'price_currency' => 'xtr',
                 'pay_amount' => $query->total_amount,
                 'pay_currency' => $query->currency ?? 'XTR',
                 'meta' => $meta,

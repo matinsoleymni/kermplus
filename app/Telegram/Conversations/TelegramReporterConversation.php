@@ -104,7 +104,7 @@ class TelegramReporterConversation extends Conversation
         $loadingMsg = $bot->sendMessage('⏳ درحال دریافت اطلاعات از تلگرام...');
         $preview = $this->buildTelegramPreview($bot, $normalized);
         $details = $preview ?? ($normalized['label'] ?? "🎯 هدف: @{$username}");
-        $details .= "\n\n🗣 دلیل ریپورت را انتخاب کنید:";
+        $details .= "\n\n🗣️ دلیل ریپورت رو انتخاب کن :";
         $keyboard = TelegramReportReasonKeyboard::make();
 
         if ($loadingMsg?->message_id) {
@@ -113,12 +113,13 @@ class TelegramReporterConversation extends Conversation
                     chat_id: $bot->user()->id,
                     message_id: $loadingMsg->message_id,
                     text: $details,
-                    reply_markup: $keyboard
+                    reply_markup: $keyboard,
+                    parse_mode: 'HTML'
                 );
                 $this->next('processTelegramReason');
                 return;
             } catch (\Throwable) {
-                $this->deleteMessageSafe($bot, $loadingMsg->message_id);
+                $this->deleteMessageSafe($bot, $loadingMsg->message_id, parse_mode: 'HTML');
             }
         }
 
@@ -167,6 +168,14 @@ class TelegramReporterConversation extends Conversation
             return;
         }
 
+        $whitelist = app(WhitelistService::class);
+        if ($whitelist->isWhitelisted($username, WhitelistedTarget::TYPE_TELEGRAM)) {
+            $bot->answerCallbackQuery();
+            $bot->sendMessage($whitelist->getBlockMessage($username, WhitelistedTarget::TYPE_TELEGRAM));
+            $this->end();
+            return;
+        }
+
         $limiter->recordReporterUsage($local);
         $bot->answerCallbackQuery(text: '✅ دلیل ثبت شد.');
         $this->runTelegramReport(
@@ -186,8 +195,7 @@ class TelegramReporterConversation extends Conversation
         ?string $targetLabel = null,
         ?string $previewLink = null,
         ?int $baseMessageId = null
-    )
-    {
+    ) {
         $totalSteps = 5;
         $delayPerStep = 5;
 
@@ -270,15 +278,15 @@ class TelegramReporterConversation extends Conversation
         }
 
         $this->deleteMessageSafe($bot, $progressMessageId);
-        $bot->sendMessage($this->buildFinalMessage($label, $previewLink));
+        $bot->sendMessage($this->buildFinalMessage($label, $previewLink), parse_mode: 'HTML');
 
         $this->end();
     }
 
     private function getProgressBar(int $percent): string
     {
-        $filled = (int)($percent / 5);
-        $empty = 20 - $filled;
+        $filled = max(0, min(10, (int)round($percent / 10)));
+        $empty = 10 - $filled;
         $bar = '[' . str_repeat('█', $filled) . str_repeat('░', $empty) . ']';
         return $bar . ' ' . $percent . '%';
     }
@@ -300,31 +308,24 @@ class TelegramReporterConversation extends Conversation
         array $statuses
     ): string {
         $progressBar = $this->getProgressBar($percent);
+        $barOnly = explode(' ', $progressBar, 2)[0];
+        $statusBlock = implode("\n", array_map(static fn(string $line): string => "> {$line}", $statuses));
         $date = now()->format('Y/m/d');
         $time = now()->format('H:i:s');
-        $barOnly = explode(' ', $progressBar, 2)[0];
-        $statusBlock = implode("\n", $statuses);
-        $safeTargetLabel = htmlspecialchars($targetLabel, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        $safeReason = htmlspecialchars($reason, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        $quotedSection = "<blockquote>".
-            "rate: 12/s backoff: 2.5s\n".
-            "elapsed: {$elapsed} ETA: {$eta}\n\n".
-            "{$statusBlock}\n\n".
-            "trace: job=8f2a mode=ro gate=open\n".
-            "Please wait...\n\n".
-            "📆 {$date}  ⏰ {$time}\n".
-            "• @NitroHostBot •".
-            "</blockquote>";
 
-        return "🎗 KermPlus | Processing Job\n".
-            "━━━━━━━━━━━━━━━━\n\n".
-            "{$barOnly} {$percent}%   🔁 step {$step}/{$totalSteps}\n\n".
-            "🎯 هدف: {$safeTargetLabel}\n".
-            "🗣 دلیل: {$safeReason}\n\n".
-            "📦 queue: {$queue} items\n".
-            "⚙️ active: {$active}   ✅ done: {$done}\n".
-            "🟢 ok: {$ok}   🔴 fail: {$fail}   🔁 retry: {$retry}\n\n".
-            $quotedSection;
+        return "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> KermPlus | Processing Job\n" .
+            "━━━━━━━━━━━━━━━━\n\n" .
+            "{$barOnly} {$percent}%   <tg-emoji emoji-id='5116159438062879454'>🙏</tg-emoji> step {$step}/{$totalSteps}\n\n" .
+            "📦 queue: {$queue} items\n" .
+            "<tg-emoji emoji-id='4904936030232117798'>⚙️</tg-emoji> active: {$active}   <tg-emoji emoji-id='6224314343924699041'>✅</tg-emoji> done: {$done}\n" .
+            "<tg-emoji emoji-id='5325945307454789973'>🟢</tg-emoji> ok: {$ok}   <tg-emoji emoji-id='5326056199215406977'>❌</tg-emoji> fail: {$fail}   🔁 retry: {$retry}\n\n" .
+            "rate: 12/s backoff: 2.5s\n" .
+            "elapsed: {$elapsed} ETA: {$eta}\n\n" .
+            "{$statusBlock}\n\n" .
+            "trace: job=8f2a mode=ro gate=open\n" .
+            "Please wait...\n\n" .
+            "<tg-emoji emoji-id='5431897022456145283'>📆</tg-emoji> {$date}  <tg-emoji emoji-id='4904882772637648609'>⏰</tg-emoji> {$time}\n" .
+            "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> @NitroHostBot <tg-emoji emoji-id='4927295007204836791'>🪱</tg-emoji>";
     }
 
     private function buildFinalMessage(string $targetLabel, ?string $link = null): string
@@ -333,36 +334,36 @@ class TelegramReporterConversation extends Conversation
         $time = now()->format('H:i:s');
         $preview = $link ? "🖇️ لینک: {$link}\n" : '';
 
-        return "🎗 KermPlus | Reported Successful\n".
-            "━━━━━━━━━━━━━━━━\n\n".
-            "🎯 هدف: {$targetLabel}\n".
-            $preview.
-            "📦 تعداد کل درخواست ها : 1321\n".
-            "✅ 1235 موفق | ❌ 134 ناموفق\n\n".
-            "تمامی ریپورت ها از سمت کرم پلاس🪱 با موفقیت ارسال شدند.\n".
-            "نتیجه نهایی وابسته به بررسی پلتفرم مقصد می‌باشد.\n\n".
-            "📆 {$date} ⏰ {$time}\n".
+        return "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> KermPlus | Reported Successful\n" .
+            "━━━━━━━━━━━━━━━━\n\n" .
+            "🎯 هدف: {$targetLabel}\n" .
+            $preview .
+            "📦 تعداد کل درخواست ها : 1321\n" .
+            "✅ 1235 موفق | ❌ 134 ناموفق\n\n" .
+            "تمامی ریپورت ها از سمت <b>کرم پلاس</b>🪱 با موفقیت ارسال شدند.\n" .
+            "نتیجه نهایی وابسته به بررسی پلتفرم مقصد می‌باشد.\n\n" .
+            "📆 {$date} ⏰ {$time}\n" .
             "• @NitroHostBot •";
     }
 
     private function buildStatusLines(int $step): array
     {
         $lines = [
-            '🧪 validate inputs      [ OK ]',
-            '🔌 open connections     [ OK ]',
-            '🔄 process batch #09    [ .. ]',
-            '📝 write results        [ -- ]',
-            '🏁 finalize             [ -- ]',
+            "<tg-emoji emoji-id='5134183530313548836'>🧪</tg-emoji> validate inputs      [ OK ]",
+            "<tg-emoji emoji-id='5116093437300442328'>⚡️</tg-emoji> open connections     [ OK ]",
+            "<tg-emoji emoji-id='5292226786229236118'>🔄</tg-emoji> process batch #09    [ .. ]",
+            "<tg-emoji emoji-id='5334882760735598374'>📝</tg-emoji> write results        [ -- ]",
+            "<tg-emoji emoji-id='5411520005386806155'>🏁</tg-emoji> finalize             [ -- ]",
         ];
 
         if ($step >= 2) {
-            $lines[2] = '🔄 process batch #09    [ OK ]';
+            $lines[2] = "<tg-emoji emoji-id='5292226786229236118'>🔄</tg-emoji> process batch #09    [ OK ]";
         }
         if ($step >= 3) {
-            $lines[3] = '📝 write results        [ OK ]';
+            $lines[3] = "<tg-emoji emoji-id='5334882760735598374'>📝</tg-emoji> write results        [ OK ]";
         }
         if ($step >= 4) {
-            $lines[4] = '🏁 finalize             [ OK ]';
+            $lines[4] = "<tg-emoji emoji-id='5411520005386806155'>🏁</tg-emoji> finalize             [ OK ]";
         }
 
         return $lines;
@@ -489,9 +490,9 @@ class TelegramReporterConversation extends Conversation
 
     private function formatAccountPreview($chat, string $username): string
     {
-        return "🎗 KermPlus | Account Found\n".
-            "━━━━━━━━━━━━━━━\n".
-            "📜 username : @{$username}\n".
+        return "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> KermPlus | Account Found\n" .
+            "━━━━━━━━━━━━━━━\n" .
+            "📜 username : @{$username}\n" .
             "━━━━━━━━━━━━━━━\n\n";
     }
 
@@ -501,14 +502,13 @@ class TelegramReporterConversation extends Conversation
         $description = $chat->description ?? '—';
         $members = $memberCount ?? $chat->subscriber_count ?? $chat->member_count ?? '—';
 
-        return "🎗 KermPlus | Channel Found\n".
-            "━━━━━━━━━━━━━━━\n".
-            "📢 title: {$title}\n".
-            "🆔 username: @{$username}\n".
-            "🧾 description: {$description}\n\n".
-            "👥 subscribers: {$members}\n".
-            "━━━━━━━━━━━━━━━\n\n".
-            "🗣 دلیل ریپورت را انتخاب کنید:\n";
+        return "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> KermPlus | Channel Found\n" .
+            "━━━━━━━━━━━━━━━\n" .
+            "📢 title: {$title}\n" .
+            "🆔 username: @{$username}\n" .
+            "🧾 description: {$description}\n\n" .
+            "👥 subscribers: {$members}\n" .
+            "━━━━━━━━━━━━━━━\n\n";
     }
 
     private function formatMessagePreview($chat, string $username, ?int $messageId, string $link): string
@@ -517,17 +517,15 @@ class TelegramReporterConversation extends Conversation
         $views = '—';
         $sentAt = '—';
 
-        return "🎗 KermPlus | Message Found\n".
-            "━━━━━━━━━━━━━━━\n".
-            "📢 source: @{$username}\n".
-            "🆔 message id: {$messageId}\n".
-            "📝 content: {$content}\n".
-            "🖇️ link : {$link}\n\n".
-            "👀 views: {$views}\n".
-            "📅 sent at: {$sentAt}\n".
-            "━━━━━━━━━━━━━━━\n\n".
-            "🗣 دلیل ریپورت را انتخاب کنید:\n";
-    }
+        return "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> KermPlus | Message Found\n" .
+            "━━━━━━━━━━━━━━━\n" .
+            "📢 source: @{$username}\n" .
+            "🆔 message id: {$messageId}\n" .
+            "📝 content: {$content}\n" .
+            "🖇️ link : {$link}\n\n" .
+            "👀 views: {$views}\n" .
+            "📅 sent at: {$sentAt}\n" .
+            "━━━━━━━━━━━━━━━\n\n" ;    }
 
     private function respondWithLimit(Nutgram $bot, string $message): void
     {
@@ -556,7 +554,7 @@ class TelegramReporterConversation extends Conversation
 
     private function promptTelegramReason(Nutgram $bot): void
     {
-        $text = '🗣 دلیل ریپورت رو انتخاب کن :';
+        $text = "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> کرم پلاس <tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji>\n\n<tg-emoji emoji-id='4904973211763999824'>🗣️</tg-emoji> دلیل ریپورت رو انتخاب کن :";
         $keyboard = TelegramReportReasonKeyboard::make();
         $messageId = $bot->callbackQuery()?->message?->message_id;
 
@@ -566,6 +564,7 @@ class TelegramReporterConversation extends Conversation
                     chat_id: $bot->user()->id,
                     message_id: $messageId,
                     text: $text,
+                    parse_mode: 'HTML',
                     reply_markup: $keyboard
                 );
                 return;
@@ -574,7 +573,7 @@ class TelegramReporterConversation extends Conversation
             }
         }
 
-        $bot->sendMessage($text, reply_markup: $keyboard);
+        $bot->sendMessage($text, parse_mode: 'HTML', reply_markup: $keyboard);
     }
 
     private function prepareProgressMessage(Nutgram $bot, string $text, ?int $baseMessageId = null): ?int
@@ -601,7 +600,7 @@ class TelegramReporterConversation extends Conversation
     {
         return InlineKeyboardMarkup::make()
             ->addRow(
-                InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'reporter_telegram_menu')
+                InlineKeyboardButton::make('بازگشت', callback_data: 'reporter_telegram_menu', style: 'danger', icon: '5352759161945867747')
             );
     }
 
@@ -615,6 +614,7 @@ class TelegramReporterConversation extends Conversation
                     chat_id: $bot->user()->id,
                     message_id: $messageId,
                     text: $text,
+                    parse_mode: 'HTML',
                     reply_markup: $keyboard
                 );
                 return;
@@ -623,12 +623,12 @@ class TelegramReporterConversation extends Conversation
             }
         }
 
-        $bot->sendMessage($text, reply_markup: $keyboard);
+        $bot->sendMessage($text, parse_mode: 'HTML', reply_markup: $keyboard);
     }
 
     private function showTelegramReporterMenu(Nutgram $bot): void
     {
-        $msg = "❀ کرم پلاس ❀\n\n🟦 ریپورتر تلگرام 🤝\nبرای ادامه یکی از گزینه های زیر رو انتخاب کن :";
+        $msg = "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> کرم پلاس <tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji>\n\n<tg-emoji emoji-id='5364125616801073577'>✈️</tg-emoji> ریپورتر تلگرام\nبرای ادامه یکی از گزینه های زیر رو انتخاب کن :";
         $this->sendOrEditMessage($bot, $msg, TelegramReporterMenuKeyboard::make());
     }
 

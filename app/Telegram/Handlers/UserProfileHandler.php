@@ -26,30 +26,45 @@ class UserProfileHandler
         $subscription = $service->getActiveSubscription($local);
         $local = $referralService->ensureUserHasCode($local);
         $referralCount = $referralService->totalReferrals($local);
-        $threshold = $referralService->rewardThreshold();
-        $availableRewards = $referralService->availableRewardCycles($local);
         $botUsername = ltrim((string) env('TELEGRAM_BOT_USERNAME', ''), '@');
         $link = $botUsername !== ''
             ? "https://t.me/{$botUsername}?start={$local->referral_code}"
             : 'لینک دعوت موجود نیست';
 
-        $msg = "❁ نام : {$local->name}\n";
-        $msg .= "❁ یوزرنیم : " . ($tgUser?->username ?? 'ندارد') . "\n";
-        $msg .= "❁ ایدی عددی : {$tgUser->id}\n";
-        $msg .= "❁ تعداد دعوت ها: {$referralCount} نفر\n";
-        $msg .= "❁ پاداش قابل دریافت: {$availableRewards}\n";
-        $msg .= "❁ قانون پاداش: هر {$threshold} دعوت = 1 اشتراک هدیه\n";
-        $msg .= "❁ لینک دعوت اختصاصی : {$link}\n";
-
-        if ($subscription) {
-            $msg .= "❁ نوع اشتراک : {$subscription->plan->name}";
+        $escape = static fn(string $value): string => htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $name = $escape((string) $local->name);
+        $username = $tgUser?->username ?? 'None';
+        $username = $escape((string) $username);
+        $membership = $subscription?->plan->name ?? 'Free';
+        $membership = $escape((string) $membership);
+        $link = $escape((string) $link);
+        if (!$subscription) {
+            $remaining = '0 Days';
+        } elseif ($subscription->expires_at === null) {
+            $remaining = 'Unlimited';
         } else {
-            $msg .= "❁ نوع اشتراک : رایگان";
+            $remaining = number_format($subscription->getRemainingDays()) . ' Days';
         }
+        $remaining = $escape($remaining);
+
+        $msg = implode("\n", [
+            '╭═ ✦ USER INFO ✦ ═╮',
+            "│ <tg-emoji emoji-id=\"4904848288345228262\">👤</tg-emoji> Name : {$name}",
+            "│ <tg-emoji emoji-id=\"5082413149873767213\">💙</tg-emoji> Username : {$username}",
+            "│ <tg-emoji emoji-id=\"4915791289489818259\">✅</tg-emoji> ID : {$tgUser->id}",
+            "│ <tg-emoji emoji-id=\"4913497231492908158\">👤</tg-emoji> Invites : " . number_format($referralCount),
+            '│',
+            "│ <tg-emoji emoji-id=\"5084974483685507801\">💜</tg-emoji> Membership : {$membership}",
+            "│ <tg-emoji emoji-id=\"4904882772637648609\">⏰</tg-emoji> Remaining : {$remaining}",
+            '│',
+            '│ <tg-emoji emoji-id="4916086774649848789">🔗</tg-emoji> Invite Link :',
+            "│ {$link}",
+            '╰═ ✦ ✦ ✦ ═╯',
+        ]);
 
         try {
             if ($bot->callbackQuery()?->message) {
-                $bot->editMessageText($msg, reply_markup: UserProfileKeyboard::make($subscription !== null));
+                $bot->editMessageText($msg, reply_markup: UserProfileKeyboard::make($subscription !== null), parse_mode: 'HTML');
                 return;
             }
         } catch (TelegramException $e) {
@@ -61,6 +76,6 @@ class UserProfileHandler
             return;
         }
 
-        $bot->sendMessage($msg, reply_markup: UserProfileKeyboard::make($subscription !== null));
+        $bot->sendMessage($msg, reply_markup: UserProfileKeyboard::make($subscription !== null), parse_mode: 'HTML');
     }
 }

@@ -6,6 +6,7 @@ use SergiX44\Nutgram\Conversations\Conversation;
 use SergiX44\Nutgram\Nutgram;
 use App\Models\SubscriptionPlan;
 use App\Models\User;
+use Illuminate\Support\Collection;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 
@@ -27,156 +28,259 @@ class AdminPlanConversation extends Conversation
             return;
         }
 
-        $keyboard = InlineKeyboardMarkup::make()
-            ->addRow(
-                InlineKeyboardButton::make('📊 لیست پلن‌ها', callback_data: 'admin_plan_list'),
-                InlineKeyboardButton::make('➕ ایجاد پلن', callback_data: 'admin_plan_create')
-            )
-            ->addRow(
-                InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'admin_panel')
-            );
-
-        $bot->sendMessage('📦 مدیریت پلن‌ها — لطفا یک گزینه انتخاب کنید:', reply_markup: $keyboard);
-        $this->next('handleMenu');
-    }
-
-    public function handleMenu(Nutgram $bot)
-    {
-        $data = $bot->callbackQuery()?->data;
-        if ($data === 'admin_panel') {
-            AdminPanelConversation::begin($bot);
+        $plans = $this->getManagedPlans();
+        if ($plans->isEmpty()) {
+            $bot->sendMessage('⛔️ هیچ پلن Pro/Plus در دیتابیس پیدا نشد. ابتدا seeder را اجرا کنید.');
             $this->end();
             return;
         }
-        if ($data === 'admin_plan_list') {
-            $this->showList($bot);
-            return;
-        }
-        if ($data === 'admin_plan_create') {
-            $bot->sendMessage('✏️ نام پلن را وارد کنید:');
-            $this->next('createName');
-            return;
-        }
-        $this->start($bot);
+
+        $bot->sendMessage(
+            $this->buildPlansListText($plans),
+            reply_markup: $this->buildPlansListKeyboard($plans)
+        );
+        $this->next('handleInput');
     }
 
-    protected function showList(Nutgram $bot)
+    public function handleInput(Nutgram $bot)
     {
-        $plans = SubscriptionPlan::orderBy('price')->get();
-        if ($plans->isEmpty()) {
-            $bot->sendMessage('هیچ پلنی تعریف نشده است.');
-            $this->start($bot);
+        $local = $this->getLocalUserByTelegram($bot);
+        if (!$local || !$local->isAdmin()) {
+            $bot->sendMessage('⛔️ دسترسی ندارید.');
+            $this->end();
             return;
         }
 
-        foreach ($plans as $plan) {
-            $kb = InlineKeyboardMarkup::make()
-                ->addRow(
-                    InlineKeyboardButton::make($plan->is_active ? '🔴 غیرفعال' : '🟢 فعال', callback_data: "admin_plan_toggle:{$plan->id}"),
-                    InlineKeyboardButton::make('🗑 حذف', callback_data: "admin_plan_delete:{$plan->id}")
-                )
-                ->addRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'admin_plan_list'));
-
-            $text = "🔹 {$plan->name}\nقیمت: " . number_format((float)$plan->price, 0) . " تومان\nمدت: {$plan->duration_days} روز\nویژگی‌ها: " . implode(',', $plan->getFeatures() ?? []);
-            $bot->sendMessage($text, reply_markup: $kb);
-        }
-        $this->start($bot);
-    }
-
-    public function createName(Nutgram $bot)
-    {
-        $name = $bot->message()?->text;
-        if (!$name) {
-            $bot->sendMessage('نام نامعتبر است. بازگشت.');
-            $this->start($bot);
-            return;
-        }
-        $bot->setUserData('new_plan_name', $name);
-        $bot->sendMessage('قیمت (تومان) را وارد کنید:');
-        $this->next('createPrice');
-    }
-
-    public function createPrice(Nutgram $bot)
-    {
-        $price = $bot->message()?->text;
-        if (!is_numeric($price)) {
-            $bot->sendMessage('قیمت نامعتبر. بازگشت.');
-            $this->start($bot);
-            return;
-        }
-        $bot->setUserData('new_plan_price', (float) $price);
-        $bot->sendMessage('مدت (روز) را وارد کنید:');
-        $this->next('createDuration');
-    }
-
-    public function createDuration(Nutgram $bot)
-    {
-        $days = $bot->message()?->text;
-        if (!is_numeric($days) || (int)$days < 1) {
-            $bot->sendMessage('مدت نامعتبر. بازگشت.');
-            $this->start($bot);
-            return;
-        }
-        $bot->setUserData('new_plan_duration', (int)$days);
-        $bot->sendMessage('✅ پلن جدید ایجاد شد.');
-        $data = [
-            'name' => $bot->getUserData('new_plan_name'),
-            'price' => (float)$bot->getUserData('new_plan_price'),
-            'duration_days' => (int)$bot->getUserData('new_plan_duration'),
-            'max_sms_per_day' => 1000,
-            'max_email_per_day' => 1000,
-            'max_requests_per_day' => 10000,
-            'is_active' => true,
-        ];
-        SubscriptionPlan::create($data);
-        $this->start($bot);
-    }
-
-
-    public function handleCallback(Nutgram $bot)
-    {
         $data = $bot->callbackQuery()?->data;
         if (!$data) {
             $this->start($bot);
             return;
         }
 
-        if (str_starts_with($data, 'admin_plan_toggle:')) {
-            $id = (int) explode(':', $data, 2)[1];
-            $plan = SubscriptionPlan::find($id);
-            if ($plan) {
-                $plan->is_active = !$plan->is_active;
-                $plan->save();
-                $bot->answerCallbackQuery(text: 'وضعیت تغییر کرد.');
-            }
+        if ($bot->callbackQuery()) {
+            $bot->answerCallbackQuery();
+        }
+
+        if ($data === 'admin_panel') {
+            AdminPanelConversation::begin($bot);
+            $this->end();
+            return;
+        }
+
+        if ($data === 'admin_plan_back') {
             $this->start($bot);
             return;
         }
 
-        if (str_starts_with($data, 'admin_plan_delete:')) {
-            $id = (int) explode(':', $data, 2)[1];
-            $plan = SubscriptionPlan::find($id);
-            if ($plan) {
-                $plan->delete();
-                $bot->answerCallbackQuery(text: 'پلن حذف شد.');
-            } else {
-                $bot->answerCallbackQuery(text: 'پلن یافت نشد.');
+        if (preg_match('/^admin_plan_open:(\d+)$/', $data, $m)) {
+            $plan = SubscriptionPlan::find((int) $m[1]);
+            if (!$plan || !$this->isManagedPlan($plan)) {
+                $bot->sendMessage('⛔️ فقط پلن‌های pro و plus قابل مدیریت هستند.');
+                $this->start($bot);
+                return;
             }
-            $this->start($bot);
+
+            $this->showPlanEditor($bot, $plan);
             return;
         }
 
-        if (str_starts_with($data, 'admin_plan_show:')) {
-            $id = (int) explode(':', $data, 2)[1];
-            $plan = SubscriptionPlan::find($id);
-            if ($plan) {
-                $msg = "🔹 {$plan->name}\nقیمت: " . number_format((float)$plan->price, 0) . " تومان\nمدت: {$plan->duration_days} روز";
-                $bot->sendMessage($msg);
+        if (preg_match('/^admin_plan_toggle:(\d+)$/', $data, $m)) {
+            $plan = SubscriptionPlan::find((int) $m[1]);
+            if (!$plan || !$this->isManagedPlan($plan)) {
+                $bot->sendMessage('پلن قابل مدیریت نیست.');
+                $this->start($bot);
+                return;
             }
-            $this->start($bot);
+
+            $plan->is_active = !$plan->is_active;
+            $plan->save();
+            $bot->answerCallbackQuery(text: 'وضعیت پلن بروزرسانی شد.');
+            $this->showPlanEditor($bot, $plan->fresh());
+            return;
+        }
+
+        if (preg_match('/^admin_plan_edit:(\d+):(usd|irr|stars)$/', $data, $m)) {
+            $plan = SubscriptionPlan::find((int) $m[1]);
+            if (!$plan || !$this->isManagedPlan($plan)) {
+                $bot->sendMessage('پلن قابل مدیریت نیست.');
+                $this->start($bot);
+                return;
+            }
+
+            $field = $m[2];
+            $bot->setUserData('admin_plan_edit_id', $plan->id);
+            $bot->setUserData('admin_plan_edit_field', $field);
+
+            $prompt = match ($field) {
+                'usd' => "✏️ قیمت ارزی پلن {$plan->name} را وارد کنید (USD):",
+                'irr' => "✏️ قیمت ریالی پلن {$plan->name} را وارد کنید:",
+                default => "✏️ قیمت استار پلن {$plan->name} را وارد کنید:",
+            };
+
+            $bot->sendMessage($prompt);
+            $this->next('saveEditedPrice');
             return;
         }
 
         $this->start($bot);
+    }
+
+    public function saveEditedPrice(Nutgram $bot)
+    {
+        $local = $this->getLocalUserByTelegram($bot);
+        if (!$local || !$local->isAdmin()) {
+            $bot->sendMessage('⛔️ دسترسی ندارید.');
+            $this->end();
+            return;
+        }
+
+        // کاربر ممکن است به‌جای متن، دکمه‌ای کلیک کند.
+        if ($bot->callbackQuery()) {
+            $this->handleInput($bot);
+            return;
+        }
+
+        $text = trim((string) $bot->message()?->text);
+        if ($text === '' || !is_numeric($text)) {
+            $bot->sendMessage('مقدار نامعتبر است. لطفا عدد ارسال کنید.');
+            $this->next('saveEditedPrice');
+            return;
+        }
+
+        $planId = (int) ($bot->getUserData('admin_plan_edit_id') ?? 0);
+        $field = (string) ($bot->getUserData('admin_plan_edit_field') ?? '');
+        $plan = SubscriptionPlan::find($planId);
+
+        if (!$plan || !$this->isManagedPlan($plan)) {
+            $bot->sendMessage('پلن قابل مدیریت پیدا نشد.');
+            $this->start($bot);
+            return;
+        }
+
+        if (!in_array($field, ['usd', 'irr', 'stars'], true)) {
+            $bot->sendMessage('نوع فیلد قیمت نامعتبر است.');
+            $this->start($bot);
+            return;
+        }
+
+        if ($field === 'usd') {
+            $value = round((float) $text, 2);
+            if ($value < 0) {
+                $bot->sendMessage('قیمت ارزی نمی‌تواند منفی باشد.');
+                $this->next('saveEditedPrice');
+                return;
+            }
+
+            $plan->price_usd = $value;
+            $plan->price = $value; // legacy compatibility
+        }
+
+        if ($field === 'irr') {
+            $value = (int) round((float) $text);
+            if ($value < 0) {
+                $bot->sendMessage('قیمت ریالی نمی‌تواند منفی باشد.');
+                $this->next('saveEditedPrice');
+                return;
+            }
+
+            $plan->price_irr = $value;
+        }
+
+        if ($field === 'stars') {
+            $value = (int) round((float) $text);
+            if ($value < 0) {
+                $bot->sendMessage('قیمت استار نمی‌تواند منفی باشد.');
+                $this->next('saveEditedPrice');
+                return;
+            }
+
+            $plan->price_stars = $value;
+        }
+
+        $plan->save();
+        $bot->sendMessage('✅ قیمت پلن بروزرسانی شد.');
+        $this->showPlanEditor($bot, $plan->fresh());
+    }
+
+    /**
+     * @return Collection<int, SubscriptionPlan>
+     */
+    protected function getManagedPlans(): Collection
+    {
+        return SubscriptionPlan::query()
+            ->where(function ($q): void {
+                $q->whereRaw('LOWER(name) = ?', ['pro'])
+                    ->orWhereRaw('LOWER(name) = ?', ['plus']);
+            })
+            ->get()
+            ->sortBy(function (SubscriptionPlan $plan): int {
+                return strtolower($plan->name) === 'pro' ? 0 : 1;
+            })
+            ->values();
+    }
+
+    protected function isManagedPlan(SubscriptionPlan $plan): bool
+    {
+        return in_array(strtolower($plan->name), ['pro', 'plus'], true);
+    }
+
+    protected function buildPlansListText(Collection $plans): string
+    {
+        $msg = "💳 مدیریت پلن‌ها (فقط pro / plus)\n\n";
+        $msg .= "برای ویرایش قیمت‌ها روی پلن بزن:\n\n";
+
+        foreach ($plans as $plan) {
+            $status = $plan->is_active ? 'فعال' : 'غیرفعال';
+            $msg .= "• {$plan->name} ({$status})\n";
+            $msg .= "  USD: " . number_format($plan->usdPrice(), 2) . " | ریال: " . number_format($plan->irrPrice()) . " | استار: " . number_format($plan->starsPrice()) . "\n";
+        }
+
+        return $msg;
+    }
+
+    protected function buildPlansListKeyboard(Collection $plans): InlineKeyboardMarkup
+    {
+        $keyboard = InlineKeyboardMarkup::make();
+        foreach ($plans as $plan) {
+            $keyboard->addRow(
+                InlineKeyboardButton::make("✏️ {$plan->name}", callback_data: "admin_plan_open:{$plan->id}", style: 'danger')
+            );
+        }
+
+        $keyboard->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'admin_panel', style: 'danger', icon: '5352759161945867747'));
+
+        return $keyboard;
+    }
+
+    protected function showPlanEditor(Nutgram $bot, SubscriptionPlan $plan): void
+    {
+        $status = $plan->is_active ? '✅ فعال' : '⛔️ غیرفعال';
+        $msg = "🧾 پلن: {$plan->name}\n";
+        $msg .= "وضعیت: {$status}\n\n";
+        $msg .= "💵 قیمت ارزی (USD): " . number_format($plan->usdPrice(), 2) . "\n";
+        $msg .= "💴 قیمت ریالی: " . number_format($plan->irrPrice()) . "\n";
+        $msg .= "⭐️ قیمت استار: " . number_format($plan->starsPrice()) . "\n";
+        $msg .= "⏱ مدت: {$plan->duration_days} روز";
+
+        $kb = InlineKeyboardMarkup::make()
+            ->addRow(
+                InlineKeyboardButton::make('✏️ ویرایش USD', callback_data: "admin_plan_edit:{$plan->id}:usd", style: 'danger'),
+                InlineKeyboardButton::make('✏️ ویرایش ریال', callback_data: "admin_plan_edit:{$plan->id}:irr", style: 'danger')
+            )
+            ->addRow(
+                InlineKeyboardButton::make('✏️ ویرایش استار', callback_data: "admin_plan_edit:{$plan->id}:stars", style: 'danger')
+            )
+            ->addRow(
+                InlineKeyboardButton::make($plan->is_active ? '🔴 غیرفعال کردن پلن' : '🟢 فعال کردن پلن', callback_data: "admin_plan_toggle:{$plan->id}", style: 'danger')
+            )
+            ->addRow(
+                InlineKeyboardButton::make('↩️ بازگشت به لیست پلن‌ها', callback_data: 'admin_plan_back', style: 'danger', icon: '5352759161945867747')
+            )
+            ->addRow(
+                InlineKeyboardButton::make('بازگشت به پنل ادمین', callback_data: 'admin_panel', style: 'danger', icon: '5352759161945867747')
+            );
+
+        $bot->sendMessage($msg, reply_markup: $kb);
+        $this->next('handleInput');
     }
 }

@@ -7,29 +7,19 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 
 class ReferralKeyboard
 {
-    public static function make(string $referralLink, string $shareText, bool $canClaimReward = false): InlineKeyboardMarkup
+    public static function make(bool $canClaimReward = false): InlineKeyboardMarkup
     {
-        $keyboard = InlineKeyboardMarkup::make()
-            ->addRow(
-                InlineKeyboardButton::make('🔗 لینک من', url: $referralLink)
-            );
-
-        if (str_starts_with($referralLink, 'http')) {
-            $shareUrl = 'https://t.me/share/url?url=' . urlencode($referralLink) . '&text=' . urlencode($shareText);
-            $keyboard->addRow(
-                InlineKeyboardButton::make('📨 ارسال برای دوستان', url: $shareUrl)
-            );
-        }
+        $keyboard = InlineKeyboardMarkup::make();
 
         if ($canClaimReward) {
             $keyboard->addRow(
-                InlineKeyboardButton::make('🎁 دریافت اشتراک هدیه', callback_data: 'referral_claim')
+                InlineKeyboardButton::make('دریافت اشتراک هدیه', callback_data: 'referral_claim', style: 'danger', icon: '5361649430715972984')
             );
         }
 
         $keyboard->addRow(
-            InlineKeyboardButton::make('🔄 بروزرسانی آمار', callback_data: 'user_referral'),
-            InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'main_menu')
+            InlineKeyboardButton::make('بروزرسانی آمار', callback_data: 'user_referral', style: 'danger', icon: '6005843436479975944'),
+            InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747')
         );
 
         return $keyboard;

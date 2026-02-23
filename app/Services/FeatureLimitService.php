@@ -12,7 +12,6 @@ class FeatureLimitService
     public const TYPE_HARASSER = 'harasser';
     public const TYPE_NEGATIVE_REACTION = 'negative_reaction';
     public const TYPE_WHITELIST_ADD = 'whitelist_add';
-    public const WHITELIST_ALREADY_ADDED_MESSAGE = '⛔️ هر اکانت پلاس فقط یک بار می‌تواند به وایت‌لیست اضافه کند.';
 
     public function __construct(private SubscriptionService $subscriptionService) {}
 
@@ -27,9 +26,11 @@ class FeatureLimitService
             ->where('type', self::TYPE_REPORTER);
 
         if ($this->hasReporterAccess($user)) {
-            $last = (clone $query)->latest()->first();
-            if ($last && $last->created_at->gt($now->copy()->subHours(8))) {
-                return 'هر 8 ساعت فقط یک درخواست ریپورت میتونی ثبت کنی عزیزم 🥺♥️';
+            if (!$user->isAdmin()) {
+                $last = (clone $query)->latest()->first();
+                if ($last && $last->created_at->gt($now->copy()->subHours(8))) {
+                    return 'هر 8 ساعت فقط یک درخواست ریپورت میتونی ثبت کنی عزیزم 🥺♥️';
+                }
             }
 
             $todayCount = (clone $query)
@@ -61,7 +62,7 @@ class FeatureLimitService
     public function checkHarasserLimit(User $user): ?string
     {
         if (!$this->hasPlusOnlyAccess($user, SubscriptionService::FEATURE_HARASSER)) {
-            return "❗️✨ این بخش نیازمند به نسخه پلاس رباتمونه 😚\n\nبرای ارتقای نسخه ربات به \"نسخه پلاس🎗\" از طریق دکمه های ربات اقدام کنید.";
+            return "<tg-emoji emoji-id=\"6224077119996040131\">❗️</tg-emoji><tg-emoji emoji-id=\"4929619512224909015\">🪱</tg-emoji> این بخش نیازمند ارتقای نسخه رباتمونه <tg-emoji emoji-id=\"5370967353674701492\">😚</tg-emoji>\n\nبرای ارتقای نسخه ربات به \"نسخه پلاس<tg-emoji emoji-id=\"5433758796289685818\">👑</tg-emoji>\" و یا به \"نسخه پرو<tg-emoji emoji-id=\"6244241334320762892\">💎</tg-emoji>\" از طریق دکمه های زیر اقدام کنید :";
         }
 
         $todayCount = UsageRecord::query()
@@ -106,16 +107,12 @@ class FeatureLimitService
     }
 
     /**
-     * Whitelist additions: plus users, once only.
+     * Whitelist access: plus users only.
      */
     public function checkWhitelistAdditionLimit(User $user): ?string
     {
         if (!$this->hasPlusOnlyAccess($user, SubscriptionService::FEATURE_WHITELIST)) {
-            return "❗️✨ این بخش نیازمند به نسخه پلاس رباتمونه 😚\n\nبرای ارتقای نسخه ربات به \"نسخه پلاس🎗\" از طریق دکمه های ربات اقدام کنید.";
-        }
-
-        if ($this->hasWhitelistAddition($user)) {
-            return self::WHITELIST_ALREADY_ADDED_MESSAGE;
+            return "<tg-emoji emoji-id=\"6224077119996040131\">❗️</tg-emoji><tg-emoji emoji-id=\"4929619512224909015\">🪱</tg-emoji> این بخش نیازمند ارتقای نسخه رباتمونه <tg-emoji emoji-id=\"5370967353674701492\">😚</tg-emoji>\n\nبرای ارتقای نسخه ربات به \"نسخه پلاس<tg-emoji emoji-id=\"5433758796289685818\">👑</tg-emoji>\" و یا به \"نسخه پرو<tg-emoji emoji-id=\"6244241334320762892\">💎</tg-emoji>\" از طریق دکمه های زیر اقدام کنید :";
         }
 
         return null;

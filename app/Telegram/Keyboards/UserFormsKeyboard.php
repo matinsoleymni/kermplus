@@ -16,9 +16,9 @@ class UserFormsKeyboard
         $keyboard = InlineKeyboardMarkup::make();
 
         foreach ($forms as $form) {
-            $keyboard->addRow(InlineKeyboardButton::make("✍️ {$form->name}", callback_data: "fill_form_{$form->id}"));
+            $keyboard->addRow(InlineKeyboardButton::make("{$form->name}", callback_data: "fill_form_{$form->id}", style: 'danger', icon: '5470060791883374114'));
         }
 
-        return $keyboard->addRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'main_menu'));
+        return $keyboard->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747'));
     }
 }

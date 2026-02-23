@@ -43,10 +43,10 @@ class AdminsManagementConversation extends Conversation
 
         $keyboard = InlineKeyboardMarkup::make()
             ->addRow(
-                InlineKeyboardButton::make('➕ افزودن ادمین', callback_data: 'admin_add'),
-                InlineKeyboardButton::make('➖ حذف ادمین', callback_data: 'admin_remove')
+                InlineKeyboardButton::make('➕ افزودن ادمین', callback_data: 'admin_add', style: 'danger'),
+                InlineKeyboardButton::make('➖ حذف ادمین', callback_data: 'admin_remove', style: 'danger')
             )
-            ->addRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'admin_panel'));
+            ->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'admin_panel', style: 'danger', icon: '5352759161945867747'));
 
         $bot->sendMessage($text, reply_markup: $keyboard);
         $this->next('handleMenu');

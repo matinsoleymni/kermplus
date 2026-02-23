@@ -89,8 +89,9 @@ class InstagramReporterConversation extends Conversation
         $username = ltrim(trim($username), '@');
 
         $whitelist = app(WhitelistService::class);
-        if ($whitelist->isWhitelisted($username, WhitelistedTarget::TYPE_CUSTOM)) {
-            $bot->sendMessage($whitelist->getBlockMessage($username, WhitelistedTarget::TYPE_CUSTOM));
+        $instagramTypes = [WhitelistedTarget::TYPE_INSTAGRAM_EMAIL, WhitelistedTarget::TYPE_CUSTOM];
+        if ($whitelist->isWhitelisted($username, $instagramTypes)) {
+            $bot->sendMessage($whitelist->getBlockMessage($username, $instagramTypes));
             $this->end();
             return;
         }
@@ -248,6 +249,15 @@ class InstagramReporterConversation extends Conversation
             return;
         }
 
+        $whitelist = app(WhitelistService::class);
+        $instagramTypes = [WhitelistedTarget::TYPE_INSTAGRAM_EMAIL, WhitelistedTarget::TYPE_CUSTOM];
+        if ($whitelist->isWhitelisted($username, $instagramTypes)) {
+            $bot->answerCallbackQuery();
+            $bot->sendMessage($whitelist->getBlockMessage($username, $instagramTypes));
+            $this->end();
+            return;
+        }
+
         $limiter->recordReporterUsage($local);
         $bot->answerCallbackQuery(text: '✅ دلیل ثبت شد.');
         $baseMessageId = $bot->callbackQuery()?->message?->message_id;
@@ -282,8 +292,7 @@ class InstagramReporterConversation extends Conversation
         ?string $link = null,
         ?int $baseMessageId = null,
         bool $baseUsesCaption = false
-    )
-    {
+    ) {
         $totalSteps = 5;
         $delayPerStep = 5; // seconds, ~25s total
 
@@ -379,9 +388,9 @@ class InstagramReporterConversation extends Conversation
 
         $finalText = $this->buildFinalMessage($label, $link);
         try {
-            $this->editMessageByType($bot, $progressMessageId, $finalText, $useCaption);
+            $this->editMessageByType($bot, $progressMessageId, $finalText, $useCaption, parseHtml: true);
         } catch (\Throwable) {
-            $bot->sendMessage($finalText);
+            $bot->sendMessage($finalText, parse_mode: 'HTML');
         }
 
         $bot->setUserData('ig_cleanup_messages', []);
@@ -390,8 +399,8 @@ class InstagramReporterConversation extends Conversation
 
     private function getProgressBar(int $percent): string
     {
-        $filled = (int)($percent / 5);
-        $empty = 20 - $filled;
+        $filled = max(0, min(10, (int)round($percent / 10)));
+        $empty = 10 - $filled;
         $bar = '[' . str_repeat('█', $filled) . str_repeat('░', $empty) . ']';
         return $bar . ' ' . $percent . '%';
     }
@@ -438,17 +447,17 @@ class InstagramReporterConversation extends Conversation
         $posts = data_get($profile, 'edge_owner_to_timeline_media.count', 0);
         $isPrivate = !empty($profile['is_private']) ? 'yes' : 'no';
 
-        return "🎗 KermPlus | Profile Found\n".
-            "━━━━━━━━━━━━━━━\n".
-            "👤 name: @{$username}\n".
-            "🪪 username: {$fullName}\n".
-            "🧾 bio:  {$bio}\n".
-            "🔘 followers: {$followers}  \n".
-            "🔘 following: {$following}  \n".
-            "🔘 posts: {$posts}  \n".
-            "🔒 is private? : {$isPrivate}  \n".
-            "━━━━━━━━━━━━━━━\n\n".
-            "🗣 دلیل ریپورت رو انتخاب کن :";
+        return "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> KermPlus | Profile Found\n" .
+            "━━━━━━━━━━━━━━━\n" .
+            "👤 name: @{$username}\n" .
+            "🪪 username: {$fullName}\n" .
+            "🧾 bio:  {$bio}\n" .
+            "🔘 followers: {$followers}  \n" .
+            "🔘 following: {$following}  \n" .
+            "🔘 posts: {$posts}  \n" .
+            "🔒 is private? : {$isPrivate}  \n" .
+            "━━━━━━━━━━━━━━━\n\n" .
+            "🗣️ دلیل ریپورت رو انتخاب کن :";
     }
 
     private function instagramReasons(): array
@@ -467,21 +476,21 @@ class InstagramReporterConversation extends Conversation
 
     private function promptInstagramReason(Nutgram $bot): void
     {
-        $text = '🗣 دلیل ریپورت رو انتخاب کن :';
+        $text = "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> کرم پلاس <tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji>\n\n<tg-emoji emoji-id='4904973211763999824'>🗣️</tg-emoji> دلیل ریپورت رو انتخاب کن :";
         $keyboard = InstagramReportReasonKeyboard::make();
         $messageId = $bot->callbackQuery()?->message?->message_id;
         $useCaption = $this->isCallbackMessagePhoto($bot);
 
         if ($messageId) {
             try {
-                $this->editMessageByType($bot, $messageId, $text, $useCaption, $keyboard);
+                $this->editMessageByType($bot, $messageId, $text, $useCaption, $keyboard, true);
                 return;
             } catch (\Throwable) {
                 // fallback to sending a new message
             }
         }
 
-        $bot->sendMessage($text, reply_markup: $keyboard);
+        $bot->sendMessage($text, parse_mode: 'HTML', reply_markup: $keyboard);
     }
 
     private function buildProcessingMessage(
@@ -500,32 +509,25 @@ class InstagramReporterConversation extends Conversation
         string $eta,
         array $statuses
     ): string {
-        $date = now()->format('Y/m/d');
-        $time = now()->format('H:i:s');
         $progressBar = $this->getProgressBar($percent);
         $barOnly = explode(' ', $progressBar, 2)[0];
-        $statusBlock = implode("\n", $statuses);
-        $safeTargetLabel = htmlspecialchars($targetLabel, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        $safeReason = htmlspecialchars($reason, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        $quotedSection = "<blockquote>".
-            "rate: 12/s backoff: 2.5s\n".
-            "elapsed: {$elapsed} ETA: {$eta}\n\n".
-            "{$statusBlock}\n\n".
-            "trace: job=8f2a mode=ro gate=open\n".
-            "Please wait...\n\n".
-            "📆 {$date}  ⏰ {$time}\n".
-            "• @NitroHostBot •".
-            "</blockquote>";
+        $statusBlock = implode("\n", array_map(static fn(string $line): string => "> {$line}", $statuses));
+        $date = now()->format('Y/m/d');
+        $time = now()->format('H:i:s');
 
-        return "🎗 KermPlus | Processing Job\n".
-            "━━━━━━━━━━━━━━━━\n\n".
-            "{$barOnly} {$percent}%   🔁 step {$step}/{$totalSteps}\n\n".
-            "🎯 هدف: {$safeTargetLabel}\n".
-            "🗣 دلیل: {$safeReason}\n\n".
-            "📦 queue: {$queue} items\n".
-            "⚙️ active: {$active}   ✅ done: {$done}\n".
-            "🟢 ok: {$ok}   🔴 fail: {$fail}   🔁 retry: {$retry}\n\n".
-            $quotedSection;
+        return "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> KermPlus | Processing Job\n" .
+            "━━━━━━━━━━━━━━━━\n\n" .
+            "{$barOnly} {$percent}%   <tg-emoji emoji-id='5116159438062879454'>🙏</tg-emoji> step {$step}/{$totalSteps}\n\n" .
+            "📦 queue: {$queue} items\n" .
+            "<tg-emoji emoji-id='4904936030232117798'>⚙️</tg-emoji> active: {$active}   <tg-emoji emoji-id='6224314343924699041'>✅</tg-emoji> done: {$done}\n" .
+            "<tg-emoji emoji-id='5325945307454789973'>🟢</tg-emoji> ok: {$ok}   <tg-emoji emoji-id='5326056199215406977'>❌</tg-emoji> fail: {$fail}   🔁 retry: {$retry}\n\n" .
+            "rate: 12/s backoff: 2.5s\n" .
+            "elapsed: {$elapsed} ETA: {$eta}\n\n" .
+            "{$statusBlock}\n\n" .
+            "trace: job=8f2a mode=ro gate=open\n" .
+            "Please wait...\n\n" .
+            "<tg-emoji emoji-id='5431897022456145283'>📆</tg-emoji> {$date}  <tg-emoji emoji-id='4904882772637648609'>⏰</tg-emoji> {$time}\n" .
+            "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> @NitroHostBot <tg-emoji emoji-id='4927295007204836791'>🪱</tg-emoji>";
     }
 
     private function buildFinalMessage(string $targetLabel, ?string $link = null): string
@@ -534,36 +536,36 @@ class InstagramReporterConversation extends Conversation
         $time = now()->format('H:i:s');
         $preview = $link ? "🖇️ لینک: {$link}\n" : '';
 
-        return "🎗 KermPlus | Reported Successful\n".
-            "━━━━━━━━━━━━━━━━\n\n".
-            "🎯 هدف: {$targetLabel}\n".
-            $preview.
-            "📦 تعداد کل درخواست ها : 1321\n".
-            "✅ 1235 موفق | ❌ 134 ناموفق\n\n".
-            "تمامی ریپورت ها از سمت کرم پلاس🪱 با موفقیت ارسال شدند.\n".
-            "نتیجه نهایی وابسته به بررسی پلتفرم مقصد می‌باشد.\n\n".
-            "📆 {$date} ⏰ {$time}\n".
+        return "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> KermPlus | Reported Successful\n" .
+            "━━━━━━━━━━━━━━━━\n\n" .
+            "🎯 هدف: {$targetLabel}\n" .
+            $preview .
+            "📦 تعداد کل درخواست ها : 1321\n" .
+            "✅ 1235 موفق | ❌ 134 ناموفق\n\n" .
+            "تمامی ریپورت ها از سمت <b>کرم پلاس</b>🪱 با موفقیت ارسال شدند.\n" .
+            "نتیجه نهایی وابسته به بررسی پلتفرم مقصد می‌باشد.\n\n" .
+            "📆 {$date} ⏰ {$time}\n" .
             "• @NitroHostBot •";
     }
 
     private function buildStatusLines(int $step): array
     {
         $lines = [
-            '🧪 validate inputs      [ OK ]',
-            '🔌 open connections     [ OK ]',
-            '🔄 process batch #09    [ .. ]',
-            '📝 write results        [ -- ]',
-            '🏁 finalize             [ -- ]',
+            "<tg-emoji emoji-id='5134183530313548836'>🧪</tg-emoji> validate inputs      [ OK ]",
+            "<tg-emoji emoji-id='5116093437300442328'>⚡️</tg-emoji> open connections     [ OK ]",
+            "<tg-emoji emoji-id='5292226786229236118'>🔄</tg-emoji> process batch #09    [ .. ]",
+            "<tg-emoji emoji-id='5334882760735598374'>📝</tg-emoji> write results        [ -- ]",
+            "<tg-emoji emoji-id='5411520005386806155'>🏁</tg-emoji> finalize             [ -- ]",
         ];
 
         if ($step >= 2) {
-            $lines[2] = '🔄 process batch #09    [ OK ]';
+            $lines[2] = "<tg-emoji emoji-id='5292226786229236118'>🔄</tg-emoji> process batch #09    [ OK ]";
         }
         if ($step >= 3) {
-            $lines[3] = '📝 write results        [ OK ]';
+            $lines[3] = "<tg-emoji emoji-id='5334882760735598374'>📝</tg-emoji> write results        [ OK ]";
         }
         if ($step >= 4) {
-            $lines[4] = '🏁 finalize             [ OK ]';
+            $lines[4] = "<tg-emoji emoji-id='5411520005386806155'>🏁</tg-emoji> finalize             [ OK ]";
         }
 
         return $lines;
@@ -603,7 +605,7 @@ class InstagramReporterConversation extends Conversation
     {
         return InlineKeyboardMarkup::make()
             ->addRow(
-                InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'reporter_instagram_menu')
+                InlineKeyboardButton::make('بازگشت', callback_data: 'reporter_instagram_menu', style: 'danger', icon: '5352759161945867747')
             );
     }
 
@@ -617,6 +619,7 @@ class InstagramReporterConversation extends Conversation
                     chat_id: $bot->user()->id,
                     message_id: $messageId,
                     text: $text,
+                    parse_mode: 'HTML',
                     reply_markup: $keyboard
                 );
                 return;
@@ -625,12 +628,12 @@ class InstagramReporterConversation extends Conversation
             }
         }
 
-        $bot->sendMessage($text, reply_markup: $keyboard);
+        $bot->sendMessage($text, parse_mode: 'HTML', reply_markup: $keyboard);
     }
 
     private function showInstagramReporterMenu(Nutgram $bot): void
     {
-        $msg = "❀ کرم پلاس ❀\n\n🟥 ریپورتر اینستاگرام 🤝\nبرای ادامه یکی از گزینه های زیر رو انتخاب کن :";
+        $msg = "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> <b>کرم پلاس</b> <tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji>\n\n<tg-emoji emoji-id='5364310996179503764'>📸</tg-emoji> ریپورتر اینستاگرام 🤝\nبرای ادامه یکی از گزینه های زیر رو انتخاب کن :";
         $this->sendOrEditMessage($bot, $msg, InstagramReporterMenuKeyboard::make());
     }
 
@@ -729,17 +732,17 @@ class InstagramReporterConversation extends Conversation
             $sentAt = $timestamp ? Carbon::parse($timestamp)->format('Y/m/d') : '—';
         }
 
-        return "🎗 KermPlus | Post Found\n".
-            "━━━━━━━━━━━━━━━\n".
-            "👤 author: @{$owner}\n".
-            "🆔 post id: {$id}\n".
-            "📝 caption: {$caption}\n".
-            "🖇️ link : {$link}\n\n".
-            "❤️ likes: {$likes}\n".
-            "💬 comments: {$comments}\n".
-            "📅 published: {$sentAt}\n".
-            "━━━━━━━━━━━━━━━\n\n".
-            "🗣 دلیل ریپورت را انتخاب کنید:\n";
+        return "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> KermPlus | Post Found\n" .
+            "━━━━━━━━━━━━━━━\n" .
+            "👤 author: @{$owner}\n" .
+            "🆔 post id: {$id}\n" .
+            "📝 caption: {$caption}\n" .
+            "🖇️ link : {$link}\n\n" .
+            "❤️ likes: {$likes}\n" .
+            "💬 comments: {$comments}\n" .
+            "📅 published: {$sentAt}\n" .
+            "━━━━━━━━━━━━━━━\n\n" .
+            "🗣️ دلیل ریپورت رو انتخاب کن :\n";
     }
 
     private function normalizeInstagramMedia(array $raw, string $shortcode): array

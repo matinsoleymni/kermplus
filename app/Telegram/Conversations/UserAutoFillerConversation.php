@@ -3,11 +3,13 @@
 namespace App\Telegram\Conversations;
 
 use App\Models\User;
+use App\Models\WhitelistedTarget;
 use App\Telegram\Concerns\SendsHarasserProgress;
 use App\Telegram\Keyboards\BackToMainKeyboard;
 use App\Telegram\Keyboards\PlusRequiredKeyboard;
 use App\Services\FeatureLimitService;
 use App\Services\AutoFillerRunner;
+use App\Services\WhitelistService;
 use SergiX44\Nutgram\Conversations\Conversation;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Types\Internal\InputFile;
@@ -36,14 +38,14 @@ class UserAutoFillerConversation extends Conversation
         $message = $bot->callbackQuery()?->message;
         if ($message && isset($message->message_id)) {
             try {
-                $bot->editMessageText($text, reply_markup: $keyboard);
+                $bot->editMessageText($text, parse_mode: 'HTML', reply_markup: $keyboard);
                 return;
             } catch (\Throwable $e) {
                 // Fallback to sending a new message if edit fails
             }
         }
 
-        $bot->sendMessage($text, reply_markup: $keyboard);
+        $bot->sendMessage($text, parse_mode: 'HTML', reply_markup: $keyboard);
     }
 
     protected function getLocalUser(Nutgram $bot): ?User
@@ -85,7 +87,7 @@ class UserAutoFillerConversation extends Conversation
         $local->last_active_at = now();
         $local->save();
 
-        $intro = "❀ کرم پلاس ❀\n\n"
+        $intro = "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> <b>کرم پلاس</b> <tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji>\n\n"
             . "اسم و فامیلی تارگتت رو بگو تا تو سایتا با همون اسم ثبتش کنم رگبار اس ام اس و تماس فعال بشه 😈\n\n"
             . "ما میایم فرم تماس صد ها سایت رو با همین اسم و شماره ای که میدی پر میکنیم تا آدمای واقعی تارگتت رو به رگبار تماس ببندن.🙃\n\n"
             . "لطفا یکی از دکمه های زیر رو جهت ادامه انتخاب کن :\n\n"
@@ -127,6 +129,13 @@ class UserAutoFillerConversation extends Conversation
         $local = $this->getLocalUser($bot);
         if (!$local) {
             $bot->sendMessage('⛔️ حساب شما پیدا نشد. ابتدا /start را ارسال کنید.');
+            $this->end();
+            return;
+        }
+
+        $whitelist = app(WhitelistService::class);
+        if ($whitelist->isWhitelisted($phone, WhitelistedTarget::TYPE_PHONE)) {
+            $bot->sendMessage($whitelist->getBlockMessage($phone, WhitelistedTarget::TYPE_PHONE), reply_markup: BackToMainKeyboard::make());
             $this->end();
             return;
         }
@@ -176,7 +185,7 @@ class UserAutoFillerConversation extends Conversation
         $time = now()->format('H:i:s');
         $stats = $result['stats'] ?? ['success' => 0, 'failed' => 0, 'total' => 0];
 
-        $message = "🎗 KermPlus | مزاحم‌ساز تکمیل شد\n" .
+        $message = "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> KermPlus | مزاحم‌ساز تکمیل شد\n" .
             "━━━━━━━━━━━━━━━━\n\n" .
             "👤 هدف: {$name}\n" .
             "📱 شماره: {$phone}\n" .
@@ -206,10 +215,10 @@ class UserAutoFillerConversation extends Conversation
     private function nameSelectionKeyboard(): InlineKeyboardMarkup
     {
         return InlineKeyboardMarkup::make()
-            ->addRow(InlineKeyboardButton::make('وارد کردن اسم دلخواه ➥', callback_data: 'autofill_custom_name'))
-            ->addRow(InlineKeyboardButton::make('انتخاب اسم رندوم ➥', callback_data: 'autofill_random_name'))
-            ->addRow(InlineKeyboardButton::make('آموزش نحوه استفاده', url: 'https://t.me/kermpluslearn/9'))
-            ->addRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'main_menu'));
+            ->addRow(InlineKeyboardButton::make('وارد کردن اسم دلخواه ➥', callback_data: 'autofill_custom_name', style: 'danger'))
+            ->addRow(InlineKeyboardButton::make('انتخاب اسم رندوم ➥', callback_data: 'autofill_random_name', style: 'danger'))
+            ->addRow(InlineKeyboardButton::make('آموزش نحوه استفاده', url: 'https://t.me/kermpluslearn/9', style: 'danger'))
+            ->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747'));
     }
 
     public function handleNameChoice(Nutgram $bot): void
@@ -244,7 +253,7 @@ class UserAutoFillerConversation extends Conversation
 
     private function promptForCustomName(Nutgram $bot): void
     {
-        $text = "❀ کرم پلاس ❀\n\n"
+        $text = "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> <b>کرم پلاس</b> <tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji>\n\n"
             . "حله! حالا اسم و فامیلی تارگتت رو به فارسی وارد کن :\n\n"
             . "⚠️ مثال:\n"
             . "علی اکبری\n"

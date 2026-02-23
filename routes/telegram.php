@@ -10,11 +10,9 @@ use App\Telegram\Conversations\ChannelReactionConversation;
 use App\Telegram\Conversations\AdminSubscriptionConversation;
 use App\Telegram\Conversations\AdminPlanConversation;
 use App\Telegram\Conversations\AdminsManagementConversation;
-use App\Telegram\Conversations\AssignPlanConversation;
 use App\Telegram\Conversations\AutoFormConversation;
 use App\Telegram\Conversations\ReactionManagerConversation;
 use App\Telegram\Conversations\SponsorChannelsConversation;
-use App\Telegram\Conversations\SuspendUserConversation;
 use App\Telegram\Conversations\EmailBombConversation;
 use App\Telegram\Conversations\FormFillerConversation;
 use App\Telegram\Conversations\InstagramReporterConversation;
@@ -25,9 +23,9 @@ use App\Telegram\Conversations\TelegramReporterConversation;
 use App\Telegram\Conversations\UserAutoFillerConversation;
 use App\Telegram\Conversations\WhitelistConversation;
 use App\Telegram\Handlers\Admin\AdminExitHandler;
-use App\Telegram\Handlers\Admin\AdminRequestsHandler;
 use App\Telegram\Handlers\BuySubscriptionHandler;
 use App\Telegram\Handlers\MainMenuHandler;
+use App\Telegram\Handlers\SponsorJoinCheckHandler;
 use App\Telegram\Handlers\PaymentPreCheckoutHandler;
 use App\Telegram\Handlers\ReferralHandler;
 use App\Telegram\Handlers\ReporterMenuHandler;
@@ -45,6 +43,7 @@ use App\Telegram\Handlers\SupportInfoHandler;
 use App\Telegram\Handlers\UserFormsHandler;
 use App\Telegram\Handlers\UserProfileHandler;
 use App\Telegram\Handlers\UserStatsHandler;
+use App\Telegram\Middleware\EnsureSponsorJoinMiddleware;
 use SergiX44\Nutgram\Nutgram;
 
 /*
@@ -57,21 +56,21 @@ use SergiX44\Nutgram\Nutgram;
 |
 */
 
+$bot->middleware(EnsureSponsorJoinMiddleware::class);
+
 $bot->onCommand('start', StartCommand::class);
 $bot->onText('/start {code}', StartCommand::class);
 $bot->onCommand('admin', AdminCommand::class);
 $bot->onCallbackQueryData('admin_panel', AdminPanelConversation::class);
 $bot->onCallbackQueryData('admin_manage_subscriptions', AdminSubscriptionConversation::class);
 $bot->onCallbackQueryData('admin_manage_plans', AdminPlanConversation::class);
-$bot->onCallbackQueryData('admin_assign_plan', AssignPlanConversation::class);
 $bot->onCallbackQueryData('admin_manage_admins', AdminsManagementConversation::class);
 $bot->onCallbackQueryData('admin_forms', AutoFormConversation::class);
 $bot->onCallbackQueryData('admin_reactions', ReactionManagerConversation::class);
+$bot->onCallbackQueryData('admin_sponsor_manage', SponsorChannelsConversation::class);
 $bot->onCallbackQueryData('admin_sponsor_list', SponsorChannelsConversation::class);
 $bot->onCallbackQueryData('admin_sponsor_add', SponsorChannelsConversation::class);
 $bot->onCallbackQueryData('admin_sponsor_remove', SponsorChannelsConversation::class);
-$bot->onCallbackQueryData('admin_suspend_user', SuspendUserConversation::class);
-$bot->onCallbackQueryData('admin_unsuspend_quick', SuspendUserConversation::class);
 $bot->onCallbackQueryData('admin_autofiller', AdminPanelConversation::class);
 $bot->onCallbackQueryData('back_admin', AdminPanelConversation::class);
 
@@ -101,6 +100,8 @@ $bot->onCallbackQueryData('telegram_report_account', TelegramReporterConversatio
 $bot->onCallbackQueryData('telegram_report_channel', TelegramReporterConversation::class);
 $bot->onCallbackQueryData('telegram_report_post', TelegramReporterConversation::class);
 $bot->onCallbackQueryData('plus_info', PlusInfoHandler::class);
+$bot->onCallbackQueryData('pro_info', PlusInfoHandler::class);
+$bot->onCallbackQueryData('plan_diff_info', PlusInfoHandler::class);
 $bot->onCallbackQueryData('instagram_report_page', InstagramReporterConversation::class);
 $bot->onCallbackQueryData('instagram_report_post', InstagramReporterConversation::class);
 $bot->onCallbackQueryData('kerm_menu', KermRiziHandler::class);
@@ -116,7 +117,9 @@ $bot->onCallbackQueryData('user_profile', UserProfileHandler::class);
 $bot->onCallbackQueryData('buy_subscription', BuySubscriptionHandler::class);
 $bot->onCallbackQueryData('buy_sub_crypto', BuySubscriptionHandler::class);
 $bot->onCallbackQueryData('buy_sub_star', BuySubscriptionHandler::class);
+$bot->onCallbackQueryData('sponsor_join_check', SponsorJoinCheckHandler::class);
 $bot->onCallbackQueryData('user_referral', ReferralHandler::class);
+$bot->onCallbackQueryData('referral_send_banner', ReferralHandler::class);
 $bot->onCallbackQueryData('referral_claim', ReferralHandler::class);
 $bot->onCallbackQueryData('select_plan_{id}', SelectPlanHandler::class);
 $bot->onCallbackQueryData('pay_crypto_{id}', SelectPlanHandler::class);
@@ -127,7 +130,6 @@ $bot->onCallbackQueryData('main_menu', MainMenuHandler::class);
 $bot->onPreCheckoutQuery(PaymentPreCheckoutHandler::class);
 $bot->onSuccessfulPayment(App\Telegram\Handlers\PaymentSuccessHandler::class);
 
-$bot->onCallbackQueryData('admin_requests', AdminRequestsHandler::class);
 $bot->onCallbackQueryData('admin_exit', AdminExitHandler::class);
 
-$bot->fallback(NotImplementedHandler::class);
+// $bot->fallback(NotImplementedHandler::class);

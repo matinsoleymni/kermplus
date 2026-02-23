@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\User;
+use App\Models\WhitelistedTarget;
 use App\Services\FeatureLimitService;
 use Illuminate\Support\Facades\Http;
 use Throwable;
@@ -12,7 +13,7 @@ class ChannelReactionService
     protected string $apiUrl;
     protected ?string $apiToken;
 
-    public function __construct()
+    public function __construct(private WhitelistService $whitelistService)
     {
         $this->apiUrl = rtrim((string)config('services.channel_reaction.url'), '/');
         $this->apiToken = config('services.channel_reaction.token');
@@ -64,6 +65,10 @@ class ChannelReactionService
         $limit = $limiter->checkNegativeReactionLimit($user);
         if ($limit) {
             return ['error' => $limit];
+        }
+
+        if ($this->whitelistService->isWhitelisted($postLink, WhitelistedTarget::TYPE_TELEGRAM)) {
+            return ['error' => $this->whitelistService->getBlockMessage($postLink, WhitelistedTarget::TYPE_TELEGRAM)];
         }
 
         if (empty($this->apiUrl)) {

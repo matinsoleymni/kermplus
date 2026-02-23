@@ -2,6 +2,7 @@
 
 namespace App\Telegram\Conversations;
 
+use App\Services\SponsorJoinService;
 use SergiX44\Nutgram\Conversations\Conversation;
 use SergiX44\Nutgram\Nutgram;
 use App\Models\SponsorChannel;
@@ -29,12 +30,12 @@ class SponsorChannelsConversation extends Conversation
 
         $keyboard = InlineKeyboardMarkup::make()
             ->addRow(
-                InlineKeyboardButton::make('📋 لیست اسپانسرها', callback_data: 'sponsor_list'),
-                InlineKeyboardButton::make('➕ افزودن اسپانسر', callback_data: 'sponsor_add')
+                InlineKeyboardButton::make('📋 لیست اسپانسرها', callback_data: 'sponsor_list', style: 'danger'),
+                InlineKeyboardButton::make('➕ افزودن اسپانسر', callback_data: 'sponsor_add', style: 'danger')
             )
             ->addRow(
-                InlineKeyboardButton::make('➖ حذف اسپانسر', callback_data: 'sponsor_remove'),
-                InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'admin_panel')
+                InlineKeyboardButton::make('➖ حذف اسپانسر', callback_data: 'sponsor_remove', style: 'danger'),
+                InlineKeyboardButton::make('بازگشت', callback_data: 'admin_panel', style: 'danger', icon: '5352759161945867747')
             );
 
         $bot->sendMessage('📣 مدیریت کانال‌های اسپانسر — یک گزینه انتخاب کنید:', reply_markup: $keyboard);
@@ -69,6 +70,8 @@ class SponsorChannelsConversation extends Conversation
     protected function showList(Nutgram $bot)
     {
         $list = SponsorChannel::orderByDesc('id')->get();
+        $joinService = app(SponsorJoinService::class);
+
         if ($list->isEmpty()) {
             $bot->sendMessage('لیستی موجود نیست.');
             $this->start($bot);
@@ -76,8 +79,10 @@ class SponsorChannelsConversation extends Conversation
         }
         $msg = "• 🤖 اسپانسر ها🍷 •\n\n";
         foreach ($list as $c) {
-            $link = $c->username ? "https://t.me/{$c->username}" : ($c->link ?: '(بدون لینک)');
-            $msg .= "- #{$c->id} | {$c->title} ({$link}) (" . ($c->is_active ? 'Force' : 'Optional') . ")\n";
+            $link = $c->username ?: ($c->link ?: '(بدون لینک)');
+            $mode = $c->is_active ? 'Force' : 'Optional';
+            $verify = $joinService->canVerifyChannel($c) ? 'Verifiable' : 'Invalid';
+            $msg .= "- #{$c->id} | {$c->title} ({$link}) ({$mode} | {$verify})\n";
         }
         $msg .= "\n📆 " . now()->format('Y/m/d') . " - ⏰ " . now()->format('H:i:s') . "\n\n";
 
@@ -94,7 +99,7 @@ class SponsorChannelsConversation extends Conversation
             return;
         }
         $bot->setUserData('new_sponsor_title', $title);
-        $bot->sendMessage('نام کاربری کانال (بدون @) یا لینک را وارد کنید (یا /none):');
+        $bot->sendMessage("نام کاربری کانال (بدون @)، لینک عمومی t.me/username یا chat_id مثل -100... را وارد کنید.\nبرای کانال خصوصی می‌تونی این‌طوری بدی:\n-1001234567890 https://t.me/+InviteCode");
         $this->next('addLink');
     }
 
@@ -102,19 +107,19 @@ class SponsorChannelsConversation extends Conversation
     {
         $text = trim($bot->message()?->text ?? '');
         $title = $bot->getUserData('new_sponsor_title');
-        $username = null;
-        $link = null;
-        if ($text && $text !== '/none') {
-            if (str_starts_with($text, 'http')) {
-                $link = $text;
-            } else {
-                $username = preg_replace('/^@/', '', $text);
-            }
+        $joinService = app(SponsorJoinService::class);
+        $normalized = $joinService->normalizeAdminChannelInput($text);
+
+        if ($normalized === null) {
+            $bot->sendMessage('❌ ورودی نامعتبره. فرمت‌های مجاز: username ، لینک عمومی t.me/username ، chat_id با فرمت -100... ، یا chat_id به‌همراه لینک دعوت.');
+            $this->next('addLink');
+            return;
         }
+
         SponsorChannel::create([
             'title' => $title,
-            'username' => $username,
-            'link' => $link,
+            'username' => $normalized['username'],
+            'link' => $normalized['link'],
             'is_active' => true,
         ]);
         $bot->sendMessage('✅ اسپانسر اضافه شد.');

@@ -20,6 +20,9 @@ class DatabaseSeeder extends Seeder
             [
                 'description' => 'دسترسی کامل به همه ویژگی‌ها',
                 'price' => 10.00,
+                'price_usd' => 10.00,
+                'price_irr' => 890000,
+                'price_stars' => 20,
                 'duration_days' => 0, // بدون انقضا
                 'max_sms_per_day' => 0,
                 'max_email_per_day' => 0,
@@ -34,6 +37,9 @@ class DatabaseSeeder extends Seeder
             [
                 'description' => 'دسترسی به بمبرها و ریپورتر',
                 'price' => 5.00,
+                'price_usd' => 5.00,
+                'price_irr' => 490000,
+                'price_stars' => 10,
                 'duration_days' => 0, // بدون انقضا
                 'max_sms_per_day' => 0,
                 'max_email_per_day' => 0,

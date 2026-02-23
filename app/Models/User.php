@@ -26,6 +26,7 @@ class User extends Authenticatable
         'is_admin',
         'role',
         'telegram_id',
+        'telegram_username',
         'referral_code',
         'referred_by',
         'suspended',

@@ -3,7 +3,9 @@
 namespace App\Telegram\Conversations;
 
 use App\Models\User;
+use App\Models\WhitelistedTarget;
 use App\Services\ChannelReactionService;
+use App\Services\WhitelistService;
 use App\Telegram\Commands\StartCommand;
 use App\Telegram\Keyboards\BackToMainKeyboard;
 use SergiX44\Nutgram\Conversations\Conversation;
@@ -44,7 +46,7 @@ class ChannelReactionConversation extends Conversation
         $local->save();
 
         $keyboard = InlineKeyboardMarkup::make()
-            ->addRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'main_menu'));
+            ->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747'));
 
         $this->sendOrEditMessage(
             $bot,
@@ -67,12 +69,19 @@ class ChannelReactionConversation extends Conversation
             return;
         }
 
+        $whitelist = app(WhitelistService::class);
+        if ($whitelist->isWhitelisted($link, WhitelistedTarget::TYPE_TELEGRAM)) {
+            $bot->sendMessage($whitelist->getBlockMessage($link, WhitelistedTarget::TYPE_TELEGRAM));
+            $this->end();
+            return;
+        }
+
         $this->postLink = $link;
 
         $keyboard = InlineKeyboardMarkup::make()
             ->addRow(
-                InlineKeyboardButton::make('🎲 انتخاب خودکار', callback_data: 'reaction_skip_emoji'),
-                InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'main_menu')
+                InlineKeyboardButton::make('🎲 انتخاب خودکار', callback_data: 'reaction_skip_emoji', style: 'danger'),
+                InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747')
             );
 
         $bot->sendMessage(

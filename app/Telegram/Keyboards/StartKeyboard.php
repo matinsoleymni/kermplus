@@ -11,21 +11,21 @@ class StartKeyboard
     {
         $keyboard = InlineKeyboardMarkup::make()
             ->addRow(
-                InlineKeyboardButton::make('👤 حساب من 👤', callback_data: 'user_profile')
+                InlineKeyboardButton::make('👤 حساب من 👤', callback_data: 'user_profile', style: 'danger')
             )
             ->addRow(
-                InlineKeyboardButton::make('🪱 کرم ریزی 🪱', callback_data: 'kerm_menu')
+                InlineKeyboardButton::make('🪱 کرم ریزی 🪱', callback_data: 'kerm_menu', style: 'danger')
             )
             ->addRow(
-                InlineKeyboardButton::make('📞 پشتیبانی 📞', url: 'https://t.me/kermsup')
+                InlineKeyboardButton::make('📞 پشتیبانی 📞', url: 'https://t.me/kermsup', style: 'danger')
             )
             ->addRow(
-                InlineKeyboardButton::make('🤍 لیست سفید 🤍', callback_data: 'whitelist_menu')
+                InlineKeyboardButton::make('🤍 لیست سفید 🤍', callback_data: 'whitelist_menu', style: 'danger')
             );
 
         if (!$hasActiveSubscription) {
             $keyboard->addRow(
-                InlineKeyboardButton::make('🎗 ارتقا به نسخه پلاس', callback_data: 'buy_subscription')
+                InlineKeyboardButton::make('ارتقا به نسخه پلاس', callback_data: 'buy_subscription', style: 'danger')
             );
         }
 

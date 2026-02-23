@@ -3,9 +3,11 @@
 namespace App\Telegram\Commands;
 
 use App\Models\User;
+use App\Services\ReferralNotificationService;
 use App\Services\ReferralService;
+use App\Services\SponsorJoinService;
 use App\Services\SubscriptionService;
-use App\Telegram\Keyboards\StartKeyboard;
+use App\Telegram\Keyboards\MainMenuKeyboard;
 use Illuminate\Support\Str;
 use SergiX44\Nutgram\Handlers\Type\Command;
 use SergiX44\Nutgram\Nutgram;
@@ -29,26 +31,35 @@ class StartCommand extends Command
         }
 
         $messageText = $bot->message()?->text ?? '';
-        $referralCode = $this->extractReferralCode($messageText);
-        $referrer = $referralCode
-            ? User::where('referral_code', $referralCode)->first()
-            : null;
+        $incomingReferralCode = $this->extractReferralCode($messageText);
+        if ($incomingReferralCode !== null) {
+            $bot->setUserData('pending_referral_code', $incomingReferralCode);
+        }
+
+        $pendingReferralCode = trim((string) ($bot->getUserData('pending_referral_code') ?? ''));
+        $effectiveReferralCode = $incomingReferralCode ?? ($pendingReferralCode !== '' ? $pendingReferralCode : null);
+        $telegramUsername = $this->normalizeTelegramUsername($tgUser->username ?? null);
+        $displayName = trim($tgUser->first_name . ' ' . ($tgUser->last_name ?? ''));
+        if ($displayName === '') {
+            $displayName = 'Telegram User';
+        }
 
         $referralService = app(ReferralService::class);
         $local = User::where('telegram_id', $tgUser->id)->first();
         if (!$local) {
             // تلگرام ایمیل نمی‌دهد؛ برای عبور از constraint ایمیل یک مقدار یکتا می‌سازیم
-            $email = $tgUser->username
-                ? ($tgUser->username . '@telegram.local')
-                : ('tg' . $tgUser->id . '@telegram.local');
+            $email = $telegramUsername
+                ? ($telegramUsername . '@telegram.local')
+                : ('tg_' . $tgUser->id . '@telegram.local');
 
             $local = User::create([
                 'telegram_id' => $tgUser->id,
-                'name' => $tgUser->first_name . ' ' . ($tgUser->last_name ?? ''),
+                'telegram_username' => $telegramUsername,
+                'name' => $displayName,
                 'email' => $email,
                 'password' => bcrypt(Str::random(32)),
                 'referral_code' => $referralService->generateUniqueCode(),
-                'referred_by' => $referrer?->id,
+                'referred_by' => null,
             ]);
         }
 
@@ -56,24 +67,54 @@ class StartCommand extends Command
             $local->referral_code = $referralService->generateUniqueCode();
         }
 
-        if (!$local->referred_by && $referrer && $referrer->id !== $local->id) {
-            $local->referred_by = $referrer->id;
-        }
-
+        $local->name = $displayName;
+        $local->telegram_username = $telegramUsername;
         $local->last_active_at = now();
         $local->save();
 
         if ($local->isSuspended()) {
-            $bot->sendMessage('⛔️ حساب شما موقتا معلق شده است. برای رفع مشکل با @kermsup تماس بگیرید.');
+            $bot->sendMessage('⛔️ حساب شما موقتا معلق شده است. برای رفع مشکل به @kermsup پیام بدید.');
             return;
         }
+
+        if (!app(SponsorJoinService::class)->enforce($bot)) {
+            return;
+        }
+
+        $this->assignReferralAfterSponsorJoin($bot, $local, $effectiveReferralCode);
 
         $hasActiveSubscription = app(SubscriptionService::class)->hasActiveSubscription($local);
 
         $bot->sendMessage(
-            "❀ کرم پلاس ❀\n\nاگه کسی اذیتت کرده ...\nبا ربات ما توهم می‌تونی حسابی اذیتش کنی :)\n\nبرای شروع یکی از گزینه‌های زیر رو انتخاب کن:",
-            reply_markup: StartKeyboard::make($hasActiveSubscription)
+            "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> <b>کرم پلاس</b> <tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji>\n\nاگه کسی اذیتت کرده ...\nبا ربات ما توهم می‌تونی حسابی اذیتش کنی :)\n\n<tg-emoji emoji-id='4927295007204836791'>🪱</tg-emoji> برای شروع یکی از گزینه‌های زیر رو انتخاب کن:",
+            parse_mode: 'HTML',
+            reply_markup: MainMenuKeyboard::make($hasActiveSubscription)
         );
+    }
+
+    private function assignReferralAfterSponsorJoin(Nutgram $bot, User $local, ?string $referralCode): void
+    {
+        if ($local->referred_by) {
+            $bot->setUserData('pending_referral_code', null);
+            return;
+        }
+
+        $referralCode = trim((string) $referralCode);
+        if ($referralCode === '') {
+            return;
+        }
+
+        $referrer = User::where('referral_code', $referralCode)->first();
+        if (!$referrer || $referrer->id === $local->id) {
+            $bot->setUserData('pending_referral_code', null);
+            return;
+        }
+
+        $local->referred_by = $referrer->id;
+        $local->save();
+        $bot->setUserData('pending_referral_code', null);
+
+        app(ReferralNotificationService::class)->notifyReferrerAboutInvite($bot, $referrer, $local);
     }
 
     private function extractReferralCode(string $messageText): ?string
@@ -112,5 +153,20 @@ class StartCommand extends Command
         }
 
         return Str::upper($payload);
+    }
+
+    private function normalizeTelegramUsername(?string $username): ?string
+    {
+        $username = trim((string) $username);
+        if ($username === '') {
+            return null;
+        }
+
+        $username = ltrim($username, '@');
+        if (!preg_match('/^[A-Za-z0-9_]{3,32}$/', $username)) {
+            return null;
+        }
+
+        return mb_strtolower($username);
     }
 }

@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Models\WhitelistedTarget;
 use App\Services\FeatureLimitService;
 use App\Services\WhitelistService;
+use App\Telegram\Handlers\MainMenuHandler;
 use App\Telegram\Keyboards\PlusRequiredKeyboard;
 use SergiX44\Nutgram\Conversations\Conversation;
 use SergiX44\Nutgram\Nutgram;
@@ -14,32 +15,75 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 
 class WhitelistConversation extends Conversation
 {
+    private const ACTION_PICK_PHONE = 'whitelist_pick_phone';
+    private const ACTION_PICK_EMAIL = 'whitelist_pick_email';
+    private const ACTION_PICK_TELEGRAM = 'whitelist_pick_telegram';
+    private const ACTION_PICK_INSTAGRAM_EMAIL = 'whitelist_pick_instagram_email';
+    private const ACTION_SHOW_REGISTERED = 'whitelist_show_registered';
+    private const ACTION_BACK_MENU = 'whitelist_back_menu';
+    private const ACTION_CONFIRM = 'confirm_whitelist_yes';
+
     protected function getLocalUser(Nutgram $bot): ?User
     {
         $tgUser = $bot->callbackQuery()?->from ?? $bot->user();
-        if (!$tgUser) return null;
+        if (!$tgUser) {
+            return null;
+        }
 
         return User::where('telegram_id', $tgUser->id)->first();
     }
 
-    protected function cancelKeyboard(): InlineKeyboardMarkup
+    protected function inputKeyboard(): InlineKeyboardMarkup
     {
         return InlineKeyboardMarkup::make()
-            ->addRow(InlineKeyboardButton::make('❌ لغو', callback_data: 'cancel_whitelist'));
+            ->addRow(
+                InlineKeyboardButton::make('🔙 بازگشت به منوی لیست سفید', callback_data: self::ACTION_BACK_MENU, style: 'danger')
+            )
+            ->addRow(
+                InlineKeyboardButton::make('❌ لغو', callback_data: 'cancel_whitelist', style: 'danger')
+            );
     }
 
-    protected function limitReachedKeyboard(): InlineKeyboardMarkup
+    protected function confirmKeyboard(): InlineKeyboardMarkup
     {
         return InlineKeyboardMarkup::make()
-            ->addRow(InlineKeyboardButton::make('✏️ ویرایش شماره', callback_data: 'whitelist_edit'))
-            ->addRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'main_menu'));
+            ->addRow(
+                InlineKeyboardButton::make('✅ بله، ذخیره کن', callback_data: self::ACTION_CONFIRM, style: 'danger'),
+                InlineKeyboardButton::make('❌ لغو', callback_data: 'cancel_whitelist', style: 'danger')
+            );
+    }
+
+    protected function menuKeyboard(User $local, WhitelistService $whitelist): InlineKeyboardMarkup
+    {
+        $targets = $whitelist->getUserTargets($local)->keyBy('type');
+
+        $status = static function (string $type) use ($targets): string {
+            return $targets->has($type) ? '✅ ثبت شده' : '➕ ثبت نشده';
+        };
+
+        return InlineKeyboardMarkup::make()
+            ->addRow(
+                InlineKeyboardButton::make("شماره: {$status(WhitelistedTarget::TYPE_PHONE)}", callback_data: self::ACTION_PICK_PHONE, style: 'danger', icon: '5172893417717367746')
+            )
+            ->addRow(
+                InlineKeyboardButton::make("ایمیل: {$status(WhitelistedTarget::TYPE_EMAIL)}", callback_data: self::ACTION_PICK_EMAIL, style: 'danger', icon: '5456174900622412791')
+            )
+            ->addRow(
+                InlineKeyboardButton::make("تلگرام: {$status(WhitelistedTarget::TYPE_TELEGRAM)}", callback_data: self::ACTION_PICK_TELEGRAM, style: 'danger', icon: '5364125616801073577')
+            )
+            ->addRow(
+                InlineKeyboardButton::make("آیدی اینستاگرام: {$status(WhitelistedTarget::TYPE_INSTAGRAM_EMAIL)}", callback_data: self::ACTION_PICK_INSTAGRAM_EMAIL, style: 'danger', icon: '5364310996179503764')
+            )
+            ->addRow(
+                InlineKeyboardButton::make('مشاهده موارد ثبت‌شده', callback_data: self::ACTION_SHOW_REGISTERED, style: 'danger', icon: '5197269100878907942')
+            )
+            ->addRow(
+                InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747')
+            );
     }
 
     public function start(Nutgram $bot)
     {
-        $action = $bot->callbackQuery()?->data;
-        $isEditRequest = $action === 'whitelist_edit';
-
         $local = $this->getLocalUser($bot);
         if (!$local) {
             $bot->sendMessage('⛔️ حساب شما پیدا نشد. ابتدا /start را ارسال کنید.');
@@ -55,172 +99,26 @@ class WhitelistConversation extends Conversation
 
         $limiter = app(FeatureLimitService::class);
         $limit = $limiter->checkWhitelistAdditionLimit($local);
-
-        if (!$isEditRequest && $limit) {
-            if ($limit === FeatureLimitService::WHITELIST_ALREADY_ADDED_MESSAGE) {
-                $registered = $limiter->getWhitelistAddedTarget($local) ?? 'نامشخص';
-                $bot->sendMessage(
-                    "{$limit}\n\n📱 شماره ثبت‌شده: {$registered}\nبرای تغییر شماره از دکمه زیر استفاده کن.",
-                    reply_markup: $this->limitReachedKeyboard()
-                );
-            } else {
-                $bot->sendMessage($limit, reply_markup: PlusRequiredKeyboard::make('main_menu'));
-            }
+        if ($limit) {
+            $bot->sendMessage($limit, parse_mode: 'HTML', reply_markup: PlusRequiredKeyboard::make('main_menu'));
             $this->end();
             return;
         }
-
-        if ($isEditRequest) {
-            if ($limit && $limit !== FeatureLimitService::WHITELIST_ALREADY_ADDED_MESSAGE) {
-                $bot->sendMessage($limit, reply_markup: PlusRequiredKeyboard::make('main_menu'));
-                $this->end();
-                return;
-            }
-
-            $previousValue = $limiter->getWhitelistAddedTarget($local);
-            if (!$previousValue) {
-                $bot->setUserData('whitelist_edit_mode', true);
-                $bot->setUserData('whitelist_previous_value', null);
-
-                $msg = "✏️ ویرایش شماره وایت‌لیست\n\n";
-                $msg .= "شماره قبلی شما در سیستم مشخص نیست.\n";
-                $msg .= "برای ادامه، اول شماره قبلی‌ات که قبلا وایت‌لیست کردی رو بفرست:";
-
-                $bot->sendMessage($msg, reply_markup: $this->cancelKeyboard());
-                $this->next('awaitPreviousValue');
-                return;
-            }
-
-            $bot->setUserData('whitelist_edit_mode', true);
-            $bot->setUserData('whitelist_previous_value', $previousValue);
-
-            $msg = "✏️ ویرایش شماره وایت‌لیست\n\n";
-            $msg .= "📱 شماره فعلی: {$previousValue}\n\n";
-            $msg .= "شماره جدید را با یکی از فرمت‌های زیر بفرست:\n";
-            $msg .= "• 09123456789\n";
-            $msg .= "• 9123456789\n";
-            $msg .= "• 989123456789";
-
-            $bot->sendMessage($msg, reply_markup: $this->cancelKeyboard());
-            $this->next('awaitValue');
-            return;
-        }
-
-        $bot->setUserData('whitelist_edit_mode', false);
-        $bot->setUserData('whitelist_previous_value', null);
 
         $local->last_active_at = now();
         $local->save();
 
-        $msg = "❀ کرم پلاس ❀\n\n";
-        $msg .= "به بخش لیست سفید 🤍 خوش اومدی ✋🏻\n";
-        $msg .= "اگه شمارت رو به لیست سفید اضافه کنی ، ضد بمبر میشه و کسی نمیتونه اذیتت کنه باهاش :)\n\n";
-        $msg .= "📝 فرمت ‌های قابل قبول:\n";
-        $msg .= "• با صفر: 09123456789 (۱۱ رقم)\n";
-        $msg .= "• بدون صفر: 9123456789 (۱۰ رقم)\n";
-        $msg .= "• با کد کشور: 989123456789 (۱۲ رقم)\n\n";
-        $msg .= "⚠️ دقت کن:\n";
-        $msg .= "• هر اکانت پلاس فقط میتونه یک شماره رو به وایت لیست اضافه کنه\n";
-        $msg .= "• شماره رو بدون فاصله و بدون خط تیره وارد کن\n";
-        $msg .= "• فقط اعداد انگلیسی مجازه\n\n";
-        $msg .= "📱شماره مورد نظرت رو برام بفرست تا ضد بمبرش کنم :";
-
-        $bot->sendMessage($msg, reply_markup: $this->cancelKeyboard());
-        $this->next('awaitValue');
+        $this->showWhitelistMenu($bot, $local);
     }
 
-    public function awaitPreviousValue(Nutgram $bot): void
-    {
-        if ($bot->callbackQuery()?->data === 'cancel_whitelist') {
-            $bot->answerCallbackQuery();
-            $bot->sendMessage('❌ لغو شد.');
-            $this->end();
-            return;
-        }
-
-        $previousValue = trim((string)($bot->message()?->text ?? ''));
-        if ($previousValue === '' || mb_strlen($previousValue) < 3) {
-            $bot->sendMessage('⛔️ شماره قبلی معتبر نیست. دوباره ارسال کن.');
-            return;
-        }
-
-        $whitelist = app(WhitelistService::class);
-        $previousType = $whitelist->guessType($previousValue);
-        if ($previousType !== WhitelistedTarget::TYPE_PHONE) {
-            $bot->sendMessage('⛔️ فقط شماره موبایل قابل قبول است. دوباره شماره قبلی را ارسال کن.');
-            return;
-        }
-
-        if (!$whitelist->isWhitelisted($previousValue, $previousType)) {
-            $bot->sendMessage('⛔️ این شماره در وایت‌لیست پیدا نشد. شماره قبلی صحیح را وارد کن.');
-            return;
-        }
-
-        $bot->setUserData('whitelist_previous_value', $previousValue);
-
-        $msg = "✅ شماره قبلی تایید شد.\n";
-        $msg .= "حالا شماره جدید را بفرست:\n";
-        $msg .= "• 09123456789\n";
-        $msg .= "• 9123456789\n";
-        $msg .= "• 989123456789";
-
-        $bot->sendMessage($msg, reply_markup: $this->cancelKeyboard());
-        $this->next('awaitValue');
-    }
-
-    public function awaitValue(Nutgram $bot)
-    {
-        if ($bot->callbackQuery()?->data === 'cancel_whitelist') {
-            $bot->answerCallbackQuery();
-            $bot->sendMessage('❌ لغو شد.');
-            $this->end();
-            return;
-        }
-
-        $value = trim((string)($bot->message()?->text ?? ''));
-        if ($value === '' || mb_strlen($value) < 3) {
-            $bot->sendMessage('⛔️ مقدار ارسال‌شده معتبر نیست. حداقل ۳ کاراکتر وارد کنید.');
-            return;
-        }
-
-        $whitelist = app(WhitelistService::class);
-        $type = $whitelist->guessType($value);
-
-        $isEditMode = (bool) $bot->getUserData('whitelist_edit_mode');
-        $previousValue = (string) ($bot->getUserData('whitelist_previous_value') ?? '');
-        if ($isEditMode && $previousValue !== '') {
-            $previousType = $whitelist->guessType($previousValue);
-            $isSameValue = $type === $previousType
-                && WhitelistedTarget::normalizeValue($value, $type) === WhitelistedTarget::normalizeValue($previousValue, $previousType);
-            if ($isSameValue) {
-                $bot->sendMessage('ℹ️ این همان شماره ثبت‌شده فعلی شماست. یک شماره جدید وارد کنید.');
-                return;
-            }
-        }
-
-        if ($whitelist->isWhitelisted($value, $type)) {
-            $bot->sendMessage('ℹ️ این مورد از قبل در وایت‌لیست ثبت شده است.');
-            $this->end();
-            return;
-        }
-
-        $bot->setUserData('whitelist_value', $value);
-        $bot->setUserData('whitelist_type', $type);
-
-        $keyboard = InlineKeyboardMarkup::make()
-            ->addRow(InlineKeyboardButton::make('✅ بله، اضافه کن', callback_data: 'confirm_whitelist_yes'), InlineKeyboardButton::make('❌ لغو', callback_data: 'cancel_whitelist'));
-
-        $confirmAction = $isEditMode ? 'ویرایش کنی' : 'اضافه کنی';
-        $bot->sendMessage(
-            "❓ مطمئنی میخوای {$this->typeLabel($type)} {$value} رو در لیست سفید {$confirmAction}؟",
-            reply_markup: $keyboard
-        );
-        $this->next('confirmAdd');
-    }
-
-    public function confirmAdd(Nutgram $bot)
+    public function handleMenuAction(Nutgram $bot): void
     {
         $data = $bot->callbackQuery()?->data;
+        if ($data === null) {
+            $bot->sendMessage('ℹ️ از دکمه‌های منوی لیست سفید استفاده کن.');
+            return;
+        }
+
         if ($data === 'cancel_whitelist') {
             $bot->answerCallbackQuery();
             $bot->sendMessage('❌ لغو شد.');
@@ -228,15 +126,151 @@ class WhitelistConversation extends Conversation
             return;
         }
 
-        if ($data !== 'confirm_whitelist_yes') {
+        if ($data === 'main_menu') {
+            $bot->answerCallbackQuery();
+            $this->end();
+            app(MainMenuHandler::class)($bot);
+            return;
+        }
+
+        $local = $this->getLocalUser($bot);
+        if (!$local) {
+            $bot->answerCallbackQuery();
+            $bot->sendMessage('⛔️ حساب شما پیدا نشد. ابتدا /start را ارسال کنید.');
+            $this->end();
+            return;
+        }
+
+        $whitelist = app(WhitelistService::class);
+
+        if ($data === self::ACTION_SHOW_REGISTERED) {
+            $bot->answerCallbackQuery();
+            $this->showWhitelistMenu($bot, $local, true);
+            return;
+        }
+
+        $type = $this->resolveTypeFromAction($data);
+        if ($type === null) {
             $bot->answerCallbackQuery(text: '⛔️ گزینه نامعتبر است.');
             return;
         }
 
-        $value = $bot->getUserData('whitelist_value');
-        $type = $bot->getUserData('whitelist_type');
-        $isEditMode = (bool) $bot->getUserData('whitelist_edit_mode');
-        $previousValue = (string) ($bot->getUserData('whitelist_previous_value') ?? '');
+        $bot->answerCallbackQuery();
+        $bot->setUserData('whitelist_selected_type', $type);
+        $bot->setUserData('whitelist_pending_value', null);
+
+        $existing = $whitelist->getUserTarget($local, $type);
+        $currentText = $existing
+            ? "✅ مقدار فعلی: <code>{$existing->value}</code>\n\n"
+            : "ℹ️ برای این بخش هنوز مقداری ثبت نکردی.\n\n";
+
+        $text = "🧾 ثبت/ویرایش {$whitelist->getTypeLabel($type)}\n\n";
+        $text .= $currentText;
+        $text .= $this->typeInstruction($type);
+
+        $this->sendOrEditMessage($bot, $text, $this->inputKeyboard());
+        $this->next('awaitValue');
+    }
+
+    public function awaitValue(Nutgram $bot): void
+    {
+        $data = $bot->callbackQuery()?->data;
+        if ($data === self::ACTION_BACK_MENU) {
+            $bot->answerCallbackQuery();
+            $local = $this->getLocalUser($bot);
+            if (!$local) {
+                $bot->sendMessage('⛔️ حساب شما پیدا نشد. ابتدا /start را ارسال کنید.');
+                $this->end();
+                return;
+            }
+
+            $this->showWhitelistMenu($bot, $local);
+            return;
+        }
+
+        if ($data === 'cancel_whitelist') {
+            $bot->answerCallbackQuery();
+            $bot->sendMessage('❌ لغو شد.');
+            $this->end();
+            return;
+        }
+
+        if ($data !== null) {
+            $bot->answerCallbackQuery(text: '⛔️ مقدار را به صورت متن ارسال کن.');
+            return;
+        }
+
+        $local = $this->getLocalUser($bot);
+        if (!$local) {
+            $bot->sendMessage('⛔️ حساب شما پیدا نشد. ابتدا /start را ارسال کنید.');
+            $this->end();
+            return;
+        }
+
+        $type = (string)($bot->getUserData('whitelist_selected_type') ?? '');
+        $whitelist = app(WhitelistService::class);
+        if (!in_array($type, $whitelist->getSupportedInputTypes(), true)) {
+            $bot->sendMessage('⛔️ نوع وایت‌لیست نامعتبر است. دوباره وارد بخش لیست سفید شو.');
+            $this->end();
+            return;
+        }
+
+        $value = trim((string)($bot->message()?->text ?? ''));
+        if (!$whitelist->validateForType($value, $type)) {
+            $bot->sendMessage("⛔️ مقدار واردشده معتبر نیست.\n\n" . $this->typeInstruction($type), reply_markup: $this->inputKeyboard());
+            return;
+        }
+
+        $existing = $whitelist->getUserTarget($local, $type);
+        $sameAsExisting = $existing
+            && WhitelistedTarget::normalizeValue($value, $type) === WhitelistedTarget::normalizeValue($existing->value, $type);
+
+        if (!$sameAsExisting && $whitelist->isWhitelisted($value, $type)) {
+            $bot->sendMessage('ℹ️ این مورد از قبل در وایت‌لیست ثبت شده است. مقدار دیگری ارسال کن یا برگرد.');
+            return;
+        }
+
+        $displayValue = $whitelist->normalizeForDisplay($value, $type);
+        $bot->setUserData('whitelist_pending_value', $displayValue);
+
+        $bot->sendMessage(
+            "❓ مطمئنی میخوای {$whitelist->getTypeLabel($type)} زیر ذخیره بشه؟\n\n<code>{$displayValue}</code>",
+            parse_mode: 'HTML',
+            reply_markup: $this->confirmKeyboard()
+        );
+        $this->next('confirmAdd');
+    }
+
+    public function confirmAdd(Nutgram $bot): void
+    {
+        $data = $bot->callbackQuery()?->data;
+        if ($data === self::ACTION_BACK_MENU) {
+            $bot->answerCallbackQuery();
+            $local = $this->getLocalUser($bot);
+            if (!$local) {
+                $bot->sendMessage('⛔️ حساب شما پیدا نشد. ابتدا /start را ارسال کنید.');
+                $this->end();
+                return;
+            }
+
+            $this->showWhitelistMenu($bot, $local);
+            return;
+        }
+
+        if ($data === 'cancel_whitelist') {
+            $bot->answerCallbackQuery();
+            $bot->sendMessage('❌ لغو شد.');
+            $this->end();
+            return;
+        }
+
+        if ($data !== self::ACTION_CONFIRM) {
+            $bot->answerCallbackQuery(text: '⛔️ گزینه نامعتبر است.');
+            return;
+        }
+
+        $value = trim((string)$bot->getUserData('whitelist_pending_value'));
+        $type = trim((string)$bot->getUserData('whitelist_selected_type'));
 
         if (!$value || !$type) {
             $bot->answerCallbackQuery();
@@ -262,70 +296,137 @@ class WhitelistConversation extends Conversation
 
         $limiter = app(FeatureLimitService::class);
         $limit = $limiter->checkWhitelistAdditionLimit($local);
-        if ($limit && (!$isEditMode || $limit !== FeatureLimitService::WHITELIST_ALREADY_ADDED_MESSAGE)) {
+        if ($limit) {
             $bot->answerCallbackQuery();
-            $bot->sendMessage($limit, reply_markup: PlusRequiredKeyboard::make('main_menu'));
+            $bot->sendMessage($limit, parse_mode: 'HTML', reply_markup: PlusRequiredKeyboard::make('main_menu'));
             $this->end();
             return;
         }
 
         $whitelist = app(WhitelistService::class);
-        if ($whitelist->isWhitelisted($value, $type)) {
+        if (!in_array($type, $whitelist->getSupportedInputTypes(), true)) {
+            $bot->answerCallbackQuery();
+            $bot->sendMessage('⛔️ نوع وایت‌لیست نامعتبر است.');
+            $this->end();
+            return;
+        }
+
+        if (!$whitelist->validateForType($value, $type)) {
+            $bot->answerCallbackQuery();
+            $bot->sendMessage('⛔️ مقدار ارسال‌شده معتبر نیست.');
+            $this->end();
+            return;
+        }
+
+        $existing = $whitelist->getUserTarget($local, $type);
+        $sameAsExisting = $existing
+            && WhitelistedTarget::normalizeValue($value, $type) === WhitelistedTarget::normalizeValue($existing->value, $type);
+
+        if (!$sameAsExisting && $whitelist->isWhitelisted($value, $type)) {
             $bot->answerCallbackQuery();
             $bot->sendMessage('ℹ️ این مورد از قبل در وایت‌لیست ثبت شده است.');
             $this->end();
             return;
         }
 
-        if ($isEditMode) {
-            if ($previousValue === '') {
-                $previousValue = $limiter->getWhitelistAddedTarget($local) ?? '';
-            }
-
-            if ($previousValue === '') {
-                $bot->answerCallbackQuery();
-                $bot->sendMessage('⛔️ شماره قبلی برای ویرایش پیدا نشد.');
-                $this->end();
-                return;
-            }
-
-            $previousType = $whitelist->guessType($previousValue);
-            WhitelistedTarget::query()->forIdentifier($previousValue, $previousType)->delete();
-
-            WhitelistedTarget::create([
-                'type' => $type,
-                'value' => $value,
-                'label' => null,
-            ]);
-
-            $limiter->updateWhitelistAddedTarget($local, $value);
-
-            $bot->answerCallbackQuery(text: '✅ ویرایش شد.');
-            $bot->sendMessage("✅ شماره وایت‌لیست ویرایش شد.\nنوع: {$this->typeLabel($type)}\nمقدار جدید: {$value}");
+        try {
+            $saved = $whitelist->createOrUpdateForUser($local, $type, $value);
+        } catch (\Throwable) {
+            $bot->answerCallbackQuery();
+            $bot->sendMessage('⛔️ ثبت این مقدار ممکن نیست. احتمالا قبلا در لیست سفید ثبت شده است.');
             $this->end();
             return;
         }
+        $limiter->recordWhitelistAddition($local, "{$type}:{$saved->value}");
 
-        WhitelistedTarget::create([
-            'type' => $type,
-            'value' => $value,
-            'label' => null,
-        ]);
+        $bot->answerCallbackQuery(text: '✅ ذخیره شد.');
+        $bot->sendMessage("✅ {$whitelist->getTypeLabel($type)} با موفقیت ذخیره شد:\n<code>{$saved->value}</code>", parse_mode: 'HTML');
 
-        $limiter->recordWhitelistAddition($local, $value);
-
-        $bot->answerCallbackQuery(text: '✅ ثبت شد.');
-        $bot->sendMessage("✅ مورد به وایت‌لیست اضافه شد.\nنوع: {$this->typeLabel($type)}\nمقدار: {$value}");
-        $this->end();
+        $bot->setUserData('whitelist_pending_value', null);
+        $this->showWhitelistMenu($bot, $local, true);
     }
 
-    private function typeLabel(string $type): string
+    private function showWhitelistMenu(Nutgram $bot, User $local, bool $withSummary = false): void
+    {
+        $whitelist = app(WhitelistService::class);
+        $bot->setUserData('whitelist_selected_type', null);
+        $bot->setUserData('whitelist_pending_value', null);
+
+        $msg = "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> <b>کرم پلاس</b> <tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji>\n\n";
+        $msg .= "به بخش لیست سفید 🤍 خوش اومدی.\n";
+        $msg .= "اینجا می‌تونی این موارد رو ثبت یا ویرایش کنی:\n";
+        $msg .= "• شماره موبایل\n";
+        $msg .= "• ایمیل\n";
+        $msg .= "• کانال/بات/اکانت تلگرام (یکی)\n";
+        $msg .= "• آیدی اکانت اینستاگرام\n\n";
+
+        if ($withSummary) {
+            $msg .= "\n\n" . $this->buildRegisteredSummary($local, $whitelist);
+        }
+
+        $this->sendOrEditMessage($bot, $msg, $this->menuKeyboard($local, $whitelist));
+        $this->next('handleMenuAction');
+    }
+
+    private function buildRegisteredSummary(User $local, WhitelistService $whitelist): string
+    {
+        $targets = $whitelist->getUserTargets($local)->keyBy('type');
+
+        $line = static function (string $type, string $title) use ($targets): string {
+            $value = data_get($targets->get($type), 'value', 'ثبت نشده');
+            return "{$title}: {$value}";
+        };
+
+        $msg = "<tg-emoji emoji-id='5197269100878907942'>✍️</tg-emoji> موارد ثبت‌شده شما:\n";
+        $msg .= "• " . $line(WhitelistedTarget::TYPE_PHONE, 'شماره') . "\n";
+        $msg .= "• " . $line(WhitelistedTarget::TYPE_EMAIL, 'ایمیل') . "\n";
+        $msg .= "• " . $line(WhitelistedTarget::TYPE_TELEGRAM, 'تلگرام') . "\n";
+        $msg .= "• " . $line(WhitelistedTarget::TYPE_INSTAGRAM_EMAIL, 'آیدی اینستاگرام');
+
+        return $msg;
+    }
+
+    private function resolveTypeFromAction(string $action): ?string
+    {
+        return match ($action) {
+            self::ACTION_PICK_PHONE => WhitelistedTarget::TYPE_PHONE,
+            self::ACTION_PICK_EMAIL => WhitelistedTarget::TYPE_EMAIL,
+            self::ACTION_PICK_TELEGRAM => WhitelistedTarget::TYPE_TELEGRAM,
+            self::ACTION_PICK_INSTAGRAM_EMAIL => WhitelistedTarget::TYPE_INSTAGRAM_EMAIL,
+            default => null,
+        };
+    }
+
+    private function typeInstruction(string $type): string
     {
         return match ($type) {
-            WhitelistedTarget::TYPE_PHONE => 'شماره',
-            WhitelistedTarget::TYPE_EMAIL => 'ایمیل',
-            WhitelistedTarget::TYPE_TELEGRAM => 'کاربر',
-            default => 'هدف',
+            WhitelistedTarget::TYPE_PHONE => "شماره موبایل را بفرست.\nفرمت‌های معتبر:\n• 09123456789\n• 9123456789\n• 989123456789",
+            WhitelistedTarget::TYPE_EMAIL => "ایمیل موردنظر را بفرست.\nمثال: sample@gmail.com",
+            WhitelistedTarget::TYPE_TELEGRAM => "یکی از این حالت‌ها را بفرست:\n• یوزرنیم: username\n• با @: @username\n• لینک: https://t.me/username\n• لینک پست: https://t.me/username/123",
+            WhitelistedTarget::TYPE_INSTAGRAM_EMAIL => "آیدی اکانت اینستاگرام را بفرست.\nمثال:\n• username\n• @username\n• https://instagram.com/username",
+            default => "مقدار را ارسال کن.",
         };
+    }
+
+    private function sendOrEditMessage(Nutgram $bot, string $text, ?InlineKeyboardMarkup $keyboard = null): void
+    {
+        $messageId = $bot->callbackQuery()?->message?->message_id;
+
+        if ($messageId) {
+            try {
+                $bot->editMessageText(
+                    chat_id: $bot->user()->id,
+                    message_id: $messageId,
+                    text: $text,
+                    parse_mode: 'HTML',
+                    reply_markup: $keyboard
+                );
+                return;
+            } catch (\Throwable) {
+                // fallback to a new message
+            }
+        }
+
+        $bot->sendMessage($text, parse_mode: 'HTML', reply_markup: $keyboard);
     }
 }

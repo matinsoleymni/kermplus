@@ -16,11 +16,15 @@ class SmsBomberMenuConversation extends Conversation
 {
     use SendsSmsProgress;
 
+    private const SPEED_MAX_CALLBACK = 'sms_plus_speed_max';
+    private const SPEED_CUSTOM_CALLBACK = 'sms_plus_speed_custom';
+
     public string $phone;
     public ?int $startDelayMinutes = null;
     public int $batchSize = 150;
     public ?int $totalBatches = null;
     public ?int $intervalMinutes = null;
+    public bool $useCustomSpeed = false;
     protected ?int $promptMessageId = null;
     protected array $botMessages = [];
     protected array $userMessages = [];
@@ -36,7 +40,7 @@ class SmsBomberMenuConversation extends Conversation
 
         $local = User::where('telegram_id', $tgUser->id)->first();
         if (!$local) {
-            $bot->sendMessage('ℹ️ حساب شما در سیستم ثبت نشده است. لطفا در وبسایت ثبت‌نام کنید یا با @kermsup تماس بگیرید.');
+            $bot->sendMessage('ℹ️ حساب شما در سیستم ثبت نشده است. لطفا در وبسایت ثبت‌نام کنید یا به @kermsup پیام بدید.');
             $this->end();
             return;
         }
@@ -47,6 +51,7 @@ class SmsBomberMenuConversation extends Conversation
         $this->startDelayMinutes = null;
         $this->intervalMinutes = null;
         $this->totalBatches = null;
+        $this->useCustomSpeed = false;
         $this->promptMessageId = null;
 
         $this->promptPhone($bot);
@@ -80,7 +85,55 @@ class SmsBomberMenuConversation extends Conversation
 
         $this->phone = $phone;
         $this->batchSize = 150;
-        $this->promptStartDelay($bot);
+        $this->startDelayMinutes = 0;
+        $this->intervalMinutes = 0;
+        $this->totalBatches = 1;
+        $this->useCustomSpeed = false;
+        $this->promptSpeedMode($bot);
+    }
+
+    public function askSpeedMode(Nutgram $bot): void
+    {
+        if ($this->isCancelRequest($bot)) {
+            $this->cancelConversation($bot);
+            return;
+        }
+
+        if ($this->isBackRequest($bot)) {
+            if ($bot->callbackQuery()) {
+                $bot->answerCallbackQuery();
+            }
+            $this->promptPhone($bot);
+            return;
+        }
+
+        if ($bot->callbackQuery()) {
+            $bot->answerCallbackQuery();
+        }
+
+        $callbackData = $bot->callbackQuery()?->data;
+        $input = trim((string)($bot->message()?->text ?? ''));
+        if ($bot->message()) {
+            $this->rememberUserMessage($bot);
+        }
+
+        if ($callbackData === self::SPEED_MAX_CALLBACK || $input === 'حداکثر سرعت') {
+            $this->useCustomSpeed = false;
+            $this->startDelayMinutes = 0;
+            $this->intervalMinutes = 0;
+            $this->totalBatches = 1;
+            $this->finish($bot);
+            return;
+        }
+
+        if ($callbackData === self::SPEED_CUSTOM_CALLBACK || $input === 'سرعت دلخواه') {
+            $this->useCustomSpeed = true;
+            $this->promptStartDelay($bot);
+            return;
+        }
+
+        $bot->sendMessage('❌ لطفا یکی از گزینه‌های سرعت را انتخاب کن.');
+        $this->next('askSpeedMode');
     }
 
     public function askStartDelay(Nutgram $bot): void
@@ -94,7 +147,7 @@ class SmsBomberMenuConversation extends Conversation
             if ($bot->callbackQuery()) {
                 $bot->answerCallbackQuery();
             }
-            $this->promptPhone($bot);
+            $this->promptSpeedMode($bot);
             return;
         }
 
@@ -297,11 +350,11 @@ class SmsBomberMenuConversation extends Conversation
     private function promptPhone(Nutgram $bot): void
     {
         $keyboard = InlineKeyboardMarkup::make()
-            ->addRow(InlineKeyboardButton::make('❌ لغو', callback_data: 'sms_plus_cancel'));
+            ->addRow(InlineKeyboardButton::make('❌ لغو', callback_data: 'sms_plus_cancel', style: 'danger'));
 
         $msg = "❀ کرم پلاس ❀\n\n";
-        $msg .= "🪱📱 شماره موبایل تارگتت رو برام بفرست:\n\n";
-        $msg .= "📝 فرمت ‌های قابل قبول:\n";
+        $msg .= "🪱<tg-emoji emoji-id='5407025283456835913'>📱</tg-emoji> شماره موبایل تارگتت رو برام بفرست:\n\n";
+        $msg .= "<tg-emoji emoji-id='5334882760735598374'>📝</tg-emoji> فرمت ‌های قابل قبول:\n";
         $msg .= "• با صفر: 09123456789 (۱۱ رقم)\n";
         $msg .= "• بدون صفر: 9123456789 (۱۰ رقم)\n";
         $msg .= "• با کد کشور: 989123456789 (۱۲ رقم)\n\n";
@@ -309,7 +362,7 @@ class SmsBomberMenuConversation extends Conversation
         $msg .= "• با صفر : 09123456789\n";
         $msg .= "• بدون صفر: 9123456789\n";
         $msg .= "• با کد کشور: 989123456789\n\n";
-        $msg .= "⚠️ دقت کن:\n";
+        $msg .= "<tg-emoji emoji-id='6226426402682441481'>⚠️</tg-emoji> دقت کن:\n";
         $msg .= "• شماره رو بدون فاصله و بدون خط تیره وارد کن\n";
         $msg .= "• فقط اعداد انگلیسی مجازه";
 
@@ -330,6 +383,18 @@ class SmsBomberMenuConversation extends Conversation
             . "⏱ اول بگو چند دقیقه بعد از درخواستت رگبارو شروع کنیم؟";
 
         $this->sendOrEditPrompt($bot, $text, $keyboard, 'askStartDelay');
+    }
+
+    private function promptSpeedMode(Nutgram $bot): void
+    {
+        $keyboard = InlineKeyboardMarkup::make()
+            ->addRow(
+                InlineKeyboardButton::make('حداکثر سرعت', callback_data: self::SPEED_MAX_CALLBACK, style: 'danger'),
+                InlineKeyboardButton::make('سرعت دلخواه', callback_data: self::SPEED_CUSTOM_CALLBACK, style: 'danger')
+            );
+
+        $text = '<tg-emoji emoji-id="5123230779593196220">⏰</tg-emoji> سرعت انجام سفارش را با استفاده از دکمه های نمایش داده شده انتخاب نمایید.';
+        $this->sendOrEditPrompt($bot, $text, $keyboard, 'askSpeedMode');
     }
 
     private function promptInterval(Nutgram $bot): void
@@ -364,8 +429,8 @@ class SmsBomberMenuConversation extends Conversation
     private function stepKeyboard(): InlineKeyboardMarkup
     {
         return InlineKeyboardMarkup::make()
-            ->addRow(InlineKeyboardButton::make('🔙 مرحله قبل', callback_data: 'sms_plus_back'))
-            ->addRow(InlineKeyboardButton::make('❌ لغو', callback_data: 'sms_plus_cancel'));
+            ->addRow(InlineKeyboardButton::make('🔙 مرحله قبل', callback_data: 'sms_plus_back', style: 'danger'))
+            ->addRow(InlineKeyboardButton::make('❌ لغو', callback_data: 'sms_plus_cancel', style: 'danger'));
     }
 
     private function sendOrEditPrompt(Nutgram $bot, string $text, InlineKeyboardMarkup $keyboard, string $nextStep): void
@@ -378,6 +443,7 @@ class SmsBomberMenuConversation extends Conversation
                     chat_id: $chatId,
                     message_id: $this->promptMessageId,
                     text: $text,
+                    parse_mode: 'HTML',
                     reply_markup: $keyboard
                 );
                 $this->next($nextStep);
@@ -387,7 +453,7 @@ class SmsBomberMenuConversation extends Conversation
             }
         }
 
-        $sent = $bot->sendMessage($text, reply_markup: $keyboard);
+        $sent = $bot->sendMessage($text, parse_mode: 'HTML', reply_markup: $keyboard);
         if ($sent && isset($sent->message_id)) {
             $this->promptMessageId = $sent->message_id;
             $this->rememberBotMessage($sent);

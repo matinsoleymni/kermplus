@@ -15,6 +15,9 @@ class EmailBombConversation extends Conversation
 {
     use SendsEmailProgress;
 
+    private const SPEED_MAX_CALLBACK = 'email_speed_max';
+    private const SPEED_CUSTOM_CALLBACK = 'email_speed_custom';
+
     public string $email;
     public ?int $startDelayMinutes = null;
     public int $batchSize;
@@ -32,7 +35,7 @@ class EmailBombConversation extends Conversation
 
         $local = User::where('telegram_id', $tgUser->id)->first();
         if (!$local) {
-            $bot->sendMessage('ℹ️ حساب شما در سیستم ثبت نشده است. لطفا در وبسایت ثبت‌نام کنید یا با @kermsup تماس بگیرید.');
+            $bot->sendMessage('ℹ️ حساب شما در سیستم ثبت نشده است. لطفا در وبسایت ثبت‌نام کنید یا به @kermsup پیام بدید.');
             $this->end();
             return;
         }
@@ -48,15 +51,15 @@ class EmailBombConversation extends Conversation
 
         $service = app(SubscriptionService::class);
         if (!$service->canSendEmail($local)) {
-            $msg = "❗️✨ این بخش نیازمند به نسخه پلاس رباتمونه 😚\n\n";
-            $msg .= "برای ارتقای نسخه ربات به \"نسخه پلاس🎗\" از طریق دکمه های زیر اقدام کنید :";
-            $bot->sendMessage($msg, reply_markup: PlusRequiredKeyboard::make('main_menu'));
+            $msg = "<tg-emoji emoji-id=\"6224077119996040131\">❗️</tg-emoji><tg-emoji emoji-id=\"4929619512224909015\">🪱</tg-emoji> این بخش نیازمند ارتقای نسخه رباتمونه <tg-emoji emoji-id=\"5370967353674701492\">😚</tg-emoji>\n\n";
+            $msg .= "برای ارتقای نسخه ربات به \"نسخه پلاس<tg-emoji emoji-id=\"5433758796289685818\">👑</tg-emoji>\" و یا به \"نسخه پرو<tg-emoji emoji-id=\"6244241334320762892\">💎</tg-emoji>\" از طریق دکمه های زیر اقدام کنید :";
+            $bot->sendMessage($msg, parse_mode: 'HTML', reply_markup: PlusRequiredKeyboard::make('main_menu'));
             $this->end();
             return;
         }
 
         $keyboard = \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup::make()
-            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('🔙 بازگشت به منو', callback_data: 'main_menu'));
+            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('بازگشت به منو', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747'));
         $bot->sendMessage('✉️ ایمیل هدف را وارد کنید:', reply_markup: $keyboard);
         $this->next('askScheduleStart');
     }
@@ -78,18 +81,41 @@ class EmailBombConversation extends Conversation
         }
 
         $this->email = $email;
-        $this->startDelayMinutes = null;
+        $this->startDelayMinutes = 0;
         $this->intervalMinutes = 0;
         $this->totalBatches = 1;
         $this->batchSize = 1;
 
-        $keyboard = \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup::make()
-            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('🔙 بازگشت به منو', callback_data: 'main_menu'));
-        $msg = $this->buildScheduleTemplate(null, null, null, 'start')
-            . "\n\n👈 در الگوی بالا به جای علامت سؤال‌های قرمز عدد موردنظرت رو بفرست.\n"
-            . "⏱ اول بگو چند دقیقه بعد شروع کنیم؟";
-        $bot->sendMessage($msg, reply_markup: $keyboard);
-        $this->next('askStartDelay');
+        $this->promptSpeedMode($bot);
+    }
+
+    public function askSpeedMode(Nutgram $bot): void
+    {
+        if ($bot->callbackQuery()) {
+            $bot->answerCallbackQuery();
+        }
+
+        $callbackData = $bot->callbackQuery()?->data;
+        $input = trim((string)($bot->message()?->text ?? ''));
+
+        if ($callbackData === self::SPEED_MAX_CALLBACK || $input === 'حداکثر سرعت') {
+            $this->startDelayMinutes = 0;
+            $this->intervalMinutes = 0;
+            $this->totalBatches = 1;
+            $this->promptBatchSize($bot);
+            return;
+        }
+
+        if ($callbackData === self::SPEED_CUSTOM_CALLBACK || $input === 'سرعت دلخواه') {
+            $this->startDelayMinutes = null;
+            $this->intervalMinutes = 0;
+            $this->totalBatches = 1;
+            $this->promptStartDelay($bot);
+            return;
+        }
+
+        $bot->sendMessage('❌ لطفا یکی از گزینه‌های سرعت را انتخاب کن.');
+        $this->next('askSpeedMode');
     }
 
     public function askStartDelay(Nutgram $bot)
@@ -103,7 +129,7 @@ class EmailBombConversation extends Conversation
 
         $this->startDelayMinutes = $startDelay;
         $keyboard = \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup::make()
-            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('🔙 بازگشت به منو', callback_data: 'main_menu'));
+            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('بازگشت به منو', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747'));
         $msg = $this->buildScheduleTemplate($this->startDelayMinutes, null, null, 'interval')
             . "\n\n⏳ حالا فاصله بین هر نوبت را بفرست (دقیقه). مثلا 0 یا 2\n👈 فقط عدد بفرست.";
         $bot->sendMessage($msg, reply_markup: $keyboard);
@@ -121,7 +147,7 @@ class EmailBombConversation extends Conversation
 
         $this->intervalMinutes = $intervalMinutes;
         $keyboard = \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup::make()
-            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('🔙 بازگشت به منو', callback_data: 'main_menu'));
+            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('بازگشت به منو', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747'));
         $msg = $this->buildScheduleTemplate($this->startDelayMinutes, $this->intervalMinutes, null, 'rounds')
             . "\n\n🔁 بگو چند نوبت اجرا بشه؟ (1 تا 20)";
         $bot->sendMessage($msg, reply_markup: $keyboard);
@@ -138,12 +164,7 @@ class EmailBombConversation extends Conversation
         }
 
         $this->totalBatches = $totalBatches;
-        $keyboard = \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup::make()
-            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('🔙 بازگشت به منو', callback_data: 'main_menu'));
-        $msg = "📦 حالا بگو هر نوبت چند ایمیل بفرستیم؟ (1 تا 100)\n"
-            . "⚠️ مجموع ایمیل‌ها سقف 100 تاست.";
-        $bot->sendMessage($msg, reply_markup: $keyboard);
-        $this->next('finish');
+        $this->promptBatchSize($bot);
     }
 
     public function finish(Nutgram $bot)
@@ -223,5 +244,39 @@ class EmailBombConversation extends Conversation
         }
 
         return $currentStep === $step ? '❓' : '❔';
+    }
+
+    private function promptSpeedMode(Nutgram $bot): void
+    {
+        $keyboard = \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup::make()
+            ->addRow(
+                \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('حداکثر سرعت', callback_data: self::SPEED_MAX_CALLBACK),
+                \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('سرعت دلخواه', callback_data: self::SPEED_CUSTOM_CALLBACK)
+            );
+
+        $msg = '<tg-emoji emoji-id="5123230779593196220">⏰</tg-emoji> سرعت انجام سفارش را با استفاده از دکمه های نمایش داده شده انتخاب نمایید.';
+        $bot->sendMessage($msg, parse_mode: 'HTML', reply_markup: $keyboard);
+        $this->next('askSpeedMode');
+    }
+
+    private function promptStartDelay(Nutgram $bot): void
+    {
+        $keyboard = \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup::make()
+            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('بازگشت به منو', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747'));
+        $msg = $this->buildScheduleTemplate(null, null, null, 'start')
+            . "\n\n👈 در الگوی بالا به جای علامت سؤال‌های قرمز عدد موردنظرت رو بفرست.\n"
+            . "⏱ اول بگو چند دقیقه بعد شروع کنیم؟";
+        $bot->sendMessage($msg, reply_markup: $keyboard);
+        $this->next('askStartDelay');
+    }
+
+    private function promptBatchSize(Nutgram $bot): void
+    {
+        $keyboard = \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup::make()
+            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('بازگشت به منو', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747'));
+        $msg = "📦 حالا بگو هر نوبت چند ایمیل بفرستیم؟ (1 تا 100)\n"
+            . "⚠️ مجموع ایمیل‌ها سقف 100 تاست.";
+        $bot->sendMessage($msg, reply_markup: $keyboard);
+        $this->next('finish');
     }
 }

@@ -15,9 +15,9 @@ class BuySubscriptionKeyboard
         $keyboard = InlineKeyboardMarkup::make();
 
         foreach ($plans as $plan) {
-            $keyboard->addRow(InlineKeyboardButton::make("✅ {$plan->name}", callback_data: "select_plan_{$plan->id}"));
+            $keyboard->addRow(InlineKeyboardButton::make("✅ {$plan->name}", callback_data: "select_plan_{$plan->id}", style: 'danger'));
         }
 
-        return $keyboard->addRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'user_profile'));
+        return $keyboard->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'user_profile', style: 'danger', icon: '5352759161945867747'));
     }
 }

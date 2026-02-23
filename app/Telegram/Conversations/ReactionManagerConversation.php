@@ -45,15 +45,15 @@ class ReactionManagerConversation extends Conversation
 
         $keyboard = InlineKeyboardMarkup::make()
             ->addRow(
-                InlineKeyboardButton::make('📡 وضعیت سرویس', callback_data: 'reaction_status'),
-                InlineKeyboardButton::make('➕ افزودن کانال‌ها', callback_data: 'reaction_add_channels')
+                InlineKeyboardButton::make('📡 وضعیت سرویس', callback_data: 'reaction_status', style: 'danger'),
+                InlineKeyboardButton::make('➕ افزودن کانال‌ها', callback_data: 'reaction_add_channels', style: 'danger')
             )
             ->addRow(
-                InlineKeyboardButton::make('⚡️ تست ری‌اکشن', callback_data: 'reaction_test'),
-                InlineKeyboardButton::make('📈 آمار استفاده', callback_data: 'reaction_usage_stats')
+                InlineKeyboardButton::make('⚡️ تست ری‌اکشن', callback_data: 'reaction_test', style: 'danger'),
+                InlineKeyboardButton::make('📈 آمار استفاده', callback_data: 'reaction_usage_stats', style: 'danger')
             )
             ->addRow(
-                InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'admin_panel')
+                InlineKeyboardButton::make('بازگشت', callback_data: 'admin_panel', style: 'danger', icon: '5352759161945867747')
             );
 
         $bot->sendMessage('💬 مدیریت ری‌اکشن‌ها — یک گزینه انتخاب کنید:', reply_markup: $keyboard);
@@ -153,8 +153,8 @@ class ReactionManagerConversation extends Conversation
 
         $keyboard = InlineKeyboardMarkup::make()
             ->addRow(
-                InlineKeyboardButton::make('🎲 انتخاب خودکار', callback_data: 'reaction_test_skip_emoji'),
-                InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'admin_panel')
+                InlineKeyboardButton::make('🎲 انتخاب خودکار', callback_data: 'reaction_test_skip_emoji', style: 'danger'),
+                InlineKeyboardButton::make('بازگشت', callback_data: 'admin_panel', style: 'danger', icon: '5352759161945867747')
             );
         $bot->sendMessage('😈 ایموجی ری‌اکشن را بفرست (یا «انتخاب خودکار» را بزن):', reply_markup: $keyboard);
         $this->next('receiveTestEmoji');

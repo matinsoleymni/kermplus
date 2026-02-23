@@ -16,6 +16,7 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 class ReferralHandler
 {
     private const REFERRAL_REWARD_DURATION_DAYS = 30;
+    private const ACTION_SEND_BANNER = 'referral_send_banner';
 
     public function __invoke(Nutgram $bot): void
     {
@@ -32,6 +33,10 @@ class ReferralHandler
             $this->claimReward($bot, $local);
             return;
         }
+        if ($data === self::ACTION_SEND_BANNER) {
+            $this->sendShareBanner($bot, $local);
+            return;
+        }
 
         $this->showReferralDashboard($bot, $local);
     }
@@ -43,46 +48,36 @@ class ReferralHandler
 
         $referralLink = $this->buildReferralLink($bot, $local->referral_code);
         $points = $referralService->totalReferrals($local);
-        $threshold = $referralService->rewardThreshold();
         $availableRewards = $referralService->availableRewardCycles($local);
         $claimHint = $availableRewards > 0
             ? "\n\n❁ {$availableRewards} اشتراک هدیه آماده دریافت داری؛ از دکمه «دریافت اشتراک هدیه» استفاده کن."
             : '';
-        $shareText = "🪱 کرم پلاس 🪱\n\nبا ربات زیر میتونی هرکی اذیتت کرده رو حسابی اذیتش کنی و ازش انتقام بگیری 👀\n\n• امکان پروندن پیج اینستای شخص\n• ریست کردن گوشی شخص\n• ارسال هزاران مزاحم تلفنی برای شخص\nو کلییی قابلیت خفن دیگه 😙\n\n{$referralLink}";
-
-        $promoMessage = "🪱 کرم پلاس 🪱\n\n";
-        $promoMessage .= "با ربات زیر میتونی هرکی اذیتت کرده رو حسابی اذیتش کنی و ازش انتقام بگیری 👀\n\n";
-        $promoMessage .= "• امکان پروندن پیج اینستای شخص\n";
-        $promoMessage .= "• ریست کردن گوشی شخص\n";
-        $promoMessage .= "• ارسال هزاران مزاحم تلفنی برای شخص\n";
-        $promoMessage .= "و کلییی قابلیت خفن دیگه 😙\n\n";
-        $promoMessage .= "• {$referralLink} •\n\n";
-        $promoMessage .= "کلی قراره به دردت بخوره ؛)";
+        $promoMessage = $this->buildShareBannerCaption($referralLink);
 
         if ($this->shouldSendPromo($bot)) {
             $this->sendPromoMessage($bot, $promoMessage);
         }
 
-        $msg = "❁ لینک اختصاصیت ساخته شد 🥰\n\n";
+        $msg = "<tg-emoji emoji-id=\"4929619512224909015\">🪱</tg-emoji> لینک اختصاصیت ساخته شد <tg-emoji emoji-id=\"4927295007204836791\">🪱</tg-emoji>\n\n";
+        $msg .= "<tg-emoji emoji-id=\"4916086774649848789\">🔗</tg-emoji>link : \n";
         $msg .= "{$referralLink}\n\n";
-        $msg .= "• با دعوت هر یک نفر از دوستات میتونی 1 امتیاز دریافت کنی 😍\n";
-        $msg .= "• میتونی با دعوت {$threshold} نفر از دوستات اشتراک پلاس رباتمون رو به صورت رایگان دریافت کنی 😉\n\n";
-        $msg .= "❁ تا الان {$points} امتیاز داری ❁\n\n";
-        $msg .= "برای این که دوستات رو به ربات دعوت کنی میتونی از لینک اختصاصیت استفاده کنی😗❕\n\n";
-        $msg .= "🎈 همین الان ربات کرم‌پلاس رو با دوستانتون به‌اشتراک بگذارید تا امتیاز دریافت کنید!";
+        $msg .= "<tg-emoji emoji-id=\"5123344136665039833\">⚪️</tg-emoji> با دعوت هر یک نفر از دوستات میتونی 1 امتیاز دریافت کنی\n\n";
+        $msg .= "<tg-emoji emoji-id=\"4927405916145321741\">🪱</tg-emoji> تا الان {$points} امتیاز داری <tg-emoji emoji-id=\"4927405916145321741\">🪱</tg-emoji>\n\n";
+        $msg .= "برای این که دوستات رو به ربات دعوت کنی میتونی از لینک اختصاصیت استفاده کنی<tg-emoji emoji-id=\"5296335880225575986\">😗</tg-emoji>\n\n";
+        $msg .= "<tg-emoji emoji-id=\"4929619512224909015\">🪱</tg-emoji> همین الان ربات کرم پلاس رو با دوستانتون به‌اشتراک بگذارید تا امتیاز دریافت کنید!";
         $msg .= $claimHint;
 
         $this->replyWithEditPreferred(
             $bot,
             $msg,
-            ReferralKeyboard::make($referralLink, $shareText, $availableRewards > 0)
+            ReferralKeyboard::make($availableRewards > 0)
         );
     }
 
     private function shouldSendPromo(Nutgram $bot): bool
     {
         $currentText = (string) ($bot->callbackQuery()?->message?->text ?? '');
-        if ($currentText !== '' && str_contains($currentText, '❁ تا الان')) {
+        if ($currentText !== '' && str_contains($currentText, 'تا الان')) {
             return false;
         }
 
@@ -95,13 +90,38 @@ class ReferralHandler
         if (is_readable($imagePath)) {
             $bot->sendPhoto(
                 photo: InputFile::make($imagePath, 'bot-thumb.png'),
-                caption: $promoMessage
+                caption: $promoMessage,
             );
 
             return;
         }
 
         $bot->sendMessage($promoMessage);
+    }
+
+    private function sendShareBanner(Nutgram $bot, User $local): void
+    {
+        if ($bot->callbackQuery()) {
+            $bot->answerCallbackQuery(text: 'بنر برای شما ارسال شد.');
+        }
+
+        $referralService = app(ReferralService::class);
+        $local = $referralService->ensureUserHasCode($local);
+        $referralLink = $this->buildReferralLink($bot, $local->referral_code);
+
+        $this->sendPromoMessage($bot, $this->buildShareBannerCaption($referralLink));
+    }
+
+    private function buildShareBannerCaption(string $referralLink): string
+    {
+        return "🪱 کرم پلاس 🪱\n\n"
+            . "با ربات زیر میتونی هرکی اذیتت کرده رو حسابی اذیتش کنی و ازش انتقام بگیری 👀\n\n"
+            . "• امکان پروندن پیج اینستای شخص\n"
+            . "• ریست کردن گوشی شخص\n"
+            . "• ارسال هزاران مزاحم تلفنی برای شخص\n"
+            . "و کلییی قابلیت خفن دیگه 😙\n\n"
+            . "• {$referralLink} •\n\n"
+            . "کلی قراره به دردت بخوره ؛)";
     }
 
     private function claimReward(Nutgram $bot, User $local): void
@@ -169,7 +189,7 @@ class ReferralHandler
 
         return SubscriptionPlan::query()
             ->where('is_active', true)
-            ->orderBy('price')
+            ->orderBy('price_usd')
             ->orderByDesc('duration_days')
             ->first();
     }
@@ -178,7 +198,7 @@ class ReferralHandler
     {
         try {
             if ($bot->callbackQuery()?->message) {
-                $bot->editMessageText($text, reply_markup: $keyboard);
+                $bot->editMessageText($text, reply_markup: $keyboard, parse_mode: 'HTML');
                 return;
             }
         } catch (TelegramException $e) {
@@ -191,6 +211,6 @@ class ReferralHandler
             return;
         }
 
-        $bot->sendMessage($text, reply_markup: $keyboard);
+        $bot->sendMessage($text, reply_markup: $keyboard, parse_mode: 'HTML');
     }
 }

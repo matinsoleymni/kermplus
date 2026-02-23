@@ -10,14 +10,15 @@ class PlusRequiredKeyboard
     public static function make(?string $backCallback = null): InlineKeyboardMarkup
     {
         $keyboard = InlineKeyboardMarkup::make()
-            ->addRow(InlineKeyboardButton::make('🩸 نسخه پلاس چیه؟🩸', callback_data: 'plus_info'))
+            ->addRow(InlineKeyboardButton::make('ارتقا ربات', callback_data: 'buy_subscription', style: 'danger', icon: '4927295007204836791'))
             ->addRow(
-                InlineKeyboardButton::make('🎗 ارتقا به نسخه پلاس🎗', callback_data: 'buy_subscription'),
-                InlineKeyboardButton::make('📞 پشتیبانی 📞', url: 'https://t.me/kermsup')
-            );
+                InlineKeyboardButton::make('نسخه پرو چیه؟', url: 'https://t.me/kermpluslearn/19', style: 'danger', icon: '6244241334320762892'),
+                InlineKeyboardButton::make('نسخه پلاس چیه؟', url: 'https://t.me/kermpluslearn/18', style: 'danger', icon: '5433758796289685818')
+            )
+            ->addRow(InlineKeyboardButton::make('تفاوت نسخه پرو و پلاس', url: 'https://t.me/kermpluslearn/17', style: 'danger', icon: '6226546610227121867'));
 
         if ($backCallback) {
-            $keyboard->addRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: $backCallback));
+            $keyboard->addRow(InlineKeyboardButton::make('بازگشت', callback_data: $backCallback, style: 'danger', icon: '5352759161945867747'));
         }
 
         return $keyboard;

@@ -32,11 +32,11 @@ class AutoFormConversation extends Conversation
 
         $keyboard = InlineKeyboardMarkup::make()
             ->addRow(
-                InlineKeyboardButton::make('📋 لیست فرم‌ها', callback_data: 'form_list_admin'),
-                InlineKeyboardButton::make('➕ ایجاد فرم', callback_data: 'form_create_admin')
+                InlineKeyboardButton::make('📋 لیست فرم‌ها', callback_data: 'form_list_admin', style: 'danger'),
+                InlineKeyboardButton::make('➕ ایجاد فرم', callback_data: 'form_create_admin', style: 'danger')
             )
             ->addRow(
-                InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'admin_panel')
+                InlineKeyboardButton::make('بازگشت', callback_data: 'admin_panel', style: 'danger', icon: '5352759161945867747')
             );
         $bot->sendMessage('📝 مدیریت فرم‌ها:', reply_markup: $keyboard);
         $this->next('handleMenu');
@@ -99,12 +99,12 @@ class AutoFormConversation extends Conversation
         $keyboard = InlineKeyboardMarkup::make();
         foreach ($forms as $form) {
             $keyboard->addRow(
-                InlineKeyboardButton::make($form->is_active ? '❌' : '✅', callback_data: "form_toggle_{$form->id}"),
-                InlineKeyboardButton::make('🗑️ حذف', callback_data: "form_delete_{$form->id}")
+                InlineKeyboardButton::make($form->is_active ? '❌' : '✅', callback_data: "form_toggle_{$form->id}", style: 'danger'),
+                InlineKeyboardButton::make('🗑️ حذف', callback_data: "form_delete_{$form->id}", style: 'danger')
             );
         }
-        $keyboard->addRow(InlineKeyboardButton::make('➕ جدید', callback_data: 'form_create_admin'));
-        $keyboard->addRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'admin_panel'));
+        $keyboard->addRow(InlineKeyboardButton::make('➕ جدید', callback_data: 'form_create_admin', style: 'danger'));
+        $keyboard->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'admin_panel', style: 'danger', icon: '5352759161945867747'));
 
         $bot->sendMessage($msg, reply_markup: $keyboard);
     }
@@ -163,12 +163,12 @@ class AutoFormConversation extends Conversation
 
         $keyboard = InlineKeyboardMarkup::make()
             ->addRow(
-                InlineKeyboardButton::make('📝 متن', callback_data: 'ftype_text'),
-                InlineKeyboardButton::make('🔢 عدد', callback_data: 'ftype_number')
+                InlineKeyboardButton::make('📝 متن', callback_data: 'ftype_text', style: 'danger'),
+                InlineKeyboardButton::make('🔢 عدد', callback_data: 'ftype_number', style: 'danger')
             )
             ->addRow(
-                InlineKeyboardButton::make('📧 ایمیل', callback_data: 'ftype_email'),
-                InlineKeyboardButton::make('📱 تلفن', callback_data: 'ftype_phone')
+                InlineKeyboardButton::make('📧 ایمیل', callback_data: 'ftype_email', style: 'danger'),
+                InlineKeyboardButton::make('📱 تلفن', callback_data: 'ftype_phone', style: 'danger')
             );
 
         $bot->sendMessage('🎯 نوع فیلد را انتخاب کنید:', reply_markup: $keyboard);

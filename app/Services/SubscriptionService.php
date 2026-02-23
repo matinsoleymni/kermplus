@@ -6,7 +6,7 @@ use App\Models\Subscription;
 use App\Models\SubscriptionPlan;
 use App\Models\User;
 use Carbon\Carbon;
-use App\Models\SubscriptionHistory;
+use Illuminate\Support\Facades\DB;
 
 class SubscriptionService
 {
@@ -36,6 +36,10 @@ class SubscriptionService
             'description' => "اشتراک جدید به پلن {$plan->name} ایجاد شد",
             'created_by' => $createdBy,
         ]);
+
+        DB::afterCommit(function () use ($user, $plan): void {
+            app(SubscriptionActivationNotificationService::class)->notifyIfEligible($user, $plan);
+        });
 
         return $subscription;
     }

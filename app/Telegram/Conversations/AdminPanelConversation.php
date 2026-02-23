@@ -5,13 +5,10 @@ namespace App\Telegram\Conversations;
 use App\Helpers\AdminStatsHelper;
 use SergiX44\Nutgram\Conversations\Conversation;
 use SergiX44\Nutgram\Nutgram;
-use Illuminate\Support\Facades\DB;
 use App\Telegram\Conversations\AdminSubscriptionConversation;
 use App\Telegram\Conversations\AdminPlanConversation;
 use App\Telegram\Conversations\AdminsManagementConversation;
-use App\Telegram\Conversations\AssignPlanConversation;
 use App\Telegram\Conversations\SponsorChannelsConversation;
-use App\Telegram\Conversations\SuspendUserConversation;
 use App\Telegram\Conversations\BroadcastConversation;
 use App\Telegram\Conversations\AutoFormConversation;
 use App\Telegram\Conversations\ReactionManagerConversation;
@@ -41,22 +38,16 @@ class AdminPanelConversation extends Conversation
         $adminText = $this->buildDashboardMessage($snapshot);
 
         $keyboard = InlineKeyboardMarkup::make()
-            ->addRow(InlineKeyboardButton::make('📨 صف درخواست‌ها', callback_data: 'admin_requests'))
-            ->addRow(InlineKeyboardButton::make('💰 آمار درآمد/اشتراک', callback_data: 'admin_revenue'))
-            ->addRow(InlineKeyboardButton::make('🧾 مدیریت اشتراک‌ها', callback_data: 'admin_manage_subscriptions'))
-            ->addRow(InlineKeyboardButton::make('💳 مدیریت پلن‌ها', callback_data: 'admin_manage_plans'))
-            ->addRow(InlineKeyboardButton::make('🎫 افزودن/حذف پلن کاربر', callback_data: 'admin_assign_plan'))
-            ->addRow(InlineKeyboardButton::make('🧑‍💼 مدیریت ادمین‌ها', callback_data: 'admin_manage_admins'))
-            ->addRow(InlineKeyboardButton::make('📣 پیام همگانی', callback_data: 'admin_broadcast'))
-            // ->addRow(InlineKeyboardButton::make('📝 فرم‌ها', callback_data: 'admin_forms'))
-            // ->addRow(InlineKeyboardButton::make('💬 ری‌اکشن‌ها', callback_data: 'admin_reactions'))
-            ->addRow(InlineKeyboardButton::make('📑 لیست اسپانسرها', callback_data: 'admin_sponsor_list'))
-            ->addRow(InlineKeyboardButton::make('➕ افزودن اسپانسر', callback_data: 'admin_sponsor_add'))
-            ->addRow(InlineKeyboardButton::make('➖ حذف اسپانسر', callback_data: 'admin_sponsor_remove'))
-            ->addRow(InlineKeyboardButton::make('🚫 بن کردن کاربر', callback_data: 'admin_suspend_user'))
-            ->addRow(InlineKeyboardButton::make('✅ رفع بن سریع', callback_data: 'admin_unsuspend_quick'))
-            ->addRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'main_menu'));
-        $bot->sendMessage($adminText, reply_markup: $keyboard, parse_mode: 'HTML');
+            ->addRow(InlineKeyboardButton::make('💰 آمار درآمد/اشتراک', callback_data: 'admin_revenue', style: 'danger'))
+            ->addRow(InlineKeyboardButton::make('🔎 جستجوی کاربر', callback_data: 'admin_manage_subscriptions', style: 'danger'))
+            ->addRow(InlineKeyboardButton::make('💳 مدیریت پلن‌ها', callback_data: 'admin_manage_plans', style: 'danger'))
+            ->addRow(InlineKeyboardButton::make('🧑‍💼 مدیریت ادمین‌ها', callback_data: 'admin_manage_admins', style: 'danger'))
+            ->addRow(InlineKeyboardButton::make('📣 پیام همگانی', callback_data: 'admin_broadcast', style: 'danger'))
+            // ->addRow(InlineKeyboardButton::make('📝 فرم‌ها', callback_data: 'admin_forms', style: 'danger'))
+            // ->addRow(InlineKeyboardButton::make('💬 ری‌اکشن‌ها', callback_data: 'admin_reactions', style: 'danger'))
+            ->addRow(InlineKeyboardButton::make('📑 مدیریت اسپانسر', callback_data: 'admin_sponsor_manage', style: 'danger'))
+            ->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747'));
+        $bot->sendMessage($adminText, reply_markup: $keyboard);
         $this->next('handleMenu');
     }
 
@@ -64,30 +55,6 @@ class AdminPanelConversation extends Conversation
     {
         $data = $bot->callbackQuery()?->data;
         switch ($data) {
-            case 'admin_requests':
-                $jobs = DB::table('jobs')->orderByDesc('id')->limit(10)->get();
-                if ($jobs->isEmpty()) {
-                    $bot->sendMessage('⛔️ درخواستی ثبت نشده است.');
-                } else {
-                    $msg = "📝 آخرین درخواست‌ها:\n";
-                    foreach ($jobs as $job) {
-                        $payload = json_decode($job->payload, true);
-                        $type = '';
-                        $target = '';
-                        if (isset($payload['displayName']) && $payload['displayName'] === 'SendSmsBombJob') {
-                            $type = '💣 SMS';
-                            $target = $payload['data']['phone'] ?? '';
-                        } elseif (isset($payload['displayName']) && $payload['displayName'] === 'SendEmailBombJob') {
-                            $type = '📧 Email';
-                            $target = $payload['data']['email'] ?? '';
-                        } else {
-                            continue;
-                        }
-                        $msg .= "{$type} → {$target}\n";
-                    }
-                    $bot->sendMessage($msg);
-                }
-                break;
             case 'admin_user_stats':
                 $total = AdminStatsHelper::totalUsers();
                 $daily = AdminStatsHelper::dailyActiveUsers();
@@ -101,7 +68,6 @@ class AdminPanelConversation extends Conversation
                 $bot->sendMessage($msg);
                 break;
             case 'admin_broadcast':
-                $bot->sendMessage('📢 به بخش پیام همگانی خوش آمدید!');
                 BroadcastConversation::begin($bot);
                 $this->end();
                 return;
@@ -125,22 +91,11 @@ class AdminPanelConversation extends Conversation
                 AdminSubscriptionConversation::begin($bot);
                 $this->end();
                 return;
-            case 'admin_assign_plan':
-                AssignPlanConversation::begin($bot);
-                $this->end();
-                return;
-            case 'admin_sponsor_list':
-            case 'admin_sponsor_add':
-            case 'admin_sponsor_remove':
+            case 'admin_sponsor_manage':
+            case 'admin_sponsor_list': // backward compatibility
+            case 'admin_sponsor_add': // backward compatibility
+            case 'admin_sponsor_remove': // backward compatibility
                 SponsorChannelsConversation::begin($bot);
-                $this->end();
-                return;
-            case 'admin_suspend_user':
-                SuspendUserConversation::begin($bot, null, null, ['suspend']);
-                $this->end();
-                return;
-            case 'admin_unsuspend_quick':
-                SuspendUserConversation::begin($bot, null, null, ['unsuspend']);
                 $this->end();
                 return;
             case 'admin_revenue':
@@ -168,42 +123,72 @@ class AdminPanelConversation extends Conversation
         $premium = $snapshot['premium_breakdown'];
         $now = $snapshot['generated_at'];
 
-        $adminNames = $admins['names'];
-        $adminLines = empty($adminNames)
-            ? '—'
-            : implode("\n", array_map(fn($n, $i) => ($i + 1) . '. ' . $n, $adminNames, array_keys($adminNames)));
+        $date = $this->formatPersianDate($now);
+        $time = $now->format('H:i:s');
 
-        $msg = "🤖 <b>Bot Statistics</b> — KermPlus 🧿🥃\n";
+        $msg = "• 🤖 Bot Statistics ᴋᴇʀᴍᴘʟᴜꜱ 🍷 •\n\n";
+        $msg .= "┬ 👥 Total Members : {$users['total']} users\n";
+        $msg .= "┤ 👀 Active Users : {$users['active']} users\n";
+        $msg .= "┘ 🕶️ Premium Members : {$users['premium']} users\n\n";
+
+        $msg .= "┬ 🌤 Last 24 Hours : {$users['active_day']} users\n";
+        $msg .= "┤ 7️⃣ Last Week : {$users['active_week']} users\n";
+        $msg .= "┘ 🌙 Last Month : {$users['active_month']} users\n\n";
+
+        $msg .= "┬ 👨‍💻 Admins Count : {$admins['count']}\n";
+        if (empty($admins['names'])) {
+            $msg .= "┤ 👨‍⚖️ -\n";
+        } else {
+            foreach ($admins['names'] as $name) {
+                $msg .= "┤ 👨‍⚖️ {$name}\n";
+            }
+        }
         $msg .= "\n";
-        $msg .= "🔗 <b>Total Members</b> : <b>{$users['total']}</b> users\n";
-        $msg .= "🟢 <b>Active Users</b> : <b>{$users['active']}</b> users\n";
-        $msg .= "🖤 <b>Premium Members</b> : <b>{$users['premium']}</b> users\n";
-        $msg .= "\n";
-        $msg .= "⌚ <b>Last 24 Hours</b> : {$users['active_day']} users\n";
-        $msg .= "📅 <b>Last Week</b> : {$users['active_week']} users\n";
-        $msg .= "📆 <b>Last Month</b> : {$users['active_month']} users\n";
-        $msg .= "\n";
-        $msg .= "🛡 <b>Admins Count</b> : {$admins['count']}\n";
-        $msg .= $adminLines . "\n";
-        $msg .= "\n";
-        $msg .= "💳 <b>Paid Premiums</b> : {$premium['paid']}\n";
-        $msg .= "🎗 <b>Referral Premiums</b> : {$premium['referral']}\n";
-        $msg .= "🔥 <b>Manual Premiums</b> : {$premium['manual']}\n";
-        $msg .= "\n";
-        $msg .= "🗓 <b>" . $now->format('Y/m/d') . "</b> • ⏱ " . $now->format('H:i:s');
+
+        $msg .= "┬ 📋 Paid Premiums : {$premium['paid']}\n";
+        $msg .= "┤ 🎫 Referral Premiums : {$premium['referral']}\n";
+        $msg .= "┤ 🤝 Manual Premiums : {$premium['manual']}\n\n";
+
+        $msg .= "📆 {$date} - ⏰ {$time}";
 
         return $msg;
+    }
+
+    private function formatPersianDate(\Carbon\CarbonInterface $date): string
+    {
+        if (!class_exists(\IntlDateFormatter::class)) {
+            return $date->format('Y/m/d');
+        }
+
+        $formatter = new \IntlDateFormatter(
+            'en_US@calendar=persian',
+            \IntlDateFormatter::NONE,
+            \IntlDateFormatter::NONE,
+            $date->getTimezone()->getName(),
+            \IntlDateFormatter::TRADITIONAL,
+            'yyyy/MM/d'
+        );
+
+        if ($formatter === false) {
+            return $date->format('Y/m/d');
+        }
+
+        $formatted = $formatter->format($date);
+
+        return is_string($formatted) && $formatted !== ''
+            ? $formatted
+            : $date->format('Y/m/d');
     }
 
     private function showAutofillerMenu(Nutgram $bot)
     {
         $keyboard = InlineKeyboardMarkup::make()
             ->addRow(
-                InlineKeyboardButton::make('▶️ Run All Sites', callback_data: 'autofiller_run_all'),
-                InlineKeyboardButton::make('🔗 Run Single URL', callback_data: 'autofiller_single_start')
+                InlineKeyboardButton::make('▶️ Run All Sites', callback_data: 'autofiller_run_all', style: 'danger'),
+                InlineKeyboardButton::make('🔗 Run Single URL', callback_data: 'autofiller_single_start', style: 'danger')
             )
             ->addRow(
-                InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'back_admin')
+                InlineKeyboardButton::make('بازگشت', callback_data: 'back_admin', style: 'danger', icon: '5352759161945867747')
             );
         $bot->sendMessage('🤖 **AutoFiller Control Panel**\n\nانتخاب کنید:', reply_markup: $keyboard);
         $this->next('processAutofillerAction');

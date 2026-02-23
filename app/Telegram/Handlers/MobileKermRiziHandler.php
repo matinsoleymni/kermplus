@@ -9,8 +9,8 @@ class MobileKermRiziHandler
 {
     public function __invoke(Nutgram $bot): void
     {
-        $msg = "❀ کرم پلاس ❀\n\nبه بخش کرم ریزی رو موبایل 📱 خوش اومدی ✋🏻\nبرای ادامه یکی از گزینه های زیر رو انتخاب کن :";
+        $msg = "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> <b>کرم پلاس</b> <tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji>\n\nبه بخش کرم ریزی رو موبایل <tg-emoji emoji-id='5407025283456835913'>📱</tg-emoji>  خوش اومدی ✋🏻\nبرای ادامه یکی از گزینه های زیر رو انتخاب کن :";
 
-        $bot->editMessageText($msg, reply_markup: MobileKermRiziKeyboard::make());
+        $bot->editMessageText($msg, parse_mode: 'HTML', reply_markup: MobileKermRiziKeyboard::make());
     }
 }

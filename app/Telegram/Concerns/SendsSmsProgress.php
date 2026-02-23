@@ -138,51 +138,42 @@ trait SendsSmsProgress
     ): string {
         $progressBar = $this->getProgressBar($percent);
         $barOnly = explode(' ', $progressBar, 2)[0];
-        $statusBlock = implode("\n", $statuses);
+        $statusBlock = implode("\n", array_map(static fn(string $line): string => "> {$line}", $statuses));
         $date = now()->format('Y/m/d');
         $time = now()->format('H:i:s');
-        $metaLine = $this->buildSmsMetaLine($meta);
-        $safePhone = htmlspecialchars($phone, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        $safeMetaLine = $metaLine ? htmlspecialchars($metaLine, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') : null;
-        $quotedSection = "<blockquote>" .
+        return "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> KermPlus | Processing Job\n" .
+            "━━━━━━━━━━━━━━━━\n\n" .
+            "{$barOnly} {$percent}%   <tg-emoji emoji-id='5116159438062879454'>🙏</tg-emoji> step {$step}/{$totalSteps}\n\n" .
+            "📦 queue: {$queue} items\n" .
+            "<tg-emoji emoji-id='4904936030232117798'>⚙️</tg-emoji> active: {$active}   <tg-emoji emoji-id='6224314343924699041'>✅</tg-emoji> done: {$done}\n" .
+            "<tg-emoji emoji-id='5325945307454789973'>🟢</tg-emoji> ok: {$ok}   <tg-emoji emoji-id='5326056199215406977'>❌</tg-emoji> fail: {$fail}   🔁 retry: {$retry}\n\n" .
             "rate: 12/s backoff: 2.5s\n" .
             "elapsed: {$elapsed} ETA: {$eta}\n\n" .
             "{$statusBlock}\n\n" .
             "trace: job=sms mode=queue gate=open\n" .
             "Please wait...\n\n" .
-            "📆 {$date}  ⏰ {$time}\n" .
-            "• @NitroHostBot •" .
-            "</blockquote>";
-
-        return "🎗 KermPlus | Processing Job\n" .
-            "━━━━━━━━━━━━━━━━\n\n" .
-            "{$barOnly} {$percent}%   🔁 step {$step}/{$totalSteps}\n\n" .
-            "📱 target: {$safePhone}\n" .
-            "📨 count: {$count}" . ($safeMetaLine ? " ({$safeMetaLine})" : '') . "\n\n" .
-            "📦 queue: {$queue} items\n" .
-            "⚙️ active: {$active}   ✅ done: {$done}\n" .
-            "🟢 ok: {$ok}   🔴 fail: {$fail}   🔁 retry: {$retry}\n\n" .
-            $quotedSection;
+            "<tg-emoji emoji-id='5431897022456145283'>📆</tg-emoji> {$date}  <tg-emoji emoji-id='4904882772637648609'>⏰</tg-emoji> {$time}\n" .
+            "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> @NitroHostBot <tg-emoji emoji-id='4927295007204836791'>🪱</tg-emoji>";
     }
 
     private function buildSmsStatusLines(int $step): array
     {
         $lines = [
-            '🧪 validate inputs      [ OK ]',
-            '🔌 open connections     [ OK ]',
-            '🔄 process batch #09    [ .. ]',
-            '📝 write results        [ -- ]',
-            '🏁 finalize             [ -- ]',
+            "<tg-emoji emoji-id='5134183530313548836'>🧪</tg-emoji> validate inputs      [ OK ]",
+            "<tg-emoji emoji-id='5116093437300442328'>⚡️</tg-emoji> open connections     [ OK ]",
+            "<tg-emoji emoji-id='5292226786229236118'>🔄</tg-emoji> process batch #09    [ .. ]",
+            "<tg-emoji emoji-id='5334882760735598374'>📝</tg-emoji> write results        [ -- ]",
+            "<tg-emoji emoji-id='5411520005386806155'>🏁</tg-emoji> finalize             [ -- ]",
         ];
 
         if ($step >= 3) {
-            $lines[2] = '🔄 process batch #09    [ OK ]';
+            $lines[2] = "<tg-emoji emoji-id='5292226786229236118'>🔄</tg-emoji> process batch #09    [ OK ]";
         }
         if ($step >= 4) {
-            $lines[3] = '📝 write results        [ OK ]';
+            $lines[3] = "<tg-emoji emoji-id='5334882760735598374'>📝</tg-emoji> write results        [ OK ]";
         }
         if ($step >= 5) {
-            $lines[4] = '🏁 finalize             [ OK ]';
+            $lines[4] = "<tg-emoji emoji-id='5411520005386806155'>🏁</tg-emoji> finalize             [ OK ]";
         }
 
         return $lines;
@@ -221,12 +212,12 @@ trait SendsSmsProgress
         $metaLine = $this->buildSmsMetaLine($meta);
         $metaText = $metaLine ? " ({$metaLine})" : '';
 
-        $message = "🎗 KermPlus | Reported Successful\n" .
+        $message = "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> KermPlus | Reported Successful\n" .
             "━━━━━━━━━━━━━━━━\n\n" .
             "📱 target: {$phone}{$metaText}\n" .
             "📦 تعداد کل درخواست ها : {$count}\n" .
             "✅ {$success} موفق | ❌ {$failures} ناموفق\n\n" .
-            "تمامی پیامک‌ها از سمت کرم پلاس🪱 با موفقیت ارسال شدند.\n\n" .
+            "تمامی پیامک‌ها از سمت <b>کرم پلاس</b>🪱 با موفقیت ارسال شدند.\n\n" .
             "📆 {$date} ⏰ {$time}\n" .
             "• @NitroHostBot •";
 
@@ -236,7 +227,8 @@ trait SendsSmsProgress
             if (is_readable($imagePath)) {
                 $bot->sendPhoto(
                     photo: \SergiX44\Nutgram\Telegram\Types\Internal\InputFile::make($imagePath, 'bomber.png'),
-                    caption: $message
+                    caption: $message,
+                    parse_mode: 'HTML'
                 );
                 return;
             }
@@ -244,7 +236,7 @@ trait SendsSmsProgress
             // fallback to text send below
         }
 
-        $bot->sendMessage($message);
+        $bot->sendMessage($message, parse_mode: 'HTML');
     }
 
     private function deleteProgressMessage(Nutgram $bot, int $messageId): void
@@ -258,8 +250,8 @@ trait SendsSmsProgress
 
     private function getProgressBar(int $percent): string
     {
-        $filled = (int)($percent / 5);
-        $empty = 20 - $filled;
+        $filled = max(0, min(10, (int)round($percent / 10)));
+        $empty = 10 - $filled;
         $bar = '[' . str_repeat('█', $filled) . str_repeat('░', $empty) . ']';
         return $bar . ' ' . $percent . '%';
     }

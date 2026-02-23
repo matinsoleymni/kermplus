@@ -3,8 +3,9 @@
 namespace App\Helpers;
 
 use App\Models\Subscription;
-use App\Models\User;
 use App\Models\SubscriptionPayment;
+use App\Models\SubscriptionPlan;
+use App\Models\User;
 use Carbon\Carbon;
 
 class SubscriptionHelper
@@ -79,8 +80,10 @@ class SubscriptionHelper
      */
     public static function getTotalRevenue(): float
     {
-        return (float) Subscription::join('subscription_plans', 'subscriptions.subscription_plan_id', '=', 'subscription_plans.id')
-            ->sum('subscription_plans.price');
+        return (float) SubscriptionPayment::query()
+            ->where('status', 'paid')
+            ->where('price_currency', 'usd')
+            ->sum('price_amount');
     }
 
     /**
@@ -88,9 +91,11 @@ class SubscriptionHelper
      */
     public static function getMonthlyRevenue(): float
     {
-        return (float) Subscription::join('subscription_plans', 'subscriptions.subscription_plan_id', '=', 'subscription_plans.id')
-            ->where('subscriptions.created_at', '>=', Carbon::now()->startOfMonth())
-            ->sum('subscription_plans.price');
+        return (float) SubscriptionPayment::query()
+            ->where('status', 'paid')
+            ->where('price_currency', 'usd')
+            ->where('created_at', '>=', Carbon::now()->startOfMonth())
+            ->sum('price_amount');
     }
 
     /**
@@ -118,16 +123,24 @@ class SubscriptionHelper
      */
     public static function getPlanStats(): string
     {
-        $plans = \App\Models\SubscriptionPlan::where('is_active', true)->get();
+        $plans = SubscriptionPlan::query()
+            ->where('is_active', true)
+            ->orderByRaw('LOWER(name)')
+            ->get();
         $msg = "📊 آمار پلن‌های اشتراک:\n\n";
 
         foreach ($plans as $plan) {
-            $count = $plan->subscriptions()->count();
-            $price = (float) $plan->price;
+            $count = $plan->subscriptions()
+                ->where('is_active', true)
+                ->where(function ($q): void {
+                    $q->whereNull('expires_at')->orWhere('expires_at', '>', Carbon::now());
+                })
+                ->count();
+
             $msg .= "🔹 {$plan->name}\n";
-            $msg .= "   💰 قیمت: " . number_format($price, 0) . " تومان\n";
+            $msg .= "   💰 USD: " . number_format($plan->usdPrice(), 2) . " | ریال: " . number_format($plan->irrPrice()) . " | استار: " . number_format($plan->starsPrice()) . "\n";
             $msg .= "   ⏱️ مدت: {$plan->duration_days} روز\n";
-            $msg .= "   👥 تعداد کاربر: {$count}\n";
+            $msg .= "   👥 کاربران فعال: {$count}\n";
             $msg .= "   📊 SMS: {$plan->max_sms_per_day}/روز | Email: {$plan->max_email_per_day}/روز\n\n";
         }
 
@@ -156,8 +169,8 @@ class SubscriptionHelper
         $msg .= "   • منقضی: {$stats['expired']}\n\n";
 
         $msg .= "💰 **درآمد:**\n";
-        $msg .= "   • کل: " . number_format($totalRevenue, 0) . " تومان\n";
-        $msg .= "   • این ماه: " . number_format($monthlyRevenue, 0) . " تومان\n";
+        $msg .= "   • کل (USD): " . number_format($totalRevenue, 2) . "\n";
+        $msg .= "   • این ماه (USD): " . number_format($monthlyRevenue, 2) . "\n";
 
         return $msg;
     }
@@ -168,34 +181,104 @@ class SubscriptionHelper
     public static function getRevenueStatsMessage(): string
     {
         $now = Carbon::now();
-        $today = self::paidSumBetween($now->copy()->startOfDay(), $now);
-        $last7 = self::paidSumBetween($now->copy()->subDays(7), $now);
-        $last30 = self::paidSumBetween($now->copy()->subDays(30), $now);
-        $total = (float) SubscriptionPayment::query()
-            ->where('status', 'paid')
-            ->sum('price_amount');
 
-        $msg = "• 💰 Revenue Statistics ᴍᴏᴢᴀʜᴇᴍʏᴀʙ🍷 •\n\n";
-        $msg .= "┬ 💵 Today : " . self::formatUsd($today) . "$\n";
-        $msg .= "┤ 📅 Last 7 Days : " . self::formatUsd($last7) . "$\n";
-        $msg .= "┘ 🌙 Last 30 Days : " . self::formatUsd($last30) . "$\n\n";
-        $msg .= "┬ 📊 Total Revenue : " . self::formatUsd($total) . "$\n\n";
-        $msg .= " 📆 " . $now->format('Y/m/d') . " - ⏰ " . $now->format('H:i:s');
+        $todayFrom = $now->copy()->startOfDay();
+        $last7From = $now->copy()->subDays(7);
+        $last30From = $now->copy()->subDays(30);
+
+        $todayRevenue = self::paidSumBetween($todayFrom, $now, 'usd');
+        $last7Revenue = self::paidSumBetween($last7From, $now, 'usd');
+        $last30Revenue = self::paidSumBetween($last30From, $now, 'usd');
+        $totalRevenue = self::paidSumTotal('usd');
+
+        $msg = "• 💰 Revenue Statistics  ᴋᴇʀᴍᴘʟᴜꜱ🍷 •\n\n";
+        $msg .= "┬ 💵 Today : " . self::formatUsdStat($todayRevenue) . "$\n";
+        $msg .= "┤ 📅 Last 7 Days : " . self::formatUsdStat($last7Revenue) . "$\n";
+        $msg .= "┘ 🌙 Last 30 Days : " . self::formatUsdStat($last30Revenue) . "$\n\n";
+        $msg .= "┬ 📊 Total Revenue : " . self::formatUsdStat($totalRevenue) . "$\n\n";
+        $msg .= " 📆 " . self::formatPersianDate($now) . " - ⏰ " . $now->format('H:i:s');
 
         return $msg;
     }
 
-    protected static function paidSumBetween(Carbon $from, Carbon $to): float
+    protected static function paidSumBetween(Carbon $from, Carbon $to, string $currency): float
     {
         return (float) SubscriptionPayment::query()
             ->where('status', 'paid')
+            ->whereRaw('LOWER(price_currency) = ?', [strtolower($currency)])
             ->whereBetween('created_at', [$from, $to])
             ->sum('price_amount');
     }
 
-    protected static function formatUsd(float $value): string
+    protected static function paidSumTotal(string $currency): float
     {
-        // 3 decimals to mimic نمونه خروجی
-        return rtrim(rtrim(number_format($value, 3, '.', ''), '0'), '.') ?: '0';
+        return (float) SubscriptionPayment::query()
+            ->where('status', 'paid')
+            ->whereRaw('LOWER(price_currency) = ?', [strtolower($currency)])
+            ->sum('price_amount');
+    }
+
+    /**
+     * @return array{paid:int,pending:int,failed:int}
+     */
+    protected static function paymentStatusCountsBetween(Carbon $from, Carbon $to): array
+    {
+        $pendingStatuses = ['pending', 'pre_checkout', 'waiting'];
+        $base = SubscriptionPayment::query()
+            ->whereBetween('created_at', [$from, $to]);
+
+        $paid = (clone $base)->where('status', 'paid')->count();
+        $pending = (clone $base)->whereIn('status', $pendingStatuses)->count();
+        $failed = (clone $base)
+            ->whereNotIn('status', array_merge(['paid'], $pendingStatuses))
+            ->count();
+
+        return [
+            'paid' => $paid,
+            'pending' => $pending,
+            'failed' => $failed,
+        ];
+    }
+
+    protected static function formatByCurrency(float $value, string $currency): string
+    {
+        $currency = strtolower($currency);
+
+        if ($currency === 'usd') {
+            return number_format($value, 2, '.', ',');
+        }
+
+        return number_format($value, 0, '.', ',');
+    }
+
+    protected static function formatUsdStat(float $value): string
+    {
+        return number_format($value, 3, '.', '');
+    }
+
+    protected static function formatPersianDate(Carbon $date): string
+    {
+        if (!class_exists(\IntlDateFormatter::class)) {
+            return $date->format('Y/m/d');
+        }
+
+        $formatter = new \IntlDateFormatter(
+            'en_US@calendar=persian',
+            \IntlDateFormatter::NONE,
+            \IntlDateFormatter::NONE,
+            $date->getTimezone()->getName(),
+            \IntlDateFormatter::TRADITIONAL,
+            'yyyy/MM/d'
+        );
+
+        if ($formatter === false) {
+            return $date->format('Y/m/d');
+        }
+
+        $formatted = $formatter->format($date);
+
+        return is_string($formatted) && $formatted !== ''
+            ? $formatted
+            : $date->format('Y/m/d');
     }
 }

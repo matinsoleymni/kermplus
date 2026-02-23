@@ -13,15 +13,15 @@ class UserProfileKeyboard
 
         if (!$hasActiveSubscription) {
             $keyboard->addRow(
-                InlineKeyboardButton::make('💳 خرید اشتراک', callback_data: 'buy_subscription'),
-                InlineKeyboardButton::make('🎁 دعوت دوستان', callback_data: 'user_referral')
+                InlineKeyboardButton::make('خرید اشتراک', callback_data: 'buy_subscription', style: 'danger'),
+                InlineKeyboardButton::make('دعوت دوستان', callback_data: 'user_referral', style: 'danger', icon: '4913497231492908158')
             );
         } else {
             $keyboard->addRow(
-                InlineKeyboardButton::make('🎁 دعوت دوستان', callback_data: 'user_referral')
+                InlineKeyboardButton::make('دعوت دوستان', callback_data: 'user_referral', style: 'danger', icon: '4913497231492908158')
             );
         }
 
-        return $keyboard->addRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'main_menu'));
+        return $keyboard->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747'));
     }
 }

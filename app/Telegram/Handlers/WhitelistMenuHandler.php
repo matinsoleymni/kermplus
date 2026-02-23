@@ -28,17 +28,17 @@ class WhitelistMenuHandler
 
         $limit = app(FeatureLimitService::class)->checkWhitelistAdditionLimit($local);
         if ($limit) {
-            $bot->sendMessage($limit, reply_markup: PlusRequiredKeyboard::make('main_menu'));
+            $bot->sendMessage($limit, parse_mode: 'HTML', reply_markup: PlusRequiredKeyboard::make('main_menu'));
             return;
         }
 
         $local->last_active_at = now();
         $local->save();
 
-        $msg = "❀ کرم پلاس ❀\n\n";
+        $msg = "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> <b>کرم پلاس</b> <tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji>\n\n";
         $msg .= "به بخش لیست سفید 🤍 خوش اومدی ✋🏻\n";
         $msg .= "اگه شمارت رو به لیست سفید اضافه کنی ، ضد بمبر میشه و کسی نمیتونه اذیتت کنه باهاش :)\n\n";
-        $msg .= "📝 فرمت ‌های قابل قبول:\n";
+        $msg .= "<tg-emoji emoji-id='5334882760735598374'>📝</tg-emoji> فرمت ‌های قابل قبول:\n";
         $msg .= "• با صفر: 09123456789 (۱۱ رقم)\n";
         $msg .= "• بدون صفر: 9123456789 (۱۰ رقم)\n";
         $msg .= "• با کد کشور: 989123456789 (۱۲ رقم)\n\n";
@@ -46,15 +46,15 @@ class WhitelistMenuHandler
         $msg .= "• با صفر : 09123456789\n";
         $msg .= "• بدون صفر: 9123456789\n";
         $msg .= "• با کد کشور: 989123456789\n\n";
-        $msg .= "⚠️ دقت کن:\n";
+        $msg .= "<tg-emoji emoji-id='6226426402682441481'>⚠️</tg-emoji> دقت کن:\n";
         $msg .= "• هر اکانت پلاس فقط میتونه یک شماره رو به وایت لیست اضافه کنه\n";
         $msg .= "• شماره رو بدون فاصله و بدون خط تیره وارد کن\n";
         $msg .= "• فقط اعداد انگلیسی مجازه\n\n";
-        $msg .= "📱شماره مورد نظرت رو برام بفرست تا ضد بمبرش کنم :";
+        $msg .= "<tg-emoji emoji-id='5407025283456835913'>📱</tg-emoji> شماره مورد نظرت رو برام بفرست تا ضد بمبرش کنم :";
 
         $keyboard = InlineKeyboardMarkup::make()
-            ->addRow(InlineKeyboardButton::make('🔙 بازگشت', callback_data: 'main_menu'));
+            ->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747'));
 
-        $bot->sendMessage($msg, reply_markup: $keyboard);
+        $bot->sendMessage($msg, parse_mode: 'HTML', reply_markup: $keyboard);
     }
 }
