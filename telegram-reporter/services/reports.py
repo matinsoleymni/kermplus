@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 from lib.api import InputReasons, errors, functions, types
 
 import utils
-from .channels import DEFAULT_REACTIONS
+from .channels import DEFAULT_REACTIONS, NEGATIVE_REACTIONS
 
 if TYPE_CHECKING:
     from app import App
@@ -207,7 +207,7 @@ async def report_message(
     return {"reported": reported, "errors": errors_list}
 
 
-async def send_reactions(app: App, link: str, emoji: str | None = None) -> dict:
+async def send_reactions(app: App, link: str, emoji: str | None = None, mix_negative: bool = False) -> dict:
     """Send reactions to a specific post in a channel using available sessions."""
     try:
         username, message_id = utils.normalize_post_link(link)
@@ -253,7 +253,15 @@ async def send_reactions(app: App, link: str, emoji: str | None = None) -> dict:
             "available_reactions": [],
         }
 
-    if emoji:
+    if mix_negative:
+        selected_reactions = [reaction for reaction in NEGATIVE_REACTIONS if reaction in available]
+        if not selected_reactions:
+            return {
+                "sent": 0,
+                "errors": ["None of the selected negative reactions are allowed for this channel."],
+                "available_reactions": available,
+            }
+    elif emoji:
         if emoji not in available:
             return {
                 "sent": 0,

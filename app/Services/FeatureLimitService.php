@@ -33,11 +33,15 @@ class FeatureLimitService
                 }
             }
 
-            $todayCount = (clone $query)
-                ->whereDate('created_at', $now->toDateString())
-                ->count();
-            if ($todayCount >= 3) {
-                return '⛔️ محدودیت روزانه ریپورتر (۳ درخواست) پر شده است.';
+            if($user->isAdmin()) {
+
+            }else {
+                $todayCount = (clone $query)
+                    ->whereDate('created_at', $now->toDateString())
+                    ->count();
+                if ($todayCount >= 3) {
+                    return '⛔️ محدودیت روزانه ریپورتر (۳ درخواست) پر شده است.';
+                }
             }
         } else {
             $monthCount = (clone $query)

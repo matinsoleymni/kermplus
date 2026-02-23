@@ -19,6 +19,7 @@ class WhitelistConversation extends Conversation
     private const ACTION_PICK_EMAIL = 'whitelist_pick_email';
     private const ACTION_PICK_TELEGRAM = 'whitelist_pick_telegram';
     private const ACTION_PICK_INSTAGRAM_EMAIL = 'whitelist_pick_instagram_email';
+    private const ACTION_ALREADY_REGISTERED = 'whitelist_already_registered';
     private const ACTION_SHOW_REGISTERED = 'whitelist_show_registered';
     private const ACTION_BACK_MENU = 'whitelist_back_menu';
     private const ACTION_CONFIRM = 'confirm_whitelist_yes';
@@ -37,10 +38,7 @@ class WhitelistConversation extends Conversation
     {
         return InlineKeyboardMarkup::make()
             ->addRow(
-                InlineKeyboardButton::make('🔙 بازگشت به منوی لیست سفید', callback_data: self::ACTION_BACK_MENU, style: 'danger')
-            )
-            ->addRow(
-                InlineKeyboardButton::make('❌ لغو', callback_data: 'cancel_whitelist', style: 'danger')
+                InlineKeyboardButton::make('بازگشت', callback_data: self::ACTION_BACK_MENU, style: 'danger', icon: '5352759161945867747')
             );
     }
 
@@ -48,8 +46,8 @@ class WhitelistConversation extends Conversation
     {
         return InlineKeyboardMarkup::make()
             ->addRow(
-                InlineKeyboardButton::make('✅ بله، ذخیره کن', callback_data: self::ACTION_CONFIRM, style: 'danger'),
-                InlineKeyboardButton::make('❌ لغو', callback_data: 'cancel_whitelist', style: 'danger')
+                InlineKeyboardButton::make('بله', callback_data: self::ACTION_CONFIRM, style: 'danger', icon: '6224314343924699041'),
+                InlineKeyboardButton::make('خیر', callback_data: 'cancel_whitelist', style: 'danger', icon: '6224072537265934868')
             );
     }
 
@@ -57,25 +55,26 @@ class WhitelistConversation extends Conversation
     {
         $targets = $whitelist->getUserTargets($local)->keyBy('type');
 
-        $status = static function (string $type) use ($targets): string {
-            return $targets->has($type) ? '✅ ثبت شده' : '➕ ثبت نشده';
+
+        $callbackForType = static function (string $type, string $defaultAction) use ($targets): string {
+            return $targets->has($type) ? self::ACTION_ALREADY_REGISTERED : $defaultAction;
         };
 
         return InlineKeyboardMarkup::make()
             ->addRow(
-                InlineKeyboardButton::make("شماره: {$status(WhitelistedTarget::TYPE_PHONE)}", callback_data: self::ACTION_PICK_PHONE, style: 'danger', icon: '5172893417717367746')
+                InlineKeyboardButton::make("شماره", callback_data: $callbackForType(WhitelistedTarget::TYPE_PHONE, self::ACTION_PICK_PHONE), style: 'danger', icon: '5172893417717367746')
             )
             ->addRow(
-                InlineKeyboardButton::make("ایمیل: {$status(WhitelistedTarget::TYPE_EMAIL)}", callback_data: self::ACTION_PICK_EMAIL, style: 'danger', icon: '5456174900622412791')
+                InlineKeyboardButton::make("ایمیل", callback_data: $callbackForType(WhitelistedTarget::TYPE_EMAIL, self::ACTION_PICK_EMAIL), style: 'danger', icon: '5456174900622412791')
             )
             ->addRow(
-                InlineKeyboardButton::make("تلگرام: {$status(WhitelistedTarget::TYPE_TELEGRAM)}", callback_data: self::ACTION_PICK_TELEGRAM, style: 'danger', icon: '5364125616801073577')
+                InlineKeyboardButton::make("تلگرام", callback_data: $callbackForType(WhitelistedTarget::TYPE_TELEGRAM, self::ACTION_PICK_TELEGRAM), style: 'danger', icon: '5364125616801073577')
             )
             ->addRow(
-                InlineKeyboardButton::make("آیدی اینستاگرام: {$status(WhitelistedTarget::TYPE_INSTAGRAM_EMAIL)}", callback_data: self::ACTION_PICK_INSTAGRAM_EMAIL, style: 'danger', icon: '5364310996179503764')
+                InlineKeyboardButton::make("اینستاگرام", callback_data: $callbackForType(WhitelistedTarget::TYPE_INSTAGRAM_EMAIL, self::ACTION_PICK_INSTAGRAM_EMAIL), style: 'danger', icon: '5364310996179503764')
             )
             ->addRow(
-                InlineKeyboardButton::make('مشاهده موارد ثبت‌شده', callback_data: self::ACTION_SHOW_REGISTERED, style: 'danger', icon: '5197269100878907942')
+                InlineKeyboardButton::make('مشاهده موارد ثبت‌ شده', callback_data: self::ACTION_SHOW_REGISTERED, style: 'danger', icon: '5197269100878907942')
             )
             ->addRow(
                 InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747')
@@ -149,9 +148,20 @@ class WhitelistConversation extends Conversation
             return;
         }
 
+        if ($data === self::ACTION_ALREADY_REGISTERED) {
+            $bot->answerCallbackQuery(text: '⚠️ این مورد قبلا ثبت شده و قابل ویرایش نیست.');
+            return;
+        }
+
         $type = $this->resolveTypeFromAction($data);
         if ($type === null) {
             $bot->answerCallbackQuery(text: '⛔️ گزینه نامعتبر است.');
+            return;
+        }
+
+        if ($whitelist->getUserTarget($local, $type)) {
+            $bot->answerCallbackQuery(text: '⚠️ این مورد قبلا ثبت شده و قابل ویرایش نیست.');
+            $this->showWhitelistMenu($bot, $local, true);
             return;
         }
 
@@ -159,16 +169,17 @@ class WhitelistConversation extends Conversation
         $bot->setUserData('whitelist_selected_type', $type);
         $bot->setUserData('whitelist_pending_value', null);
 
-        $existing = $whitelist->getUserTarget($local, $type);
-        $currentText = $existing
-            ? "✅ مقدار فعلی: <code>{$existing->value}</code>\n\n"
-            : "ℹ️ برای این بخش هنوز مقداری ثبت نکردی.\n\n";
-
-        $text = "🧾 ثبت/ویرایش {$whitelist->getTypeLabel($type)}\n\n";
-        $text .= $currentText;
+        $text = match ($type) {
+            WhitelistedTarget::TYPE_PHONE => "<tg-emoji emoji-id='5172893417717367746'>📞</tg-emoji> ثبت شماره\n\n",
+            WhitelistedTarget::TYPE_EMAIL => "<tg-emoji emoji-id='5456174900622412791'>📧</tg-emoji> ثبت ایمیل\n\n",
+            WhitelistedTarget::TYPE_TELEGRAM => "<tg-emoji emoji-id='5364125616801073577'>✈️</tg-emoji> ثبت تلگرام\n\n",
+            WhitelistedTarget::TYPE_INSTAGRAM_EMAIL => "<tg-emoji emoji-id='5364310996179503764'>📸</tg-emoji> ثبت تلگرام\n\n",
+            default => "🧾 ثبت {$whitelist->getTypeLabel($type)}\n\n",
+        };
         $text .= $this->typeInstruction($type);
 
-        $this->sendOrEditMessage($bot, $text, $this->inputKeyboard());
+        $disableWebPagePreview = in_array($type, [WhitelistedTarget::TYPE_TELEGRAM, WhitelistedTarget::TYPE_INSTAGRAM_EMAIL], true);
+        $this->sendOrEditMessage($bot, $text, $this->inputKeyboard(), $disableWebPagePreview);
         $this->next('awaitValue');
     }
 
@@ -215,17 +226,24 @@ class WhitelistConversation extends Conversation
             return;
         }
 
-        $value = trim((string)($bot->message()?->text ?? ''));
-        if (!$whitelist->validateForType($value, $type)) {
-            $bot->sendMessage("⛔️ مقدار واردشده معتبر نیست.\n\n" . $this->typeInstruction($type), reply_markup: $this->inputKeyboard());
+        if ($whitelist->getUserTarget($local, $type)) {
+            $bot->sendMessage('⚠️ این مورد قبلا ثبت شده و قابل ویرایش نیست.');
+            $this->showWhitelistMenu($bot, $local, true);
             return;
         }
 
-        $existing = $whitelist->getUserTarget($local, $type);
-        $sameAsExisting = $existing
-            && WhitelistedTarget::normalizeValue($value, $type) === WhitelistedTarget::normalizeValue($existing->value, $type);
+        $value = trim((string)($bot->message()?->text ?? ''));
+        if (!$whitelist->validateForType($value, $type)) {
+            $bot->sendMessage(
+                "⛔️ مقدار واردشده معتبر نیست.\n\n" . $this->typeInstruction($type),
+                parse_mode: 'HTML',
+                disable_web_page_preview: in_array($type, [WhitelistedTarget::TYPE_TELEGRAM, WhitelistedTarget::TYPE_INSTAGRAM_EMAIL], true),
+                reply_markup: $this->inputKeyboard()
+            );
+            return;
+        }
 
-        if (!$sameAsExisting && $whitelist->isWhitelisted($value, $type)) {
+        if ($whitelist->isWhitelisted($value, $type)) {
             $bot->sendMessage('ℹ️ این مورد از قبل در وایت‌لیست ثبت شده است. مقدار دیگری ارسال کن یا برگرد.');
             return;
         }
@@ -318,11 +336,14 @@ class WhitelistConversation extends Conversation
             return;
         }
 
-        $existing = $whitelist->getUserTarget($local, $type);
-        $sameAsExisting = $existing
-            && WhitelistedTarget::normalizeValue($value, $type) === WhitelistedTarget::normalizeValue($existing->value, $type);
+        if ($whitelist->getUserTarget($local, $type)) {
+            $bot->answerCallbackQuery();
+            $bot->sendMessage('⚠️ این مورد قبلا ثبت شده و قابل ویرایش نیست.');
+            $this->showWhitelistMenu($bot, $local, true);
+            return;
+        }
 
-        if (!$sameAsExisting && $whitelist->isWhitelisted($value, $type)) {
+        if ($whitelist->isWhitelisted($value, $type)) {
             $bot->answerCallbackQuery();
             $bot->sendMessage('ℹ️ این مورد از قبل در وایت‌لیست ثبت شده است.');
             $this->end();
@@ -330,7 +351,7 @@ class WhitelistConversation extends Conversation
         }
 
         try {
-            $saved = $whitelist->createOrUpdateForUser($local, $type, $value);
+            $saved = $whitelist->createForUser($local, $type, $value);
         } catch (\Throwable) {
             $bot->answerCallbackQuery();
             $bot->sendMessage('⛔️ ثبت این مقدار ممکن نیست. احتمالا قبلا در لیست سفید ثبت شده است.');
@@ -340,7 +361,7 @@ class WhitelistConversation extends Conversation
         $limiter->recordWhitelistAddition($local, "{$type}:{$saved->value}");
 
         $bot->answerCallbackQuery(text: '✅ ذخیره شد.');
-        $bot->sendMessage("✅ {$whitelist->getTypeLabel($type)} با موفقیت ذخیره شد:\n<code>{$saved->value}</code>", parse_mode: 'HTML');
+        // $bot->sendMessage("✅ {$whitelist->getTypeLabel($type)} با موفقیت ذخیره شد:\n<code>{$saved->value}</code>", parse_mode: 'HTML');
 
         $bot->setUserData('whitelist_pending_value', null);
         $this->showWhitelistMenu($bot, $local, true);
@@ -352,13 +373,10 @@ class WhitelistConversation extends Conversation
         $bot->setUserData('whitelist_selected_type', null);
         $bot->setUserData('whitelist_pending_value', null);
 
-        $msg = "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> <b>کرم پلاس</b> <tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji>\n\n";
-        $msg .= "به بخش لیست سفید 🤍 خوش اومدی.\n";
-        $msg .= "اینجا می‌تونی این موارد رو ثبت یا ویرایش کنی:\n";
-        $msg .= "• شماره موبایل\n";
-        $msg .= "• ایمیل\n";
-        $msg .= "• کانال/بات/اکانت تلگرام (یکی)\n";
-        $msg .= "• آیدی اکانت اینستاگرام\n\n";
+        $msg = "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> کرم پلاس <tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji>\n\n";
+        $msg .= "به بخش لیست سفید<tg-emoji emoji-id='5429392313493242588'>🤍</tg-emoji> خوش اومدی\n\n";
+        $msg .= "اینجا میتونی با ثبت اکانت هات و شمارت ، خودتو از هر کرمی<tg-emoji emoji-id='5134654202894615343'>🪱</tg-emoji> در امان نگه داری\n\n";
+        $msg .= "<tg-emoji emoji-id='6226426402682441481'>⚠️</tg-emoji> تو ثبتشون دقت کن چون فقط یک بار میتونی ثبت کنی و امکان ویرایش وجود نداره.";
 
         if ($withSummary) {
             $msg .= "\n\n" . $this->buildRegisteredSummary($local, $whitelist);
@@ -400,15 +418,20 @@ class WhitelistConversation extends Conversation
     private function typeInstruction(string $type): string
     {
         return match ($type) {
-            WhitelistedTarget::TYPE_PHONE => "شماره موبایل را بفرست.\nفرمت‌های معتبر:\n• 09123456789\n• 9123456789\n• 989123456789",
-            WhitelistedTarget::TYPE_EMAIL => "ایمیل موردنظر را بفرست.\nمثال: sample@gmail.com",
-            WhitelistedTarget::TYPE_TELEGRAM => "یکی از این حالت‌ها را بفرست:\n• یوزرنیم: username\n• با @: @username\n• لینک: https://t.me/username\n• لینک پست: https://t.me/username/123",
-            WhitelistedTarget::TYPE_INSTAGRAM_EMAIL => "آیدی اکانت اینستاگرام را بفرست.\nمثال:\n• username\n• @username\n• https://instagram.com/username",
+            WhitelistedTarget::TYPE_PHONE => "شماره موبایلت رو تو یکی از فرمت‌ های زیر بفرست تا به لیست سفید<tg-emoji emoji-id='5429392313493242588'>🤍</tg-emoji> اضافه کنمش:\n\n• 09123456789\n• 9123456789\n• 989123456789",
+            WhitelistedTarget::TYPE_EMAIL => "ایمیلت رو تو فرمت‌ زیر بفرست تا به لیست سفید<tg-emoji emoji-id='5429392313493242588'>🤍</tg-emoji> اضافه کنمش:\n\n• sample@gmail.com",
+            WhitelistedTarget::TYPE_TELEGRAM => "ایدی کانال یا اکانتت رو تو یکی از فرمت‌ های زیر بفرست تا به لیست سفید<tg-emoji emoji-id='5429392313493242588'>🤍</tg-emoji> اضافه کنمش:\n\n• username\n• @username\n• https://t.me/username",
+            WhitelistedTarget::TYPE_INSTAGRAM_EMAIL => "پیج اینستاگرامت رو تو یکی از فرمت‌ های زیر بفرست تا به لیست سفید<tg-emoji emoji-id='5429392313493242588'>🤍</tg-emoji> اضافه کنمش:\n\n• username\n• @username\n• https://instagram.com/username",
             default => "مقدار را ارسال کن.",
         };
     }
 
-    private function sendOrEditMessage(Nutgram $bot, string $text, ?InlineKeyboardMarkup $keyboard = null): void
+    private function sendOrEditMessage(
+        Nutgram $bot,
+        string $text,
+        ?InlineKeyboardMarkup $keyboard = null,
+        bool $disableWebPagePreview = false
+    ): void
     {
         $messageId = $bot->callbackQuery()?->message?->message_id;
 
@@ -419,6 +442,7 @@ class WhitelistConversation extends Conversation
                     message_id: $messageId,
                     text: $text,
                     parse_mode: 'HTML',
+                    disable_web_page_preview: $disableWebPagePreview,
                     reply_markup: $keyboard
                 );
                 return;
@@ -427,6 +451,11 @@ class WhitelistConversation extends Conversation
             }
         }
 
-        $bot->sendMessage($text, parse_mode: 'HTML', reply_markup: $keyboard);
+        $bot->sendMessage(
+            $text,
+            parse_mode: 'HTML',
+            disable_web_page_preview: $disableWebPagePreview,
+            reply_markup: $keyboard
+        );
     }
 }

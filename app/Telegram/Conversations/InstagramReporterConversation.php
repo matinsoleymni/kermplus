@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Carbon;
 use SergiX44\Nutgram\Conversations\Conversation;
 use SergiX44\Nutgram\Nutgram;
+use SergiX44\Nutgram\Telegram\Types\Internal\InputFile;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 
@@ -54,6 +55,11 @@ class InstagramReporterConversation extends Conversation
         $bot->setUserData('ig_reporter_target_type', $targetType);
         $bot->setUserData('ig_reporter_media', null);
         $bot->setUserData('ig_reporter_post_link', null);
+        $bot->setUserData('ig_reporter_selected_reason_key', null);
+        $bot->setUserData('ig_reporter_selected_reason_title', null);
+        $bot->setUserData('ig_reporter_reason_summary', null);
+        $bot->setUserData('ig_reason_summary_prompt_message_id', null);
+        $bot->setUserData('ig_reason_summary_prompt_uses_caption', false);
         $bot->setUserData('ig_cleanup_messages', []);
 
         $promptText = $targetType === 'post'
@@ -98,7 +104,22 @@ class InstagramReporterConversation extends Conversation
 
         $bot->setUserData('ig_reporter_username', $username);
 
-        $loadingMsg = $bot->sendMessage('⏳ درحال دریافت اطلاعات پروفایل...');
+        $loadingMsg = null;
+        $reportPhoto = $this->getReportPhoto();
+        if ($reportPhoto) {
+            try {
+                $loadingMsg = $bot->sendPhoto(
+                    photo: $reportPhoto,
+                    caption: '⏳ درحال دریافت اطلاعات پروفایل...'
+                );
+            } catch (\Throwable) {
+                $loadingMsg = null;
+            }
+        }
+
+        if (!$loadingMsg) {
+            $loadingMsg = $bot->sendMessage('⏳ درحال دریافت اطلاعات پروفایل...');
+        }
         $this->addCleanupMessage($bot, $loadingMsg->message_id);
 
         $profile = $this->fetchInstagramProfile($username);
@@ -121,6 +142,7 @@ class InstagramReporterConversation extends Conversation
                     photo: $photoUrl,
                     caption: $details,
                     reply_markup: $keyboard,
+                    parse_mode: 'HTML'
                 );
                 $this->addCleanupMessage($bot, $sent->message_id);
                 $this->next('processInstagramReason');
@@ -165,7 +187,22 @@ class InstagramReporterConversation extends Conversation
         $bot->setUserData('ig_reporter_post_shortcode', $shortcode);
         $bot->setUserData('ig_reporter_post_link', $this->buildInstagramLink($shortcode));
 
-        $loadingMsg = $bot->sendMessage('⏳ درحال دریافت اطلاعات پست...');
+        $loadingMsg = null;
+        $reportPhoto = $this->getReportPhoto();
+        if ($reportPhoto) {
+            try {
+                $loadingMsg = $bot->sendPhoto(
+                    photo: $reportPhoto,
+                    caption: '⏳ درحال دریافت اطلاعات پست...'
+                );
+            } catch (\Throwable) {
+                $loadingMsg = null;
+            }
+        }
+
+        if (!$loadingMsg) {
+            $loadingMsg = $bot->sendMessage('⏳ درحال دریافت اطلاعات پست...');
+        }
         $this->addCleanupMessage($bot, $loadingMsg->message_id);
 
         $media = $this->fetchInstagramMedia($shortcode);
@@ -221,22 +258,86 @@ class InstagramReporterConversation extends Conversation
             return;
         }
 
-        if (!isset($reasons[$data])) {
-            $bot->answerCallbackQuery(text: '⛔️ گزینه نامعتبر است.');
+        if (!$data || !isset($reasons[$data])) {
+            if ($bot->callbackQuery()) {
+                $bot->answerCallbackQuery(text: '⛔️ گزینه نامعتبر است.');
+            } else {
+                $bot->sendMessage('⛔️ لطفا دلیل ریپورت رو از دکمه‌ها انتخاب کن.');
+            }
             $this->promptInstagramReason($bot);
             return;
         }
 
+        $bot->setUserData('ig_reporter_selected_reason_key', $data);
+        $bot->setUserData('ig_reporter_selected_reason_title', $reasons[$data]);
+
+        $bot->answerCallbackQuery(text: '✅ دلیل ثبت شد.');
+        $this->promptInstagramReasonSummary($bot);
+        $this->next('awaitInstagramReasonSummary');
+    }
+
+    public function awaitInstagramReasonSummary(Nutgram $bot): void
+    {
+        $callbackData = $bot->callbackQuery()?->data;
+
+        if ($callbackData === 'reporter_instagram_menu') {
+            $bot->answerCallbackQuery();
+            $this->showInstagramReporterMenu($bot);
+            $this->end();
+            return;
+        }
+
+        $reasonKey = $bot->getUserData('ig_reporter_selected_reason_key');
+        $reasonTitle = $bot->getUserData('ig_reporter_selected_reason_title');
+
+        if (!$reasonKey || !$reasonTitle) {
+            if ($bot->callbackQuery()) {
+                $bot->answerCallbackQuery(text: '⛔️ ابتدا دلیل ریپورت را انتخاب کن.');
+            }
+            $this->promptInstagramReason($bot);
+            $this->next('processInstagramReason');
+            return;
+        }
+
+        $summary = null;
+
+        if ($callbackData) {
+            if ($callbackData !== 'instagram_reason_summary_default') {
+                $bot->answerCallbackQuery(text: '⛔️ لطفا متن رو ارسال کن یا متن پیش‌فرض رو بزن.');
+                return;
+            }
+
+            $summary = $this->buildDefaultReasonSummary($bot, (string)$reasonKey);
+            $bot->answerCallbackQuery(text: '✅ متن پیش‌فرض انتخاب شد.');
+        } else {
+            $summary = trim((string)$bot->message()?->text);
+            if ($summary === '') {
+                $bot->sendMessage('⛔️ لطفا توضیح دلیل ریپورت رو ارسال کن یا متن پیش‌فرض رو انتخاب کن.');
+                return;
+            }
+        }
+
+        $summary = $this->normalizeReasonSummary($summary);
+        $bot->setUserData('ig_reporter_reason_summary', $summary);
+        $this->finalizeInstagramReport($bot, (string)$reasonTitle, $summary);
+    }
+
+    private function finalizeInstagramReport(Nutgram $bot, string $reason, string $reasonSummary): void
+    {
         $username = $bot->getUserData('ig_reporter_username');
         if (!$username) {
-            $bot->answerCallbackQuery(text: '⛔️ ابتدا یوزرنیم را وارد کنید.');
+            if ($bot->callbackQuery()) {
+                $bot->answerCallbackQuery(text: '⛔️ ابتدا یوزرنیم را وارد کنید.');
+            }
             $this->end();
             return;
         }
 
         $local = $this->getLocalUser($bot);
         if (!$local) {
-            $bot->answerCallbackQuery(text: '⛔️ حساب شما پیدا نشد.');
+            if ($bot->callbackQuery()) {
+                $bot->answerCallbackQuery(text: '⛔️ حساب شما پیدا نشد.');
+            }
             $this->end();
             return;
         }
@@ -252,16 +353,23 @@ class InstagramReporterConversation extends Conversation
         $whitelist = app(WhitelistService::class);
         $instagramTypes = [WhitelistedTarget::TYPE_INSTAGRAM_EMAIL, WhitelistedTarget::TYPE_CUSTOM];
         if ($whitelist->isWhitelisted($username, $instagramTypes)) {
-            $bot->answerCallbackQuery();
+            if ($bot->callbackQuery()) {
+                $bot->answerCallbackQuery();
+            }
             $bot->sendMessage($whitelist->getBlockMessage($username, $instagramTypes));
             $this->end();
             return;
         }
 
         $limiter->recordReporterUsage($local);
-        $bot->answerCallbackQuery(text: '✅ دلیل ثبت شد.');
-        $baseMessageId = $bot->callbackQuery()?->message?->message_id;
-        $baseUsesCaption = $this->isCallbackMessagePhoto($bot);
+
+        $baseMessageId = $bot->getUserData('ig_reason_summary_prompt_message_id') ?: null;
+        $baseUsesCaption = (bool)$bot->getUserData('ig_reason_summary_prompt_uses_caption');
+
+        if (!$baseMessageId && $bot->callbackQuery()?->message?->message_id) {
+            $baseMessageId = $bot->callbackQuery()?->message?->message_id;
+            $baseUsesCaption = $this->isCallbackMessagePhoto($bot);
+        }
 
         $targetType = $bot->getUserData('ig_reporter_target_type') ?? 'page';
 
@@ -270,23 +378,98 @@ class InstagramReporterConversation extends Conversation
             $link = $bot->getUserData('ig_reporter_post_link');
 
             if (!$media) {
-                $bot->answerCallbackQuery(text: '⛔️ پست یافت نشد. دوباره تلاش کن.');
+                if ($bot->callbackQuery()) {
+                    $bot->answerCallbackQuery(text: '⛔️ پست یافت نشد. دوباره تلاش کن.');
+                } else {
+                    $bot->sendMessage('⛔️ پست یافت نشد. دوباره تلاش کن.');
+                }
                 $this->end();
                 return;
             }
 
             $owner = data_get($media, 'owner.username', $username);
-            $this->runInstagramReport($bot, $owner, $reasons[$data], 'post', $media, $link, $baseMessageId, $baseUsesCaption);
+            $this->runInstagramReport($bot, $owner, $reason, $reasonSummary, 'post', $media, $link, $baseMessageId, $baseUsesCaption);
             return;
         }
 
-        $this->runInstagramReport($bot, $username, $reasons[$data], 'page', null, null, $baseMessageId, $baseUsesCaption);
+        $this->runInstagramReport($bot, $username, $reason, $reasonSummary, 'page', null, null, $baseMessageId, $baseUsesCaption);
+    }
+
+    private function promptInstagramReasonSummary(Nutgram $bot): void
+    {
+        $text = "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> کرم پلاس <tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji>\n\n" .
+            "<tg-emoji emoji-id='4904973211763999824'>🗣️</tg-emoji> دلیل ریپورت رو به صورت خلاصه توضیح بده ( <tg-emoji emoji-id='6226426402682441481'>⚠️</tg-emoji> خیلی مهم و تاثیر گذار روی نتیجه ) :\n\n" .
+            "<tg-emoji emoji-id='5377620300965888937'>🔴</tg-emoji> هرچی متنش رسمی تر و به زبان انگلیسی باشه نتیجه بهتری میگیری\n" .
+            "<tg-emoji emoji-id='5377620300965888937'>🔴</tg-emoji> میتونی از Chat GPT کمک بگیری یا متن پیش فرض مارو انتخاب کنی";
+        $keyboard = $this->reasonSummaryKeyboard();
+        $messageId = $bot->callbackQuery()?->message?->message_id;
+        $useCaption = $this->isCallbackMessagePhoto($bot);
+
+        if ($messageId) {
+            try {
+                $this->editMessageByType($bot, $messageId, $text, $useCaption, $keyboard, true);
+                $bot->setUserData('ig_reason_summary_prompt_message_id', $messageId);
+                $bot->setUserData('ig_reason_summary_prompt_uses_caption', $useCaption);
+                return;
+            } catch (\Throwable) {
+                // fallback to sending a new message
+            }
+        }
+
+        $sent = $bot->sendMessage($text, parse_mode: 'HTML', reply_markup: $keyboard);
+        $bot->setUserData('ig_reason_summary_prompt_message_id', $sent->message_id ?? null);
+        $bot->setUserData('ig_reason_summary_prompt_uses_caption', false);
+    }
+
+    private function reasonSummaryKeyboard(): InlineKeyboardMarkup
+    {
+        return InlineKeyboardMarkup::make()
+            ->addRow(
+                InlineKeyboardButton::make('متن پیش فرض', callback_data: 'instagram_reason_summary_default', style: 'danger')
+            )
+            ->addRow(
+                InlineKeyboardButton::make('بازگشت', callback_data: 'reporter_instagram_menu', style: 'danger', icon: '5352759161945867747')
+            );
+    }
+
+    private function buildDefaultReasonSummary(Nutgram $bot, string $reasonKey): string
+    {
+        $targetType = $bot->getUserData('ig_reporter_target_type') === 'post' ? 'post' : 'account';
+        $category = $this->reasonCategoryLabel($reasonKey);
+
+        return "I am reporting this {$targetType} for {$category}. This appears to violate Instagram Community Guidelines. Please review and take appropriate action.";
+    }
+
+    private function reasonCategoryLabel(string $reasonKey): string
+    {
+        return match ($reasonKey) {
+            'instagram_reason_spam' => 'spam and inauthentic behavior',
+            'instagram_reason_harassment' => 'harassment and abusive behavior',
+            'instagram_reason_violence' => 'violent or dangerous content',
+            'instagram_reason_illegal_sales' => 'illegal sale or promotion of prohibited goods',
+            'instagram_reason_nudity' => 'nudity or sexual content',
+            'instagram_reason_fraud' => 'fraud or scam activity',
+            'instagram_reason_misinformation' => 'misleading or false information',
+            default => 'harmful and inappropriate content',
+        };
+    }
+
+    private function normalizeReasonSummary(string $summary): string
+    {
+        $summary = preg_replace('/\s+/u', ' ', trim($summary)) ?? trim($summary);
+
+        if (strlen($summary) > 260) {
+            $summary = substr($summary, 0, 257) . '...';
+        }
+
+        return $summary;
     }
 
     private function runInstagramReport(
         Nutgram $bot,
         string $username,
         string $reason,
+        string $reasonSummary,
         string $targetType = 'page',
         ?array $media = null,
         ?string $link = null,
@@ -306,6 +489,7 @@ class InstagramReporterConversation extends Conversation
             totalSteps: $totalSteps,
             targetLabel: $label,
             reason: $reason,
+            reasonSummary: $reasonSummary,
             queue: 243,
             active: 18,
             done: 162,
@@ -317,12 +501,24 @@ class InstagramReporterConversation extends Conversation
             statuses: $this->buildStatusLines(1)
         ) . $previewLine;
 
-        $progressMessageId = $baseMessageId;
-        $useCaption = $baseUsesCaption;
+        $progressMessageId = null;
+        $useCaption = false;
+        $reportPhoto = $this->getReportPhoto();
 
-        if ($progressMessageId) {
+        $this->clearCleanupMessages($bot);
+        if ($baseMessageId) {
+            $this->deleteMessageSafe($bot, $baseMessageId);
+        }
+
+        if ($reportPhoto) {
             try {
-                $this->editMessageByType($bot, $progressMessageId, $initialText, $useCaption, null, true);
+                $sent = $bot->sendPhoto(
+                    photo: $reportPhoto,
+                    caption: $initialText,
+                    parse_mode: 'HTML'
+                );
+                $progressMessageId = $sent->message_id ?? null;
+                $useCaption = (bool)$progressMessageId;
             } catch (\Throwable) {
                 $progressMessageId = null;
             }
@@ -368,6 +564,7 @@ class InstagramReporterConversation extends Conversation
                 totalSteps: $totalSteps,
                 targetLabel: $label,
                 reason: $reason,
+                reasonSummary: $reasonSummary,
                 queue: $queue,
                 active: $active,
                 done: $done,
@@ -387,6 +584,23 @@ class InstagramReporterConversation extends Conversation
         }
 
         $finalText = $this->buildFinalMessage($label, $link);
+        $reportPhoto = $this->getReportPhoto();
+        if ($reportPhoto) {
+            $this->deleteMessageSafe($bot, $progressMessageId);
+            try {
+                $bot->sendPhoto(
+                    photo: $reportPhoto,
+                    caption: $finalText,
+                    parse_mode: 'HTML'
+                );
+                $bot->setUserData('ig_cleanup_messages', []);
+                $this->end();
+                return;
+            } catch (\Throwable) {
+                // fallback to text mode below
+            }
+        }
+
         try {
             $this->editMessageByType($bot, $progressMessageId, $finalText, $useCaption, parseHtml: true);
         } catch (\Throwable) {
@@ -499,6 +713,7 @@ class InstagramReporterConversation extends Conversation
         int $totalSteps,
         string $targetLabel,
         string $reason,
+        string $reasonSummary,
         int $queue,
         int $active,
         int $done,
@@ -512,12 +727,18 @@ class InstagramReporterConversation extends Conversation
         $progressBar = $this->getProgressBar($percent);
         $barOnly = explode(' ', $progressBar, 2)[0];
         $statusBlock = implode("\n", array_map(static fn(string $line): string => "> {$line}", $statuses));
+        $safeTarget = htmlspecialchars($targetLabel, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $safeReason = htmlspecialchars($reason, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $safeSummary = htmlspecialchars($reasonSummary, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
         $date = now()->format('Y/m/d');
         $time = now()->format('H:i:s');
 
         return "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> KermPlus | Processing Job\n" .
             "━━━━━━━━━━━━━━━━\n\n" .
             "{$barOnly} {$percent}%   <tg-emoji emoji-id='5116159438062879454'>🙏</tg-emoji> step {$step}/{$totalSteps}\n\n" .
+            "🎯 target: {$safeTarget}\n" .
+            "🏷️ reason: {$safeReason}\n" .
+            "🗣️ summary: {$safeSummary}\n\n" .
             "📦 queue: {$queue} items\n" .
             "<tg-emoji emoji-id='4904936030232117798'>⚙️</tg-emoji> active: {$active}   <tg-emoji emoji-id='6224314343924699041'>✅</tg-emoji> done: {$done}\n" .
             "<tg-emoji emoji-id='5325945307454789973'>🟢</tg-emoji> ok: {$ok}   <tg-emoji emoji-id='5326056199215406977'>❌</tg-emoji> fail: {$fail}   🔁 retry: {$retry}\n\n" .
@@ -532,20 +753,17 @@ class InstagramReporterConversation extends Conversation
 
     private function buildFinalMessage(string $targetLabel, ?string $link = null): string
     {
-        $date = now()->format('Y/m/d');
+        $date = now()->format('Y/n/j');
         $time = now()->format('H:i:s');
-        $preview = $link ? "🖇️ لینک: {$link}\n" : '';
 
         return "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> KermPlus | Reported Successful\n" .
             "━━━━━━━━━━━━━━━━\n\n" .
-            "🎯 هدف: {$targetLabel}\n" .
-            $preview .
-            "📦 تعداد کل درخواست ها : 1321\n" .
-            "✅ 1235 موفق | ❌ 134 ناموفق\n\n" .
-            "تمامی ریپورت ها از سمت <b>کرم پلاس</b>🪱 با موفقیت ارسال شدند.\n" .
+            "<tg-emoji emoji-id='5116093437300442328'>⚡️</tg-emoji> تعداد کل درخواست ها : 1321\n" .
+            "<tg-emoji emoji-id='6224314343924699041'>✅</tg-emoji> 1235 موفق | <tg-emoji emoji-id='6224072537265934868'>❌</tg-emoji> 134 ناموفق\n\n" .
+            "تمامی ریپورت ها از سمت کرم پلاس<tg-emoji emoji-id='5134654202894615343'>🪱</tg-emoji> با موفقیت ارسال شدند.\n" .
             "نتیجه نهایی وابسته به بررسی پلتفرم مقصد می‌باشد.\n\n" .
-            "📆 {$date} ⏰ {$time}\n" .
-            "• @NitroHostBot •";
+            "<tg-emoji emoji-id='5431897022456145283'>📆</tg-emoji> {$date} <tg-emoji emoji-id='4904882772637648609'>⏰</tg-emoji> {$time}\n" .
+            "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> @NitroHostBot <tg-emoji emoji-id='4927295007204836791'>🪱</tg-emoji>";
     }
 
     private function buildStatusLines(int $step): array
@@ -633,8 +851,14 @@ class InstagramReporterConversation extends Conversation
 
     private function showInstagramReporterMenu(Nutgram $bot): void
     {
-        $msg = "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> <b>کرم پلاس</b> <tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji>\n\n<tg-emoji emoji-id='5364310996179503764'>📸</tg-emoji> ریپورتر اینستاگرام 🤝\nبرای ادامه یکی از گزینه های زیر رو انتخاب کن :";
+        $msg = "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> کرم پلاس <tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji>\n\n<tg-emoji emoji-id='5364310996179503764'>📸</tg-emoji> ریپورتر اینستاگرام\nبرای ادامه یکی از گزینه های زیر رو انتخاب کن :";
         $this->sendOrEditMessage($bot, $msg, InstagramReporterMenuKeyboard::make());
+    }
+
+    private function getReportPhoto(): ?InputFile
+    {
+        $path = public_path('images/report.png');
+        return is_readable($path) ? InputFile::make($path, 'report.png') : null;
     }
 
     private function isCallbackMessagePhoto(Nutgram $bot): bool

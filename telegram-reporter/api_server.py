@@ -53,6 +53,7 @@ class ReportMessagePayload(BaseModel):
 class ReactionPayload(BaseModel):
     link: str
     emoji: str | None = None
+    mix_negative: bool = False
 
 
 @asynccontextmanager
@@ -158,7 +159,7 @@ async def send_reaction_route(
     payload: ReactionPayload,
     app: Annotated[App, Depends(get_app)] = None,
 ):
-    result = await send_reactions(app, payload.link, payload.emoji)
+    result = await send_reactions(app, payload.link, payload.emoji, payload.mix_negative)
     if not result["sent"] and result["errors"]:
         raise HTTPException(status_code=400, detail=result)
     return JSONResponse(result)

@@ -88,13 +88,10 @@ class UserAutoFillerConversation extends Conversation
         $local->save();
 
         $intro = "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> <b>کرم پلاس</b> <tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji>\n\n"
-            . "اسم و فامیلی تارگتت رو بگو تا تو سایتا با همون اسم ثبتش کنم رگبار اس ام اس و تماس فعال بشه 😈\n\n"
+            . "اسم و فامیلی تارگتت رو بگو تا تو سایتا با همون اسم ثبتش کنم رگبار اس ام اس و تماس فعال بشه <tg-emoji emoji-id='5354971413700680895'>😈</tg-emoji>\n\n"
             . "ما میایم فرم تماس صد ها سایت رو با همین اسم و شماره ای که میدی پر میکنیم تا آدمای واقعی تارگتت رو به رگبار تماس ببندن.🙃\n\n"
-            . "لطفا یکی از دکمه های زیر رو جهت ادامه انتخاب کن :\n\n"
-            . "دکمه ها:\n"
-            . " وارد کردن اسم دلخواه ➥ \n"
-            . "انتخاب اسم رندوم ➥ \n\n"
-            . "بازگشت";
+            . "اول بهم بگو وقتی بهش زنگ زدن چی صداش کنن؟\n\n"
+            . "لطفا یکی از دکمه های زیر رو جهت ادامه انتخاب کن :";
 
         $this->replyWithEditPreferred($bot, $intro, $this->nameSelectionKeyboard());
         $this->next('handleNameChoice');
@@ -113,9 +110,21 @@ class UserAutoFillerConversation extends Conversation
 
     public function awaitPhone(Nutgram $bot)
     {
-        $phone = $bot->message()?->text;
-        if (!$phone || !preg_match('/^989\d{9}$|^09\d{9}$/', $phone)) {
-            $bot->sendMessage('⛔️ شماره تلفن نامعتبر است. لطفا یک شماره معتبر وارد کنید (مثال: 09xxxxxxxxx)');
+        $data = $bot->callbackQuery()?->data ?? '';
+        if ($data === 'autofill_retry_phone') {
+            $bot->answerCallbackQuery();
+            $this->promptForPhone($bot);
+            return;
+        }
+
+        $phone = trim($bot->message()?->text ?? '');
+        if ($phone === '' || !preg_match('/^989\d{9}$|^09\d{9}$/', $phone)) {
+            $bot->sendMessage(
+                "<tg-emoji emoji-id='4918014360267260850'>⛔️</tg-emoji> شماره تلفن نامعتبر است. لطفا یک شماره معتبر وارد کنید (مثال: 09xxxxxxxxx)",
+                parse_mode: 'HTML',
+                reply_markup: $this->invalidPhoneKeyboard()
+            );
+            $this->next('awaitPhone');
             return;
         }
 
@@ -201,7 +210,8 @@ class UserAutoFillerConversation extends Conversation
                 $bot->sendPhoto(
                     photo: InputFile::make($imagePath, 'mozahem.png'),
                     caption: $message,
-                    reply_markup: BackToMainKeyboard::make()
+                    reply_markup: BackToMainKeyboard::make(),
+                    parse_mode: 'HTML'
                 );
                 return;
             }
@@ -217,8 +227,14 @@ class UserAutoFillerConversation extends Conversation
         return InlineKeyboardMarkup::make()
             ->addRow(InlineKeyboardButton::make('وارد کردن اسم دلخواه ➥', callback_data: 'autofill_custom_name', style: 'danger'))
             ->addRow(InlineKeyboardButton::make('انتخاب اسم رندوم ➥', callback_data: 'autofill_random_name', style: 'danger'))
-            ->addRow(InlineKeyboardButton::make('آموزش نحوه استفاده', url: 'https://t.me/kermpluslearn/9', style: 'danger'))
+            ->addRow(InlineKeyboardButton::make('مزاحم ساز چیه؟', url: 'https://t.me/kermpluslearn/9', style: 'danger'))
             ->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747'));
+    }
+
+    private function invalidPhoneKeyboard(): InlineKeyboardMarkup
+    {
+        return InlineKeyboardMarkup::make()
+            ->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'autofill_retry_phone', style: 'danger', icon: '5352759161945867747'));
     }
 
     public function handleNameChoice(Nutgram $bot): void
@@ -255,7 +271,8 @@ class UserAutoFillerConversation extends Conversation
     {
         $text = "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> <b>کرم پلاس</b> <tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji>\n\n"
             . "حله! حالا اسم و فامیلی تارگتت رو به فارسی وارد کن :\n\n"
-            . "⚠️ مثال:\n"
+            . "<tg-emoji emoji-id='6226426402682441481'>⚠️</tg-emoji> چون تماس ها از سمت انسان های واقعی گرفته میشن ، باید اسم رو درست وارد کنید و وارد کردن اسم الکی باعث میشه تماس گرفته نشه.\n\n"
+            . "<tg-emoji emoji-id='5123344136665039833'>⚪️</tg-emoji>مثال:\n"
             . "علی اکبری\n"
             . "عسل درویش\n"
             . "رضا مومنی";

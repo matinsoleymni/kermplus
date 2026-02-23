@@ -133,14 +133,10 @@ class WhitelistService
             ->first();
     }
 
-    public function createOrUpdateForUser(User $user, string $type, string $value): WhitelistedTarget
+    public function createForUser(User $user, string $type, string $value): WhitelistedTarget
     {
-        $existing = $this->getUserTarget($user, $type);
-
-        if ($existing) {
-            $existing->value = $value;
-            $existing->save();
-            return $existing;
+        if ($this->getUserTarget($user, $type)) {
+            throw new \RuntimeException('Whitelist value already exists for this user and type.');
         }
 
         return WhitelistedTarget::create([

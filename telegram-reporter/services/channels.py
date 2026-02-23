@@ -19,6 +19,10 @@ DEFAULT_REACTIONS = [
     "🆒", "💘", "🙉", "🦄", "😘", "💊", "🙊", "😎", "👾", "🤷‍♂", "🤷", "🤷‍♀", "😡",
 ]
 
+NEGATIVE_REACTIONS = [
+    "🖕", "💔", "👎", "😢", "💩", "🤮", "🤬", "😡", "🥱", "🍌", "😈",
+]
+
 
 async def add_channels(app: App, links: list[str]) -> dict:
     """Add or update channels and cache their available reactions."""

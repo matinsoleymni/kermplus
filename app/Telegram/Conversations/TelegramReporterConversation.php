@@ -10,6 +10,7 @@ use App\Telegram\Keyboards\TelegramReportReasonKeyboard;
 use App\Telegram\Keyboards\TelegramReporterMenuKeyboard;
 use SergiX44\Nutgram\Conversations\Conversation;
 use SergiX44\Nutgram\Nutgram;
+use SergiX44\Nutgram\Telegram\Types\Internal\InputFile;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 
@@ -50,6 +51,11 @@ class TelegramReporterConversation extends Conversation
 
         $targetType = $this->determineTargetType($bot->callbackQuery()?->data);
         $bot->setUserData('tg_reporter_target_type', $targetType);
+        $bot->setUserData('tg_reporter_selected_reason_key', null);
+        $bot->setUserData('tg_reporter_selected_reason_title', null);
+        $bot->setUserData('tg_reporter_reason_summary', null);
+        $bot->setUserData('tg_reason_summary_prompt_message_id', null);
+        $bot->setUserData('tg_cleanup_messages', []);
 
         $prompt = match ($targetType) {
             'channel' => '📢 لطفا لینک یا یوزرنیم کانال رو بفرست (مثال: https://t.me/example یا example).',
@@ -101,7 +107,26 @@ class TelegramReporterConversation extends Conversation
             return;
         }
 
-        $loadingMsg = $bot->sendMessage('⏳ درحال دریافت اطلاعات از تلگرام...');
+        $loadingMsg = null;
+        $loadingUsesCaption = false;
+        $reportPhoto = $this->getReportPhoto();
+        if ($reportPhoto) {
+            try {
+                $loadingMsg = $bot->sendPhoto(
+                    photo: $reportPhoto,
+                    caption: '⏳ درحال دریافت اطلاعات از تلگرام...'
+                );
+                $loadingUsesCaption = (bool)($loadingMsg->message_id ?? false);
+            } catch (\Throwable) {
+                $loadingMsg = null;
+            }
+        }
+
+        if (!$loadingMsg) {
+            $loadingMsg = $bot->sendMessage('⏳ درحال دریافت اطلاعات از تلگرام...');
+        }
+        $this->addCleanupMessage($bot, $loadingMsg->message_id ?? null);
+
         $preview = $this->buildTelegramPreview($bot, $normalized);
         $details = $preview ?? ($normalized['label'] ?? "🎯 هدف: @{$username}");
         $details .= "\n\n🗣️ دلیل ریپورت رو انتخاب کن :";
@@ -109,21 +134,48 @@ class TelegramReporterConversation extends Conversation
 
         if ($loadingMsg?->message_id) {
             try {
-                $bot->editMessageText(
-                    chat_id: $bot->user()->id,
-                    message_id: $loadingMsg->message_id,
-                    text: $details,
-                    reply_markup: $keyboard,
-                    parse_mode: 'HTML'
-                );
+                if ($loadingUsesCaption) {
+                    $bot->editMessageCaption(
+                        chat_id: $bot->user()->id,
+                        message_id: $loadingMsg->message_id,
+                        caption: $details,
+                        reply_markup: $keyboard,
+                        parse_mode: 'HTML'
+                    );
+                } else {
+                    $bot->editMessageText(
+                        chat_id: $bot->user()->id,
+                        message_id: $loadingMsg->message_id,
+                        text: $details,
+                        reply_markup: $keyboard,
+                        parse_mode: 'HTML'
+                    );
+                }
                 $this->next('processTelegramReason');
                 return;
             } catch (\Throwable) {
-                $this->deleteMessageSafe($bot, $loadingMsg->message_id, parse_mode: 'HTML');
+                $this->deleteMessageSafe($bot, $loadingMsg->message_id);
             }
         }
 
-        $bot->sendMessage($details, reply_markup: $keyboard);
+        if ($reportPhoto) {
+            try {
+                $sent = $bot->sendPhoto(
+                    photo: $this->getReportPhoto(),
+                    caption: $details,
+                    reply_markup: $keyboard,
+                    parse_mode: 'HTML'
+                );
+                $this->addCleanupMessage($bot, $sent->message_id ?? null);
+                $this->next('processTelegramReason');
+                return;
+            } catch (\Throwable) {
+                // fallback to text message
+            }
+        }
+
+        $sent = $bot->sendMessage($details, reply_markup: $keyboard, parse_mode: 'HTML');
+        $this->addCleanupMessage($bot, $sent->message_id ?? null);
         $this->next('processTelegramReason');
     }
 
@@ -140,22 +192,87 @@ class TelegramReporterConversation extends Conversation
         }
 
         if (!$data || !isset($reasons[$data])) {
-            $bot->answerCallbackQuery(text: '⛔️ گزینه نامعتبر است. از دکمه‌ها استفاده کن.');
+            if ($bot->callbackQuery()) {
+                $bot->answerCallbackQuery(text: '⛔️ گزینه نامعتبر است. از دکمه‌ها استفاده کن.');
+            } else {
+                $bot->sendMessage('⛔️ لطفا دلیل ریپورت رو از دکمه‌ها انتخاب کن.');
+            }
             $this->promptTelegramReason($bot);
             return;
         }
 
+        $bot->setUserData('tg_reporter_selected_reason_key', $data);
+        $bot->setUserData('tg_reporter_selected_reason_title', $reasons[$data]);
+        $bot->answerCallbackQuery(text: '✅ دلیل ثبت شد.');
+        $this->promptTelegramReasonSummary($bot);
+        $this->next('awaitTelegramReasonSummary');
+    }
+
+    public function awaitTelegramReasonSummary(Nutgram $bot): void
+    {
+        $callbackData = $bot->callbackQuery()?->data;
+
+        if ($callbackData === 'reporter_telegram_menu') {
+            $bot->answerCallbackQuery();
+            $this->showTelegramReporterMenu($bot);
+            $this->end();
+            return;
+        }
+
+        $reasonKey = $bot->getUserData('tg_reporter_selected_reason_key');
+        $reasonTitle = $bot->getUserData('tg_reporter_selected_reason_title');
+
+        if (!$reasonKey || !$reasonTitle) {
+            if ($bot->callbackQuery()) {
+                $bot->answerCallbackQuery(text: '⛔️ ابتدا دلیل ریپورت را انتخاب کن.');
+            }
+            $this->promptTelegramReason($bot);
+            $this->next('processTelegramReason');
+            return;
+        }
+
+        $summary = null;
+
+        if ($callbackData) {
+            if ($callbackData !== 'telegram_reason_summary_default') {
+                $bot->answerCallbackQuery(text: '⛔️ لطفا متن رو ارسال کن یا متن پیش‌فرض رو بزن.');
+                return;
+            }
+
+            $summary = $this->buildDefaultReasonSummary($bot, (string)$reasonKey);
+            $bot->answerCallbackQuery(text: '✅ متن پیش‌فرض انتخاب شد.');
+        } else {
+            $summary = trim((string)$bot->message()?->text);
+            if ($summary === '') {
+                $bot->sendMessage('⛔️ لطفا توضیح دلیل ریپورت رو ارسال کن یا متن پیش‌فرض رو انتخاب کن.');
+                return;
+            }
+        }
+
+        $summary = $this->normalizeReasonSummary($summary);
+        $bot->setUserData('tg_reporter_reason_summary', $summary);
+        $this->finalizeTelegramReport($bot, (string)$reasonTitle, $summary);
+    }
+
+    private function finalizeTelegramReport(Nutgram $bot, string $reason, string $reasonSummary): void
+    {
         $target = $bot->getUserData('tg_reporter_target') ?? [];
         $username = $target['username'] ?? $bot->getUserData('tg_reporter_username');
         if (!$username) {
-            $bot->answerCallbackQuery(text: '⛔️ ابتدا یوزرنیم را وارد کنید.');
+            if ($bot->callbackQuery()) {
+                $bot->answerCallbackQuery(text: '⛔️ ابتدا یوزرنیم را وارد کنید.');
+            } else {
+                $bot->sendMessage('⛔️ ابتدا یوزرنیم را وارد کنید.');
+            }
             $this->end();
             return;
         }
         $local = $this->getLocalUser($bot);
 
         if (!$local) {
-            $bot->answerCallbackQuery(text: '⛔️ حساب شما پیدا نشد.');
+            if ($bot->callbackQuery()) {
+                $bot->answerCallbackQuery(text: '⛔️ حساب شما پیدا نشد.');
+            }
             $this->end();
             return;
         }
@@ -170,28 +287,110 @@ class TelegramReporterConversation extends Conversation
 
         $whitelist = app(WhitelistService::class);
         if ($whitelist->isWhitelisted($username, WhitelistedTarget::TYPE_TELEGRAM)) {
-            $bot->answerCallbackQuery();
+            if ($bot->callbackQuery()) {
+                $bot->answerCallbackQuery();
+            }
             $bot->sendMessage($whitelist->getBlockMessage($username, WhitelistedTarget::TYPE_TELEGRAM));
             $this->end();
             return;
         }
 
         $limiter->recordReporterUsage($local);
-        $bot->answerCallbackQuery(text: '✅ دلیل ثبت شد.');
+        $baseMessageId = $bot->getUserData('tg_reason_summary_prompt_message_id') ?: null;
+        if (!$baseMessageId && $bot->callbackQuery()?->message?->message_id) {
+            $baseMessageId = $bot->callbackQuery()?->message?->message_id;
+        }
+
         $this->runTelegramReport(
             $bot,
             $username,
-            $reasons[$data],
+            $reason,
+            $reasonSummary,
             $target['label'] ?? null,
             $target['link'] ?? null,
-            $bot->callbackQuery()?->message?->message_id
+            $baseMessageId
         );
+    }
+
+    private function promptTelegramReasonSummary(Nutgram $bot): void
+    {
+        $text = "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> کرم پلاس <tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji>\n\n" .
+            "<tg-emoji emoji-id='4904973211763999824'>🗣️</tg-emoji> دلیل ریپورت رو به صورت خلاصه توضیح بده ( <tg-emoji emoji-id='6226426402682441481'>⚠️</tg-emoji> خیلی مهم و تاثیر گذار روی نتیجه ) :\n\n" .
+            "<tg-emoji emoji-id='5377620300965888937'>🔴</tg-emoji> هرچی متنش رسمی تر و به زبان انگلیسی باشه نتیجه بهتری میگیری\n" .
+            "<tg-emoji emoji-id='5377620300965888937'>🔴</tg-emoji> میتونی از Chat GPT کمک بگیری یا متن پیش فرض مارو انتخاب کنی";
+        $keyboard = $this->reasonSummaryKeyboard();
+        $messageId = $bot->callbackQuery()?->message?->message_id;
+
+        if ($messageId) {
+            try {
+                $bot->editMessageText(
+                    chat_id: $bot->user()->id,
+                    message_id: $messageId,
+                    text: $text,
+                    parse_mode: 'HTML',
+                    reply_markup: $keyboard
+                );
+                $bot->setUserData('tg_reason_summary_prompt_message_id', $messageId);
+                return;
+            } catch (\Throwable) {
+                // fallback to sending a new message
+            }
+        }
+
+        $sent = $bot->sendMessage($text, parse_mode: 'HTML', reply_markup: $keyboard);
+        $bot->setUserData('tg_reason_summary_prompt_message_id', $sent->message_id ?? null);
+    }
+
+    private function reasonSummaryKeyboard(): InlineKeyboardMarkup
+    {
+        return InlineKeyboardMarkup::make()
+            ->addRow(
+                InlineKeyboardButton::make('متن پیش فرض', callback_data: 'telegram_reason_summary_default', style: 'danger')
+            )
+            ->addRow(
+                InlineKeyboardButton::make('بازگشت', callback_data: 'reporter_telegram_menu', style: 'danger', icon: '5352759161945867747')
+            );
+    }
+
+    private function buildDefaultReasonSummary(Nutgram $bot, string $reasonKey): string
+    {
+        $targetType = (string)($bot->getUserData('tg_reporter_target_type') ?? 'account');
+        $category = $this->reasonCategoryLabel($reasonKey);
+
+        return "I am reporting this {$targetType} for {$category}. This appears to violate platform guidelines. Please review and take appropriate action.";
+    }
+
+    private function reasonCategoryLabel(string $reasonKey): string
+    {
+        return match ($reasonKey) {
+            'telegram_reason_child_abuse' => 'child abuse content',
+            'telegram_reason_violence' => 'violent or dangerous content',
+            'telegram_reason_illegal_goods' => 'illegal goods and services',
+            'telegram_reason_illegal_adult' => 'illegal adult content',
+            'telegram_reason_personal_data' => 'unauthorized sharing of personal data',
+            'telegram_reason_fraud' => 'fraud or scam activity',
+            'telegram_reason_copyright' => 'copyright infringement',
+            'telegram_reason_spam' => 'spam and abusive behavior',
+            default => 'harmful and policy-violating content',
+        };
+    }
+
+    private function normalizeReasonSummary(string $summary): string
+    {
+        $summary = preg_replace('/\s+/u', ' ', trim($summary)) ?? trim($summary);
+
+        if (strlen($summary) > 260) {
+            $summary = substr($summary, 0, 257) . '...';
+        }
+
+        return $summary;
     }
 
     private function runTelegramReport(
         Nutgram $bot,
         string $username,
         string $reason,
+        string $reasonSummary,
         ?string $targetLabel = null,
         ?string $previewLink = null,
         ?int $baseMessageId = null
@@ -208,6 +407,7 @@ class TelegramReporterConversation extends Conversation
             totalSteps: $totalSteps,
             targetLabel: $label,
             reason: $reason,
+            reasonSummary: $reasonSummary,
             queue: 243,
             active: 18,
             done: 162,
@@ -219,7 +419,34 @@ class TelegramReporterConversation extends Conversation
             statuses: $this->buildStatusLines(1)
         ) . $previewLine;
 
-        $progressMessageId = $this->prepareProgressMessage($bot, $initialText, $baseMessageId);
+        $progressMessageId = null;
+        $useCaption = false;
+        $reportPhoto = $this->getReportPhoto();
+
+        $this->clearCleanupMessages($bot);
+        if ($baseMessageId) {
+            $this->deleteMessageSafe($bot, $baseMessageId);
+        }
+
+        if ($reportPhoto) {
+            try {
+                $sent = $bot->sendPhoto(
+                    photo: $reportPhoto,
+                    caption: $initialText,
+                    parse_mode: 'HTML'
+                );
+                $progressMessageId = $sent->message_id ?? null;
+                $useCaption = (bool)$progressMessageId;
+            } catch (\Throwable) {
+                $progressMessageId = null;
+            }
+        }
+
+        if (!$progressMessageId) {
+            $progressMessageId = $this->prepareProgressMessage($bot, $initialText, null);
+            $useCaption = false;
+        }
+
         if (!$progressMessageId) {
             $bot->sendMessage('⛔️ خطا در ایجاد پیام وضعیت. دوباره تلاش کن.');
             $this->end();
@@ -254,6 +481,7 @@ class TelegramReporterConversation extends Conversation
                 totalSteps: $totalSteps,
                 targetLabel: $label,
                 reason: $reason,
+                reasonSummary: $reasonSummary,
                 queue: $queue,
                 active: $active,
                 done: $done,
@@ -266,19 +494,47 @@ class TelegramReporterConversation extends Conversation
             ) . $previewLine;
 
             try {
-                $bot->editMessageText(
-                    chat_id: $bot->user()->id,
-                    message_id: $progressMessageId,
-                    text: $updateMsg,
-                    parse_mode: 'HTML'
-                );
+                if ($useCaption) {
+                    $bot->editMessageCaption(
+                        chat_id: $bot->user()->id,
+                        message_id: $progressMessageId,
+                        caption: $updateMsg,
+                        parse_mode: 'HTML'
+                    );
+                } else {
+                    $bot->editMessageText(
+                        chat_id: $bot->user()->id,
+                        message_id: $progressMessageId,
+                        text: $updateMsg,
+                        parse_mode: 'HTML'
+                    );
+                }
             } catch (\Exception) {
                 // Continue on error
             }
         }
 
+        $finalText = $this->buildFinalMessage($label, $previewLink);
+        $reportPhoto = $this->getReportPhoto();
+
         $this->deleteMessageSafe($bot, $progressMessageId);
-        $bot->sendMessage($this->buildFinalMessage($label, $previewLink), parse_mode: 'HTML');
+        if ($reportPhoto) {
+            try {
+                $bot->sendPhoto(
+                    photo: $reportPhoto,
+                    caption: $finalText,
+                    parse_mode: 'HTML'
+                );
+                $bot->setUserData('tg_cleanup_messages', []);
+                $this->end();
+                return;
+            } catch (\Throwable) {
+                // fallback to text mode below
+            }
+        }
+
+        $bot->sendMessage($finalText, parse_mode: 'HTML');
+        $bot->setUserData('tg_cleanup_messages', []);
 
         $this->end();
     }
@@ -297,6 +553,7 @@ class TelegramReporterConversation extends Conversation
         int $totalSteps,
         string $targetLabel,
         string $reason,
+        string $reasonSummary,
         int $queue,
         int $active,
         int $done,
@@ -310,12 +567,18 @@ class TelegramReporterConversation extends Conversation
         $progressBar = $this->getProgressBar($percent);
         $barOnly = explode(' ', $progressBar, 2)[0];
         $statusBlock = implode("\n", array_map(static fn(string $line): string => "> {$line}", $statuses));
+        $safeTarget = htmlspecialchars($targetLabel, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $safeReason = htmlspecialchars($reason, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $safeSummary = htmlspecialchars($reasonSummary, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
         $date = now()->format('Y/m/d');
         $time = now()->format('H:i:s');
 
         return "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> KermPlus | Processing Job\n" .
             "━━━━━━━━━━━━━━━━\n\n" .
             "{$barOnly} {$percent}%   <tg-emoji emoji-id='5116159438062879454'>🙏</tg-emoji> step {$step}/{$totalSteps}\n\n" .
+            "🎯 target: {$safeTarget}\n" .
+            "🏷️ reason: {$safeReason}\n" .
+            "🗣️ summary: {$safeSummary}\n\n" .
             "📦 queue: {$queue} items\n" .
             "<tg-emoji emoji-id='4904936030232117798'>⚙️</tg-emoji> active: {$active}   <tg-emoji emoji-id='6224314343924699041'>✅</tg-emoji> done: {$done}\n" .
             "<tg-emoji emoji-id='5325945307454789973'>🟢</tg-emoji> ok: {$ok}   <tg-emoji emoji-id='5326056199215406977'>❌</tg-emoji> fail: {$fail}   🔁 retry: {$retry}\n\n" .
@@ -330,20 +593,17 @@ class TelegramReporterConversation extends Conversation
 
     private function buildFinalMessage(string $targetLabel, ?string $link = null): string
     {
-        $date = now()->format('Y/m/d');
+        $date = now()->format('Y/n/j');
         $time = now()->format('H:i:s');
-        $preview = $link ? "🖇️ لینک: {$link}\n" : '';
 
         return "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> KermPlus | Reported Successful\n" .
             "━━━━━━━━━━━━━━━━\n\n" .
-            "🎯 هدف: {$targetLabel}\n" .
-            $preview .
-            "📦 تعداد کل درخواست ها : 1321\n" .
-            "✅ 1235 موفق | ❌ 134 ناموفق\n\n" .
-            "تمامی ریپورت ها از سمت <b>کرم پلاس</b>🪱 با موفقیت ارسال شدند.\n" .
+            "<tg-emoji emoji-id='5116093437300442328'>⚡️</tg-emoji> تعداد کل درخواست ها : 1321\n" .
+            "<tg-emoji emoji-id='6224314343924699041'>✅</tg-emoji> 1235 موفق | <tg-emoji emoji-id='6224072537265934868'>❌</tg-emoji> 134 ناموفق\n\n" .
+            "تمامی ریپورت ها از سمت کرم پلاس<tg-emoji emoji-id='5134654202894615343'>🪱</tg-emoji> با موفقیت ارسال شدند.\n" .
             "نتیجه نهایی وابسته به بررسی پلتفرم مقصد می‌باشد.\n\n" .
-            "📆 {$date} ⏰ {$time}\n" .
-            "• @NitroHostBot •";
+            "<tg-emoji emoji-id='5431897022456145283'>📆</tg-emoji> {$date} <tg-emoji emoji-id='4904882772637648609'>⏰</tg-emoji> {$time}\n" .
+            "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> @NitroHostBot <tg-emoji emoji-id='4927295007204836791'>🪱</tg-emoji>";
     }
 
     private function buildStatusLines(int $step): array
@@ -376,6 +636,23 @@ class TelegramReporterConversation extends Conversation
         } catch (\Throwable) {
             // ignore
         }
+    }
+
+    private function addCleanupMessage(Nutgram $bot, ?int $messageId): void
+    {
+        if (!$messageId) return;
+        $messages = $bot->getUserData('tg_cleanup_messages') ?? [];
+        $messages[] = $messageId;
+        $bot->setUserData('tg_cleanup_messages', $messages);
+    }
+
+    private function clearCleanupMessages(Nutgram $bot): void
+    {
+        $messages = $bot->getUserData('tg_cleanup_messages') ?? [];
+        foreach ($messages as $mid) {
+            $this->deleteMessageSafe($bot, (int)$mid);
+        }
+        $bot->setUserData('tg_cleanup_messages', []);
     }
 
     private function determineTargetType(?string $callbackData): string
@@ -630,6 +907,12 @@ class TelegramReporterConversation extends Conversation
     {
         $msg = "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> کرم پلاس <tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji>\n\n<tg-emoji emoji-id='5364125616801073577'>✈️</tg-emoji> ریپورتر تلگرام\nبرای ادامه یکی از گزینه های زیر رو انتخاب کن :";
         $this->sendOrEditMessage($bot, $msg, TelegramReporterMenuKeyboard::make());
+    }
+
+    private function getReportPhoto(): ?InputFile
+    {
+        $path = public_path('images/report.png');
+        return is_readable($path) ? InputFile::make($path, 'report.png') : null;
     }
 
     private function fetchChannelMemberCount(Nutgram $bot, string $username): ?int

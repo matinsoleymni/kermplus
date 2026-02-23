@@ -7,6 +7,7 @@ use App\Models\WhitelistedTarget;
 use App\Services\ChannelReactionService;
 use App\Services\WhitelistService;
 use App\Telegram\Commands\StartCommand;
+use App\Telegram\Handlers\MainMenuHandler;
 use App\Telegram\Keyboards\BackToMainKeyboard;
 use SergiX44\Nutgram\Conversations\Conversation;
 use SergiX44\Nutgram\Nutgram;
@@ -15,6 +16,10 @@ use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 
 class ChannelReactionConversation extends Conversation
 {
+    private const REACTION_CALLBACK_PREFIX = 'reaction_emoji_';
+    private const MIX_NEGATIVE_CALLBACK = 'reaction_mix_negative';
+    private const NEGATIVE_REACTIONS = ['🖕', '💔', '👎', '😢', '💩', '🤮', '🤬', '😡', '🥱', '🍌', '😈'];
+
     protected ?string $postLink = null;
 
     protected function getLocalUser(Nutgram $bot): ?User
@@ -46,11 +51,17 @@ class ChannelReactionConversation extends Conversation
         $local->save();
 
         $keyboard = InlineKeyboardMarkup::make()
+            ->addRow(InlineKeyboardButton::make('ری اکشنر منفی چیه؟', url: 'https://t.me/kermpluslearn/8', style: 'danger', icon: '5305388752162539722'))
             ->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747'));
 
         $this->sendOrEditMessage(
             $bot,
-            "🔗 لینک پست کانال تلگرام را بفرست (مثلا https://t.me/channel/123):",
+            "<tg-emoji emoji-id=\"4916086774649848789\">🔗</tg-emoji> لینک پستی که میخوای رگباری اکشن منفی بخوره رو برام بفرست:
+
+ <tg-emoji emoji-id=\"5123344136665039833\">⚪️</tg-emoji> مثلا:
+https://t.me/channel/123
+
+<tg-emoji emoji-id=\"6226426402682441481\">⚠️</tg-emoji> حتما باید لینکی که میفرستی از یک کانال پابلیک باشه تا ری اکشن ها به پست مد نظرت بخورن.",
             $keyboard
         );
 
@@ -59,6 +70,12 @@ class ChannelReactionConversation extends Conversation
 
     public function askEmoji(Nutgram $bot)
     {
+        if ($bot->callbackQuery()?->data === 'main_menu') {
+            $this->end();
+            app(MainMenuHandler::class)($bot);
+            return;
+        }
+
         $link = trim((string)($bot->message()?->text));
         if ($this->interceptStart($bot, $link)) {
             return;
@@ -78,14 +95,11 @@ class ChannelReactionConversation extends Conversation
 
         $this->postLink = $link;
 
-        $keyboard = InlineKeyboardMarkup::make()
-            ->addRow(
-                InlineKeyboardButton::make('🎲 انتخاب خودکار', callback_data: 'reaction_skip_emoji', style: 'danger'),
-                InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747')
-            );
+        $keyboard = $this->reactionSelectionKeyboard();
 
         $bot->sendMessage(
-            "😈 ایموجی ری‌اکشن را بفرست (مثلا 😈). اگر نمی‌خواهی انتخاب کنی، «انتخاب خودکار» را بزن.",
+            "<tg-emoji emoji-id=\"5082478549340783285\">👻</tg-emoji> یکی از ری اکشنای زیر رو انتخاب کن تا رگبارش کنم زیر پستی که برام فرستادی:\n\n<tg-emoji emoji-id=\"6226426402682441481\">⚠️</tg-emoji> میتونی با زدن دکمه «میکس ری اکشن منفی» ترکیبی از همه ری اکشنای زیر رو بزنی زیر پست مد نظرت.",
+            parse_mode: 'HTML',
             reply_markup: $keyboard
         );
 
@@ -101,18 +115,36 @@ class ChannelReactionConversation extends Conversation
         }
 
         $emoji = null;
+        $mixNegative = false;
         $data = $bot->callbackQuery()?->data;
 
-        if ($data === 'reaction_skip_emoji') {
-            $bot->answerCallbackQuery(text: 'با اولین ری‌اکشن مجاز ادامه دادیم.');
+        if ($data === 'main_menu') {
+            $this->end();
+            app(MainMenuHandler::class)($bot);
+            return;
+        }
+
+        if ($data === self::MIX_NEGATIVE_CALLBACK) {
+            $mixNegative = true;
+            $bot->answerCallbackQuery(text: 'میکس ری اکشن منفی انتخاب شد.');
+        } elseif ($this->isReactionCallback($data)) {
+            $picked = $this->extractReactionFromCallback($data);
+            if ($picked === null) {
+                $bot->answerCallbackQuery(text: 'ری‌اکشن نامعتبر است.');
+                $bot->sendMessage('❌ لطفا یکی از دکمه‌های ری‌اکشن را انتخاب کن.', parse_mode: 'HTML', reply_markup: $this->reactionSelectionKeyboard());
+                return;
+            }
+
+            $emoji = $picked;
+            $bot->answerCallbackQuery(text: "ری‌اکشن {$emoji} انتخاب شد.");
         } else {
             $emojiText = trim((string)($bot->message()?->text));
             if ($this->interceptStart($bot, $emojiText)) {
                 return;
             }
 
-            if ($emojiText === '') {
-                $bot->sendMessage('❌ ایموجی نامعتبر است. دوباره ارسال کنید یا «انتخاب خودکار» را بزنید.');
+            if ($emojiText === '' || !in_array($emojiText, self::NEGATIVE_REACTIONS, true)) {
+                $bot->sendMessage('❌ لطفا یکی از دکمه‌های ری‌اکشن را انتخاب کن.', parse_mode: 'HTML', reply_markup: $this->reactionSelectionKeyboard());
                 return;
             }
             $emoji = $emojiText;
@@ -132,7 +164,7 @@ class ChannelReactionConversation extends Conversation
         }
 
         $service = app(ChannelReactionService::class);
-        $result = $service->sendReaction($local, $this->postLink, $emoji ?: null);
+        $result = $service->sendReaction($local, $this->postLink, $emoji ?: null, $mixNegative);
 
         if (isset($result['error'])) {
             $msg = "⚠️ {$result['error']}";
@@ -152,7 +184,7 @@ class ChannelReactionConversation extends Conversation
         }
 
         $sent = (int)($result['sent'] ?? 0);
-        $usedReaction = $result['used_reaction'] ?? ($emoji ?: '—');
+        $usedReaction = $result['used_reaction'] ?? ($emoji ?: ($mixNegative ? 'میکس ری اکشن منفی' : '—'));
         $available = $result['available_reactions'] ?? [];
         $errors = $result['errors'] ?? [];
 
@@ -197,6 +229,44 @@ class ChannelReactionConversation extends Conversation
         return true;
     }
 
+    private function isReactionCallback(?string $data): bool
+    {
+        return is_string($data) && str_starts_with($data, self::REACTION_CALLBACK_PREFIX);
+    }
+
+    private function extractReactionFromCallback(string $data): ?string
+    {
+        $index = (int)substr($data, strlen(self::REACTION_CALLBACK_PREFIX));
+        return self::NEGATIVE_REACTIONS[$index] ?? null;
+    }
+
+    private function reactionSelectionKeyboard(): InlineKeyboardMarkup
+    {
+        $keyboard = InlineKeyboardMarkup::make();
+
+        $row = [];
+        foreach (self::NEGATIVE_REACTIONS as $index => $reaction) {
+            $row[] = InlineKeyboardButton::make($reaction, callback_data: self::REACTION_CALLBACK_PREFIX . $index, style: 'danger');
+            if (count($row) === 3) {
+                $keyboard->addRow(...$row);
+                $row = [];
+            }
+        }
+        if (!empty($row)) {
+            $keyboard->addRow(...$row);
+        }
+
+        $keyboard->addRow(
+            InlineKeyboardButton::make('میکس ری اکشن منفی', callback_data: self::MIX_NEGATIVE_CALLBACK, style: 'danger')
+        );
+
+        $keyboard->addRow(
+            InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747')
+        );
+
+        return $keyboard;
+    }
+
     private function sendOrEditMessage(Nutgram $bot, string $text, ?InlineKeyboardMarkup $keyboard = null): void
     {
         $messageId = $bot->callbackQuery()?->message?->message_id;
@@ -207,6 +277,7 @@ class ChannelReactionConversation extends Conversation
                     chat_id: $bot->user()->id,
                     message_id: $messageId,
                     text: $text,
+                    parse_mode: 'HTML',
                     reply_markup: $keyboard
                 );
                 return;
@@ -215,6 +286,6 @@ class ChannelReactionConversation extends Conversation
             }
         }
 
-        $bot->sendMessage($text, reply_markup: $keyboard);
+        $bot->sendMessage($text, parse_mode: 'HTML', reply_markup: $keyboard);
     }
 }

@@ -20,10 +20,18 @@ class ReporterMenuKeyboard
                 InlineKeyboardButton::make('ریپورتر اینستاگرام', callback_data: 'reporter_instagram_menu', style: 'danger', icon: '5319160079465857105')
             )
             ->addRow(
-                InlineKeyboardButton::make('آموزش استفاده از ریپورتر', url: 'https://t.me/kermpluslearn/7', style: 'danger', icon: '5470060791883374114')
+                InlineKeyboardButton::make('ریپیورتر چیه؟', callback_data: 'reporter_what_is', style: 'danger', icon: '5470060791883374114')
             )
             ->addRow(
                 InlineKeyboardButton::make('بازگشت', callback_data: 'kerm_menu', style: 'danger', icon: '5352759161945867747')
+            );
+    }
+
+    public static function backToMenu(): InlineKeyboardMarkup
+    {
+        return InlineKeyboardMarkup::make()
+            ->addRow(
+                InlineKeyboardButton::make('بازگشت', callback_data: 'reporter_menu', style: 'danger', icon: '5352759161945867747')
             );
     }
 }

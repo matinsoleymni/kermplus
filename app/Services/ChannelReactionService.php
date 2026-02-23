@@ -57,9 +57,10 @@ class ChannelReactionService
      * @param User $user
      * @param string $postLink
      * @param string|null $emoji
+     * @param bool $mixNegative
      * @return array
      */
-    public function sendReaction(User $user, string $postLink, ?string $emoji = null): array
+    public function sendReaction(User $user, string $postLink, ?string $emoji = null, bool $mixNegative = false): array
     {
         $limiter = app(FeatureLimitService::class);
         $limit = $limiter->checkNegativeReactionLimit($user);
@@ -78,6 +79,9 @@ class ChannelReactionService
         $payload = ['link' => $postLink];
         if ($emoji !== null) {
             $payload['emoji'] = $emoji;
+        }
+        if ($mixNegative) {
+            $payload['mix_negative'] = true;
         }
 
         try {

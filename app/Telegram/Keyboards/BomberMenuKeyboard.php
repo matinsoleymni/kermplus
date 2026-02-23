@@ -24,7 +24,7 @@ class BomberMenuKeyboard
                 InlineKeyboardButton::make('ایمیل بمبر پلاس', callback_data: 'user_emailbomb', style: 'danger', icon: '5456174900622412791')
             )
             ->addRow(
-                InlineKeyboardButton::make('آموزش استفاده از بمبر', url: 'https://t.me/kermpluslearn/6', style: 'danger', icon: '5470060791883374114')
+                InlineKeyboardButton::make('بمبر چیه؟', url: 'https://t.me/kermpluslearn/6', style: 'danger', icon: '5134377151734219769')
             )
             ->addRow(
                 InlineKeyboardButton::make('بازگشت', callback_data: 'kerm_menu', style: 'danger', icon: '5352759161945867747')

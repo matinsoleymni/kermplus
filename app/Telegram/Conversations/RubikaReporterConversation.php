@@ -56,6 +56,11 @@ class RubikaReporterConversation extends Conversation
 
         $targetType = $this->resolveTargetType($bot->callbackQuery()?->data);
         $bot->setUserData('rb_reporter_type', $targetType);
+        $bot->setUserData('rb_reporter_selected_reason_key', null);
+        $bot->setUserData('rb_reporter_selected_reason_title', null);
+        $bot->setUserData('rb_reporter_reason_summary', null);
+        $bot->setUserData('rb_reason_summary_prompt_message_id', null);
+        $bot->setUserData('rb_reason_summary_prompt_uses_caption', false);
 
         $targetLabel = $this->getTargetLabel($targetType);
         $this->sendOrEditMessage(
@@ -193,21 +198,86 @@ class RubikaReporterConversation extends Conversation
         }
 
         if (!$data || !isset($reasons[$data])) {
-            $bot->answerCallbackQuery(text: '⛔️ گزینه نامعتبر است. از دکمه‌ها استفاده کن.');
+            if ($bot->callbackQuery()) {
+                $bot->answerCallbackQuery(text: '⛔️ گزینه نامعتبر است. از دکمه‌ها استفاده کن.');
+            } else {
+                $bot->sendMessage('⛔️ لطفا دلیل ریپورت رو از دکمه‌ها انتخاب کن.');
+            }
             $this->promptRubikaReason($bot);
             return;
         }
 
+        $bot->setUserData('rb_reporter_selected_reason_key', $data);
+        $bot->setUserData('rb_reporter_selected_reason_title', $reasons[$data]);
+        $bot->answerCallbackQuery(text: '✅ دلیل ثبت شد.');
+        $this->promptRubikaReasonSummary($bot);
+        $this->next('awaitRubikaReasonSummary');
+    }
+
+    public function awaitRubikaReasonSummary(Nutgram $bot): void
+    {
+        $callbackData = $bot->callbackQuery()?->data;
+
+        if ($callbackData === 'reporter_rubika_menu') {
+            $bot->answerCallbackQuery();
+            $this->showRubikaReporterMenu($bot);
+            $this->end();
+            return;
+        }
+
+        $reasonKey = $bot->getUserData('rb_reporter_selected_reason_key');
+        $reasonTitle = $bot->getUserData('rb_reporter_selected_reason_title');
+
+        if (!$reasonKey || !$reasonTitle) {
+            if ($bot->callbackQuery()) {
+                $bot->answerCallbackQuery(text: '⛔️ ابتدا دلیل ریپورت را انتخاب کن.');
+            }
+            $this->promptRubikaReason($bot);
+            $this->next('processRubikaReason');
+            return;
+        }
+
+        $summary = null;
+
+        if ($callbackData) {
+            if ($callbackData !== 'rubika_reason_summary_default') {
+                $bot->answerCallbackQuery(text: '⛔️ لطفا متن رو ارسال کن یا متن پیش‌فرض رو بزن.');
+                return;
+            }
+
+            $summary = $this->buildDefaultReasonSummary($bot, (string)$reasonKey);
+            $bot->answerCallbackQuery(text: '✅ متن پیش‌فرض انتخاب شد.');
+        } else {
+            $summary = trim((string)$bot->message()?->text);
+            if ($summary === '') {
+                $bot->sendMessage('⛔️ لطفا توضیح دلیل ریپورت رو ارسال کن یا متن پیش‌فرض رو انتخاب کن.');
+                return;
+            }
+        }
+
+        $summary = $this->normalizeReasonSummary($summary);
+        $bot->setUserData('rb_reporter_reason_summary', $summary);
+        $this->finalizeRubikaReport($bot, (string)$reasonTitle, $summary);
+    }
+
+    private function finalizeRubikaReport(Nutgram $bot, string $reason, string $reasonSummary): void
+    {
         $username = $bot->getUserData('rb_reporter_username');
         if (!$username) {
-            $bot->answerCallbackQuery(text: '⛔️ ابتدا یوزرنیم را وارد کنید.');
+            if ($bot->callbackQuery()) {
+                $bot->answerCallbackQuery(text: '⛔️ ابتدا یوزرنیم را وارد کنید.');
+            } else {
+                $bot->sendMessage('⛔️ ابتدا یوزرنیم را وارد کنید.');
+            }
             $this->end();
             return;
         }
 
         $local = $this->getLocalUser($bot);
         if (!$local) {
-            $bot->answerCallbackQuery(text: '⛔️ حساب شما پیدا نشد.');
+            if ($bot->callbackQuery()) {
+                $bot->answerCallbackQuery(text: '⛔️ حساب شما پیدا نشد.');
+            }
             $this->end();
             return;
         }
@@ -222,19 +292,96 @@ class RubikaReporterConversation extends Conversation
 
         $whitelist = app(WhitelistService::class);
         if ($whitelist->isWhitelisted($username, WhitelistedTarget::TYPE_CUSTOM)) {
-            $bot->answerCallbackQuery();
+            if ($bot->callbackQuery()) {
+                $bot->answerCallbackQuery();
+            }
             $bot->sendMessage($whitelist->getBlockMessage($username, WhitelistedTarget::TYPE_CUSTOM));
             $this->end();
             return;
         }
 
         $limiter->recordReporterUsage($local);
-        $bot->answerCallbackQuery(text: '✅ دلیل ثبت شد.');
-        $baseMessageId = $bot->callbackQuery()?->message?->message_id;
-        $baseUsesCaption = $this->isCallbackMessagePhoto($bot);
+        $baseMessageId = $bot->getUserData('rb_reason_summary_prompt_message_id') ?: null;
+        $baseUsesCaption = (bool)$bot->getUserData('rb_reason_summary_prompt_uses_caption');
+
+        if (!$baseMessageId && $bot->callbackQuery()?->message?->message_id) {
+            $baseMessageId = $bot->callbackQuery()?->message?->message_id;
+            $baseUsesCaption = $this->isCallbackMessagePhoto($bot);
+        }
 
         $targetType = $bot->getUserData('rb_reporter_type') ?? self::TARGET_ACCOUNT;
-        $this->runRubikaReport($bot, $username, $targetType, $reasons[$data], $baseMessageId, $baseUsesCaption);
+        $this->runRubikaReport($bot, $username, $targetType, $reason, $reasonSummary, $baseMessageId, $baseUsesCaption);
+    }
+
+    private function promptRubikaReasonSummary(Nutgram $bot): void
+    {
+        $text = "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> کرم پلاس <tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji>\n\n" .
+            "<tg-emoji emoji-id='4904973211763999824'>🗣️</tg-emoji> دلیل ریپورت رو به صورت خلاصه توضیح بده ( <tg-emoji emoji-id='6226426402682441481'>⚠️</tg-emoji> خیلی مهم و تاثیر گذار روی نتیجه ) :\n\n" .
+            "<tg-emoji emoji-id='5377620300965888937'>🔴</tg-emoji> هرچی متنش رسمی تر و به زبان انگلیسی باشه نتیجه بهتری میگیری\n" .
+            "<tg-emoji emoji-id='5377620300965888937'>🔴</tg-emoji> میتونی از Chat GPT کمک بگیری یا متن پیش فرض مارو انتخاب کنی";
+        $keyboard = $this->reasonSummaryKeyboard();
+        $messageId = $bot->callbackQuery()?->message?->message_id;
+        $useCaption = $this->isCallbackMessagePhoto($bot);
+
+        if ($messageId) {
+            try {
+                $this->editMessageByType($bot, $messageId, $text, $useCaption, $keyboard, true);
+                $bot->setUserData('rb_reason_summary_prompt_message_id', $messageId);
+                $bot->setUserData('rb_reason_summary_prompt_uses_caption', $useCaption);
+                return;
+            } catch (\Throwable) {
+                // fallback to sending a new message
+            }
+        }
+
+        $sent = $bot->sendMessage($text, parse_mode: 'HTML', reply_markup: $keyboard);
+        $bot->setUserData('rb_reason_summary_prompt_message_id', $sent->message_id ?? null);
+        $bot->setUserData('rb_reason_summary_prompt_uses_caption', false);
+    }
+
+    private function reasonSummaryKeyboard(): InlineKeyboardMarkup
+    {
+        return InlineKeyboardMarkup::make()
+            ->addRow(
+                InlineKeyboardButton::make('متن پیش فرض', callback_data: 'rubika_reason_summary_default', style: 'danger')
+            )
+            ->addRow(
+                InlineKeyboardButton::make('بازگشت', callback_data: 'reporter_rubika_menu', style: 'danger', icon: '5352759161945867747')
+            );
+    }
+
+    private function buildDefaultReasonSummary(Nutgram $bot, string $reasonKey): string
+    {
+        $targetType = (string)($bot->getUserData('rb_reporter_type') ?? self::TARGET_ACCOUNT);
+        $category = $this->reasonCategoryLabel($reasonKey);
+
+        return "I am reporting this {$targetType} for {$category}. This appears to violate platform guidelines. Please review and take appropriate action.";
+    }
+
+    private function reasonCategoryLabel(string $reasonKey): string
+    {
+        return match ($reasonKey) {
+            'rubika_reason_child_abuse' => 'child abuse content',
+            'rubika_reason_violence' => 'violent or dangerous content',
+            'rubika_reason_illegal_goods' => 'illegal goods and services',
+            'rubika_reason_illegal_adult' => 'illegal adult content',
+            'rubika_reason_personal_data' => 'unauthorized sharing of personal data',
+            'rubika_reason_fraud' => 'fraud or scam activity',
+            'rubika_reason_copyright' => 'copyright infringement',
+            'rubika_reason_spam' => 'spam and abusive behavior',
+            default => 'harmful and policy-violating content',
+        };
+    }
+
+    private function normalizeReasonSummary(string $summary): string
+    {
+        $summary = preg_replace('/\s+/u', ' ', trim($summary)) ?? trim($summary);
+
+        if (strlen($summary) > 260) {
+            $summary = substr($summary, 0, 257) . '...';
+        }
+
+        return $summary;
     }
 
     private function runRubikaReport(
@@ -242,6 +389,7 @@ class RubikaReporterConversation extends Conversation
         string $username,
         string $targetType,
         string $reason,
+        string $reasonSummary,
         ?int $baseMessageId = null,
         bool $baseUsesCaption = false
     ): void {
@@ -256,6 +404,7 @@ class RubikaReporterConversation extends Conversation
             totalSteps: $totalSteps,
             targetLabel: $label,
             reason: $reason,
+            reasonSummary: $reasonSummary,
             queue: 243,
             active: 18,
             done: 162,
@@ -267,12 +416,24 @@ class RubikaReporterConversation extends Conversation
             statuses: $this->buildStatusLines(1)
         );
 
-        $progressMessageId = $baseMessageId;
-        $useCaption = $baseUsesCaption;
+        $progressMessageId = null;
+        $useCaption = false;
+        $reportPhoto = $this->getReporterPhoto();
 
-        if ($progressMessageId) {
+        $this->clearCleanupMessages($bot);
+        if ($baseMessageId) {
+            $this->deleteMessageSafe($bot, $baseMessageId);
+        }
+
+        if ($reportPhoto) {
             try {
-                $this->editMessageByType($bot, $progressMessageId, $initialText, $useCaption, null, true);
+                $sent = $bot->sendPhoto(
+                    photo: $reportPhoto,
+                    caption: $initialText,
+                    parse_mode: 'HTML'
+                );
+                $progressMessageId = $sent->message_id ?? null;
+                $useCaption = (bool)$progressMessageId;
             } catch (\Throwable) {
                 $progressMessageId = null;
             }
@@ -318,6 +479,7 @@ class RubikaReporterConversation extends Conversation
                 totalSteps: $totalSteps,
                 targetLabel: $label,
                 reason: $reason,
+                reasonSummary: $reasonSummary,
                 queue: $queue,
                 active: $active,
                 done: $done,
@@ -337,10 +499,27 @@ class RubikaReporterConversation extends Conversation
         }
 
         $finalText = $this->buildFinalMessage($label, null);
+        $reportPhoto = $this->getReporterPhoto();
+        if ($reportPhoto) {
+            $this->deleteMessageSafe($bot, $progressMessageId);
+            try {
+                $bot->sendPhoto(
+                    photo: $reportPhoto,
+                    caption: $finalText,
+                    parse_mode: 'HTML'
+                );
+                $bot->setUserData('rb_cleanup_messages', []);
+                $this->end();
+                return;
+            } catch (\Throwable) {
+                // fallback to text mode below
+            }
+        }
+
         try {
-            $this->editMessageByType($bot, $progressMessageId, $finalText, $useCaption);
+            $this->editMessageByType($bot, $progressMessageId, $finalText, $useCaption, null, true);
         } catch (\Throwable) {
-            $bot->sendMessage($finalText);
+            $bot->sendMessage($finalText, parse_mode: 'HTML');
         }
 
         $bot->setUserData('rb_cleanup_messages', []);
@@ -434,6 +613,7 @@ class RubikaReporterConversation extends Conversation
         int $totalSteps,
         string $targetLabel,
         string $reason,
+        string $reasonSummary,
         int $queue,
         int $active,
         int $done,
@@ -447,12 +627,18 @@ class RubikaReporterConversation extends Conversation
         $progressBar = $this->getProgressBar($percent);
         $barOnly = explode(' ', $progressBar, 2)[0];
         $statusBlock = implode("\n", array_map(static fn(string $line): string => "> {$line}", $statuses));
+        $safeTarget = htmlspecialchars($targetLabel, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $safeReason = htmlspecialchars($reason, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $safeSummary = htmlspecialchars($reasonSummary, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
         $date = now()->format('Y/m/d');
         $time = now()->format('H:i:s');
 
         return "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> KermPlus | Processing Job\n" .
             "━━━━━━━━━━━━━━━━\n\n" .
             "{$barOnly} {$percent}%   <tg-emoji emoji-id='5116159438062879454'>🙏</tg-emoji> step {$step}/{$totalSteps}\n\n" .
+            "🎯 target: {$safeTarget}\n" .
+            "🏷️ reason: {$safeReason}\n" .
+            "🗣️ summary: {$safeSummary}\n\n" .
             "📦 queue: {$queue} items\n" .
             "<tg-emoji emoji-id='4904936030232117798'>⚙️</tg-emoji> active: {$active}   <tg-emoji emoji-id='6224314343924699041'>✅</tg-emoji> done: {$done}\n" .
             "<tg-emoji emoji-id='5325945307454789973'>🟢</tg-emoji> ok: {$ok}   <tg-emoji emoji-id='5326056199215406977'>❌</tg-emoji> fail: {$fail}   🔁 retry: {$retry}\n\n" .
@@ -467,20 +653,17 @@ class RubikaReporterConversation extends Conversation
 
     private function buildFinalMessage(string $targetLabel, ?string $link = null): string
     {
-        $date = now()->format('Y/m/d');
+        $date = now()->format('Y/n/j');
         $time = now()->format('H:i:s');
-        $preview = $link ? "🖇️ لینک: {$link}\n" : '';
 
         return "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> KermPlus | Reported Successful\n" .
             "━━━━━━━━━━━━━━━━\n\n" .
-            "🎯 هدف: {$targetLabel}\n" .
-            $preview .
-            "📦 تعداد کل درخواست ها : 1321\n" .
-            "✅ 1235 موفق | ❌ 134 ناموفق\n\n" .
-            "تمامی ریپورت ها از سمت <b>کرم پلاس</b>🪱 با موفقیت ارسال شدند.\n" .
+            "<tg-emoji emoji-id='5116093437300442328'>⚡️</tg-emoji> تعداد کل درخواست ها : 1321\n" .
+            "<tg-emoji emoji-id='6224314343924699041'>✅</tg-emoji> 1235 موفق | <tg-emoji emoji-id='6224072537265934868'>❌</tg-emoji> 134 ناموفق\n\n" .
+            "تمامی ریپورت ها از سمت کرم پلاس<tg-emoji emoji-id='5134654202894615343'>🪱</tg-emoji> با موفقیت ارسال شدند.\n" .
             "نتیجه نهایی وابسته به بررسی پلتفرم مقصد می‌باشد.\n\n" .
-            "📆 {$date} ⏰ {$time}\n" .
-            "• @NitroHostBot •";
+            "<tg-emoji emoji-id='5431897022456145283'>📆</tg-emoji> {$date} <tg-emoji emoji-id='4904882772637648609'>⏰</tg-emoji> {$time}\n" .
+            "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> @NitroHostBot <tg-emoji emoji-id='4927295007204836791'>🪱</tg-emoji>";
     }
 
     private function buildStatusLines(int $step): array
@@ -508,8 +691,8 @@ class RubikaReporterConversation extends Conversation
 
     private function getReporterPhoto(): ?InputFile
     {
-        $path = public_path('images/reporter.png');
-        return is_readable($path) ? InputFile::make($path, 'reporter.png') : null;
+        $path = public_path('images/report.png');
+        return is_readable($path) ? InputFile::make($path, 'report.png') : null;
     }
 
     private function addCleanupMessage(Nutgram $bot, ?int $messageId): void
