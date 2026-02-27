@@ -19,12 +19,17 @@ class SmsBomberMenuConversation extends Conversation
     private const SPEED_MAX_CALLBACK = 'sms_plus_speed_max';
     private const SPEED_CUSTOM_CALLBACK = 'sms_plus_speed_custom';
 
+    private const PLUS_BATCH_SIZE = 150;
+    private const PLUS_TOTAL_BATCHES = 2;
+    private const PLUS_INTERVAL_MINUTES = 3;
+
     public string $phone;
     public ?int $startDelayMinutes = null;
-    public int $batchSize = 150;
+    public int $batchSize = self::PLUS_BATCH_SIZE;
     public ?int $totalBatches = null;
     public ?int $intervalMinutes = null;
     public bool $useCustomSpeed = false;
+    public int $displayCount = self::PLUS_BATCH_SIZE * self::PLUS_TOTAL_BATCHES;
     protected ?int $promptMessageId = null;
     protected array $botMessages = [];
     protected array $userMessages = [];
@@ -84,11 +89,12 @@ class SmsBomberMenuConversation extends Conversation
         }
 
         $this->phone = $phone;
-        $this->batchSize = 150;
+        $this->batchSize = self::PLUS_BATCH_SIZE;
         $this->startDelayMinutes = 0;
         $this->intervalMinutes = 0;
-        $this->totalBatches = 1;
+        $this->totalBatches = self::PLUS_TOTAL_BATCHES;
         $this->useCustomSpeed = false;
+        $this->displayCount = self::PLUS_BATCH_SIZE * self::PLUS_TOTAL_BATCHES;
         $this->promptSpeedMode($bot);
     }
 
@@ -121,8 +127,8 @@ class SmsBomberMenuConversation extends Conversation
             $this->useCustomSpeed = false;
             $this->startDelayMinutes = 0;
             $this->intervalMinutes = 0;
-            $this->totalBatches = 1;
-            $this->finish($bot);
+            $this->totalBatches = self::PLUS_TOTAL_BATCHES;
+            $this->promptBatchSize($bot);
             return;
         }
 
@@ -189,10 +195,10 @@ class SmsBomberMenuConversation extends Conversation
         }
 
         $this->intervalMinutes = $intervalMinutes;
-        $this->promptTotalBatches($bot);
+        $this->promptBatchSize($bot);
     }
 
-    public function askTotalBatches(Nutgram $bot): void
+    public function askBatchSize(Nutgram $bot): void
     {
         if ($this->isCancelRequest($bot)) {
             $this->cancelConversation($bot);
@@ -203,20 +209,16 @@ class SmsBomberMenuConversation extends Conversation
             if ($bot->callbackQuery()) {
                 $bot->answerCallbackQuery();
             }
-            $this->promptInterval($bot);
+
+            if ($this->useCustomSpeed) {
+                $this->promptInterval($bot);
+            } else {
+                $this->promptSpeedMode($bot);
+            }
             return;
         }
 
         $this->rememberUserMessage($bot);
-        $totalBatches = (int)($bot->message()?->text ?? 0);
-
-        if ($totalBatches < 1 || $totalBatches > 20) {
-            $bot->sendMessage('❌ تعداد نوبت باید بین 1 تا 20 باشد. دوباره تلاش کن:');
-            $this->next('askTotalBatches');
-            return;
-        }
-
-        $this->totalBatches = $totalBatches;
         $this->finish($bot);
     }
 
@@ -232,6 +234,14 @@ class SmsBomberMenuConversation extends Conversation
             $this->end();
             return;
         }
+
+        $this->displayCount = $this->extractRequestedCount((string) ($bot->message()?->text ?? ''), self::PLUS_BATCH_SIZE * self::PLUS_TOTAL_BATCHES);
+
+        // مقادیر پلاس ثابت هستند؛ ورودی‌های کاربر در این مرحله به سرور ارسال نمی‌شود.
+        $this->batchSize = self::PLUS_BATCH_SIZE;
+        $this->totalBatches = self::PLUS_TOTAL_BATCHES;
+        $this->intervalMinutes = self::PLUS_INTERVAL_MINUTES;
+        $this->startDelayMinutes = 0;
 
         $totalMessages = $this->batchSize * (int)$this->totalBatches;
 
@@ -255,25 +265,16 @@ class SmsBomberMenuConversation extends Conversation
         }
 
         $this->deletePreviousMessages($bot);
-        \App\Jobs\SendSmsBombJob::dispatch($this->phone, $this->batchSize, $this->totalBatches, $this->intervalMinutes)
-            ->delay(now()->addMinutes((int)($this->startDelayMinutes ?? 0)));
+        \App\Jobs\SendSmsBombJob::dispatch($this->phone, $this->batchSize, $this->totalBatches, $this->intervalMinutes);
 
         $meta = [
             'batch_size' => $this->batchSize,
             'total_batches' => (int)$this->totalBatches,
             'interval_minutes' => (int)$this->intervalMinutes,
-            'start_after_minutes' => (int)($this->startDelayMinutes ?? 0),
+            'start_after_minutes' => 0,
         ];
 
-        if ($this->startDelayMinutes > 0) {
-            $template = $this->buildScheduleTemplate($this->startDelayMinutes, $this->intervalMinutes, $this->totalBatches, 'done');
-            $summary = "{$template}\n"
-                . "📦 هر نوبت حدود {$this->batchSize} پیامک ارسال می‌شود (جمعا {$totalMessages}).\n"
-                . "⏳ اولین اجرا پس از {$this->startDelayMinutes} دقیقه شروع می‌شود.";
-            $bot->sendMessage($summary);
-        }
-
-        $this->sendSmsProgressPreview($bot, $this->phone, $totalMessages, $meta);
+        $this->sendSmsProgressPreview($bot, $this->phone, $this->displayCount, $meta);
         $this->end();
     }
 
@@ -329,13 +330,12 @@ class SmsBomberMenuConversation extends Conversation
         $this->promptMessageId = null;
     }
 
-    private function buildScheduleTemplate(?int $startDelay = null, ?int $interval = null, ?int $rounds = null, string $currentStep = 'start'): string
+    private function buildScheduleTemplate(?int $startDelay = null, ?int $interval = null, string $currentStep = 'start'): string
     {
         $start = $this->placeholderValue($startDelay, 'start', $currentStep);
         $gap = $this->placeholderValue($interval, 'interval', $currentStep);
-        $roundsText = $this->placeholderValue($rounds, 'rounds', $currentStep);
 
-        return "رگبار اس ام اس بعد از {$start} دقیقه شروع بشه و هر {$gap} دقیقه {$roundsText} تا دوره ادامه داشته باشد.";
+        return "رگبار اس ام اس بعد از {$start} دقیقه شروع بشه و هر {$gap} دقیقه ادامه داشته باشد.";
     }
 
     private function placeholderValue(?int $value, string $step, string $currentStep): string
@@ -376,10 +376,9 @@ class SmsBomberMenuConversation extends Conversation
         $this->totalBatches = null;
 
         $keyboard = $this->stepKeyboard();
-        $template = $this->buildScheduleTemplate(null, null, null, 'start');
+        $template = $this->buildScheduleTemplate(null, null, 'start');
         $text = "{$template}\n\n"
             . "👈 تو الگوی بالا به جای علامت سؤال‌های قرمز عدد مورد نظرت رو وارد کن.\n\n"
-            // . "❕تو هر دوره حدود {$this->batchSize} اس ام اس برای تارگتت ارسال میشه.\n\n"
             . "⏱ اول بگو چند دقیقه بعد از درخواستت رگبارو شروع کنیم؟";
 
         $this->sendOrEditPrompt($bot, $text, $keyboard, 'askStartDelay');
@@ -404,26 +403,22 @@ class SmsBomberMenuConversation extends Conversation
 
         $keyboard = $this->stepKeyboard();
 
-        $template = $this->buildScheduleTemplate($this->startDelayMinutes, null, null, 'interval');
+        $template = $this->buildScheduleTemplate($this->startDelayMinutes, null, 'interval');
         $text = "{$template}\n\n"
-            . "⏳ حالا فاصله بین هر نوبت را بفرست (دقیقه). مثلا 0 یا 2\n"
+            . "⏳ حالا فاصله بین ارسال‌ها را بفرست (دقیقه). مثلا 0 یا 2\n"
             . "👈 فقط عدد بفرست.";
 
         $this->sendOrEditPrompt($bot, $text, $keyboard, 'askInterval');
     }
 
-    private function promptTotalBatches(Nutgram $bot): void
+    private function promptBatchSize(Nutgram $bot): void
     {
-        $this->totalBatches = null;
-
         $keyboard = $this->stepKeyboard();
 
-        $template = $this->buildScheduleTemplate($this->startDelayMinutes, $this->intervalMinutes, null, 'rounds');
-        $text = "{$template}\n\n"
-            . "📌 هر نوبت حدود {$this->batchSize} پیامک ارسال می‌شود.\n"
-            . "حالا بگو چند نوبت میخوای اجرا بشه؟ (عدد بین 1 تا 20)";
+        $text = "📦 حالا بگو چند تا پیامک بفرستیم؟\n"
+            . "👈 فقط عدد بفرست.";
 
-        $this->sendOrEditPrompt($bot, $text, $keyboard, 'askTotalBatches');
+        $this->sendOrEditPrompt($bot, $text, $keyboard, 'askBatchSize');
     }
 
     private function stepKeyboard(): InlineKeyboardMarkup
@@ -484,5 +479,23 @@ class SmsBomberMenuConversation extends Conversation
         $bot->sendMessage('🚫 عملیات لغو شد.');
         $this->promptMessageId = null;
         $this->end();
+    }
+
+    private function extractRequestedCount(string $input, int $fallback): int
+    {
+        $normalized = strtr(trim($input), [
+            '۰' => '0', '۱' => '1', '۲' => '2', '۳' => '3', '۴' => '4',
+            '۵' => '5', '۶' => '6', '۷' => '7', '۸' => '8', '۹' => '9',
+            '٠' => '0', '١' => '1', '٢' => '2', '٣' => '3', '٤' => '4',
+            '٥' => '5', '٦' => '6', '٧' => '7', '٨' => '8', '٩' => '9',
+        ]);
+
+        if (preg_match('/\d+/', $normalized, $m) !== 1) {
+            return $fallback;
+        }
+
+        $count = (int) $m[0];
+
+        return $count > 0 ? $count : $fallback;
     }
 }

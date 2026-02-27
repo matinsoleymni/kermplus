@@ -93,6 +93,12 @@ class TelegramReporterConversation extends Conversation
         }
 
         $username = $normalized['username'];
+        $chat = $this->fetchTelegramChat($bot, $username);
+        if (!$chat) {
+            $bot->sendMessage('⛔️ یوزرنیم وارد شده در تلگرام پیدا نشد. لطفا یک یوزرنیم معتبر ارسال کن.');
+            return;
+        }
+
         $bot->setUserData('tg_reporter_username', $username);
         $bot->setUserData('tg_reporter_target', $normalized);
 
@@ -124,7 +130,7 @@ class TelegramReporterConversation extends Conversation
         }
         $this->addCleanupMessage($bot, $loadingMsg->message_id ?? null);
 
-        $preview = $this->buildTelegramPreview($bot, $normalized);
+        $preview = $this->buildTelegramPreview($bot, $normalized, $chat);
         $details = $preview ?? ($normalized['label'] ?? "🎯 هدف: @{$username}");
         $details .= "\n\n🗣️ دلیل ریپورت رو انتخاب کن :";
         $keyboard = TelegramReportReasonKeyboard::make();
@@ -796,26 +802,21 @@ class TelegramReporterConversation extends Conversation
         return $messageId ? "{$base}/{$messageId}" : $base;
     }
 
-    private function buildTelegramPreview(Nutgram $bot, array $target): ?string
+    private function buildTelegramPreview(Nutgram $bot, array $target, $chat = null): ?string
     {
         $link = $target['link'] ?? '';
         $username = $target['username'] ?? '';
         $type = $target['type'] ?? 'account';
 
         // Try to fetch chat info when possible
-        $chat = null;
         $memberCount = null;
 
         if ($type === 'channel' && $username) {
             $memberCount = $this->fetchChannelMemberCount($bot, $username);
         }
 
-        if ($type !== 'post' && $username) {
-            try {
-                $chat = $bot->getChat(chat_id: '@' . $username);
-            } catch (\Throwable $e) {
-                $chat = null;
-            }
+        if ($chat === null && $type !== 'post' && $username) {
+            $chat = $this->fetchTelegramChat($bot, $username);
         }
 
         return match ($type) {
@@ -980,6 +981,15 @@ class TelegramReporterConversation extends Conversation
         try {
             return $bot->getChatMemberCount(chat_id: '@' . $username);
         } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    private function fetchTelegramChat(Nutgram $bot, string $username)
+    {
+        try {
+            return $bot->getChat(chat_id: '@' . $username);
+        } catch (\Throwable) {
             return null;
         }
     }

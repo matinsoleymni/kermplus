@@ -3,6 +3,7 @@
 namespace App\Telegram\Concerns;
 
 use SergiX44\Nutgram\Nutgram;
+use SergiX44\Nutgram\Telegram\Types\Internal\InputFile;
 
 trait SendsHarasserProgress
 {
@@ -12,7 +13,7 @@ trait SendsHarasserProgress
         $delayPerStep = 1;
         $active = max(1, min(18, (int)ceil($sites / 5)));
         $retry = max(0, (int)floor($sites * 0.1));
-        $imagePath = public_path('images/mozahem.png');
+        $animationPath = public_path('images/mozahem.mp4');
         $initialMessage = $this->buildHarasserProcessingMessage(
             percent: 0,
             step: 1,
@@ -30,17 +31,17 @@ trait SendsHarasserProgress
             statuses: $this->buildHarasserStatusLines(1)
         );
 
-        $usePhoto = false;
+        $useAnimation = false;
         $progressMsg = null;
 
         try {
-            if (is_readable($imagePath)) {
-                $progressMsg = $bot->sendPhoto(
-                    photo: \SergiX44\Nutgram\Telegram\Types\Internal\InputFile::make($imagePath, 'mozahem.png'),
+            if (is_readable($animationPath)) {
+                $progressMsg = $bot->sendAnimation(
+                    animation: InputFile::make($animationPath, 'mozahem.mp4'),
                     caption: $initialMessage,
                     parse_mode: 'HTML'
                 );
-                $usePhoto = (bool)($progressMsg->message_id ?? false);
+                $useAnimation = (bool)($progressMsg->message_id ?? false);
             }
         } catch (\Throwable) {
             $progressMsg = null;
@@ -93,7 +94,7 @@ trait SendsHarasserProgress
             );
 
             try {
-                if ($usePhoto) {
+                if ($useAnimation) {
                     $bot->editMessageCaption(
                         chat_id: $bot->user()->id,
                         message_id: $progressMessageId,

@@ -31,9 +31,9 @@ class ReporterWhatIsHandler
 <tg-emoji emoji-id="4929619512224909015">🪱</tg-emoji> @kermplus <tg-emoji emoji-id="4927295007204836791">🪱</tg-emoji>
 HTML;
 
-        // $photo = $this->getReporterPhoto();
-        // if ($photo) {
-        //     $bot->sendPhoto(photo: $photo);
+        // $animation = $this->getReporterAnimation();
+        // if ($animation) {
+        //     $bot->sendAnimation(animation: $animation);
         // }
 
         try {
@@ -51,9 +51,9 @@ HTML;
         }
     }
 
-    private function getReporterPhoto(): ?InputFile
+    private function getReporterAnimation(): ?InputFile
     {
-        $path = public_path('images/reporter.png');
-        return is_readable($path) ? InputFile::make($path, 'reporter.png') : null;
+        $path = public_path('images/reporter.mp4');
+        return is_readable($path) ? InputFile::make($path, 'reporter.mp4') : null;
     }
 }

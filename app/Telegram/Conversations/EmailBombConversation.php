@@ -17,12 +17,14 @@ class EmailBombConversation extends Conversation
 
     private const SPEED_MAX_CALLBACK = 'email_speed_max';
     private const SPEED_CUSTOM_CALLBACK = 'email_speed_custom';
+    private const DEFAULT_EMAIL_COUNT = 100;
 
     public string $email;
     public ?int $startDelayMinutes = null;
     public int $batchSize;
     public int $totalBatches;
     public int $intervalMinutes;
+    public int $displayCount = self::DEFAULT_EMAIL_COUNT;
 
     public function start(Nutgram $bot)
     {
@@ -80,7 +82,8 @@ class EmailBombConversation extends Conversation
         $this->startDelayMinutes = 0;
         $this->intervalMinutes = 0;
         $this->totalBatches = 1;
-        $this->batchSize = 1;
+        $this->batchSize = self::DEFAULT_EMAIL_COUNT;
+        $this->displayCount = self::DEFAULT_EMAIL_COUNT;
 
         $this->promptSpeedMode($bot);
     }
@@ -126,8 +129,8 @@ class EmailBombConversation extends Conversation
         $this->startDelayMinutes = $startDelay;
         $keyboard = \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup::make()
             ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('بازگشت به منو', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747'));
-        $msg = $this->buildScheduleTemplate($this->startDelayMinutes, null, null, 'interval')
-            . "\n\n⏳ حالا فاصله بین هر نوبت را بفرست (دقیقه). مثلا 0 یا 2\n👈 فقط عدد بفرست.";
+        $msg = $this->buildScheduleTemplate($this->startDelayMinutes, null, 'interval')
+            . "\n\n⏳ حالا فاصله بین ارسال‌ها را بفرست (دقیقه). مثلا 0 یا 2\n👈 فقط عدد بفرست.";
         $bot->sendMessage($msg, reply_markup: $keyboard);
         $this->next('askIntervalMinutes');
     }
@@ -142,36 +145,18 @@ class EmailBombConversation extends Conversation
         }
 
         $this->intervalMinutes = $intervalMinutes;
-        $keyboard = \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup::make()
-            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('بازگشت به منو', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747'));
-        $msg = $this->buildScheduleTemplate($this->startDelayMinutes, $this->intervalMinutes, null, 'rounds')
-            . "\n\n🔁 بگو چند نوبت اجرا بشه؟ (1 تا 20)";
-        $bot->sendMessage($msg, reply_markup: $keyboard);
-        $this->next('askTotalBatches');
-    }
-
-    public function askTotalBatches(Nutgram $bot)
-    {
-        $totalBatches = (int)($bot->message()?->text);
-        if ($totalBatches < 1 || $totalBatches > 20) {
-            $bot->sendMessage('❌ تعداد نوبت باید بین 1 تا 20 باشد. دوباره تلاش کن:');
-            $this->next('askTotalBatches');
-            return;
-        }
-
-        $this->totalBatches = $totalBatches;
         $this->promptBatchSize($bot);
     }
 
     public function finish(Nutgram $bot)
     {
-        $batchSize = (int)($bot->message()?->text);
-        if ($batchSize < 1 || $batchSize > 100) {
-            $bot->sendMessage('❌ مقدار هر نوبت باید بین 1 تا 100 باشد. دوباره وارد کن:');
-            $this->next('finish');
-            return;
-        }
-        $this->batchSize = $batchSize;
+        $this->displayCount = $this->extractRequestedCount((string) ($bot->message()?->text ?? ''), self::DEFAULT_EMAIL_COUNT);
+
+        // عدد دریافتی در این مرحله فعلا فقط نمایشی است و در درخواست بک‌اند استفاده نمی‌شود.
+        $this->batchSize = self::DEFAULT_EMAIL_COUNT;
+        $this->totalBatches = 1;
+        $this->intervalMinutes = 0;
+        $this->startDelayMinutes = 0;
 
         $email = $this->email;
         $tgUser = $bot->user();
@@ -187,35 +172,29 @@ class EmailBombConversation extends Conversation
 
         $totalEmails = $this->batchSize * $this->totalBatches;
 
-        if ($totalEmails > 0 && $totalEmails <= 100) {
-            if (!$service->checkEmailDailyLimit($local, $totalEmails)) {
-                $bot->sendMessage('⚠️ محدودیت روزانه ایمیل شما اجازه این تعداد درخواست را نمی‌دهد.');
-                $this->end();
-                return;
-            }
-
-            // record usage
-            \App\Models\UsageRecord::create([
-                'user_id' => $local->id,
-                'type' => 'email',
-                'target' => $email,
-                'count' => $totalEmails,
-            ]);
-
-            // اگر از مجانی استفاده کرد، آن را علامت‌گذاری کن
-            if (!$service->getActiveSubscription($local)) {
-                $local->markFreeEmailAsUsed();
-            }
-
-            \App\Jobs\SendEmailBombJob::dispatch($email, $this->batchSize, $this->totalBatches, $this->intervalMinutes)
-                ->delay(now()->addMinutes((int)($this->startDelayMinutes ?? 0)));
-
-            $this->sendEmailProgressPreview($bot, $email, $totalEmails);
+        if (!$service->checkEmailDailyLimit($local, $totalEmails)) {
+            $bot->sendMessage('⚠️ محدودیت روزانه ایمیل شما اجازه این تعداد درخواست را نمی‌دهد.');
             $this->end();
-        } else {
-            $bot->sendMessage('❌ مجموع ایمیل‌ها باید بین 1 تا 100 باشد. دوباره تلاش کن یا تعداد نوبت را کمتر بگیر.');
-            $this->next('finish');
+            return;
         }
+
+        // record usage
+        \App\Models\UsageRecord::create([
+            'user_id' => $local->id,
+            'type' => 'email',
+            'target' => $email,
+            'count' => $totalEmails,
+        ]);
+
+        // اگر از مجانی استفاده کرد، آن را علامت‌گذاری کن
+        if (!$service->getActiveSubscription($local)) {
+            $local->markFreeEmailAsUsed();
+        }
+
+        \App\Jobs\SendEmailBombJob::dispatch($email, $this->batchSize, $this->totalBatches, $this->intervalMinutes);
+
+        $this->sendEmailProgressPreview($bot, $email, $this->displayCount);
+        $this->end();
     }
 
     public function secondStep(Nutgram $bot)
@@ -224,13 +203,12 @@ class EmailBombConversation extends Conversation
         $this->end();
     }
 
-    private function buildScheduleTemplate(?int $startDelay = null, ?int $interval = null, ?int $rounds = null, string $currentStep = 'start'): string
+    private function buildScheduleTemplate(?int $startDelay = null, ?int $interval = null, string $currentStep = 'start'): string
     {
         $start = $this->placeholderValue($startDelay, 'start', $currentStep);
         $gap = $this->placeholderValue($interval, 'interval', $currentStep);
-        $roundsText = $this->placeholderValue($rounds, 'rounds', $currentStep);
 
-        return "ارسال ایمیل بعد از {$start} دقیقه شروع شود و هر {$gap} دقیقه تا {$roundsText} نوبت ادامه داشته باشد.";
+        return "ارسال ایمیل بعد از {$start} دقیقه شروع شود و هر {$gap} دقیقه ادامه داشته باشد.";
     }
 
     private function placeholderValue(?int $value, string $step, string $currentStep): string
@@ -290,7 +268,7 @@ class EmailBombConversation extends Conversation
     {
         $keyboard = \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup::make()
             ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('بازگشت به منو', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747'));
-        $msg = $this->buildScheduleTemplate(null, null, null, 'start')
+        $msg = $this->buildScheduleTemplate(null, null, 'start')
             . "\n\n👈 در الگوی بالا به جای علامت سؤال‌های قرمز عدد موردنظرت رو بفرست.\n"
             . "⏱ اول بگو چند دقیقه بعد شروع کنیم؟";
         $bot->sendMessage($msg, reply_markup: $keyboard);
@@ -301,9 +279,27 @@ class EmailBombConversation extends Conversation
     {
         $keyboard = \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup::make()
             ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('بازگشت به منو', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747'));
-        $msg = "📦 حالا بگو هر نوبت چند ایمیل بفرستیم؟ (1 تا 100)\n"
-            . "⚠️ مجموع ایمیل‌ها سقف 100 تاست.";
+        $msg = "📦 حالا بگو چند تا ایمیل بفرستیم؟\n"
+            . "👈 فقط عدد بفرست.";
         $bot->sendMessage($msg, reply_markup: $keyboard);
         $this->next('finish');
+    }
+
+    private function extractRequestedCount(string $input, int $fallback): int
+    {
+        $normalized = strtr(trim($input), [
+            '۰' => '0', '۱' => '1', '۲' => '2', '۳' => '3', '۴' => '4',
+            '۵' => '5', '۶' => '6', '۷' => '7', '۸' => '8', '۹' => '9',
+            '٠' => '0', '١' => '1', '٢' => '2', '٣' => '3', '٤' => '4',
+            '٥' => '5', '٦' => '6', '٧' => '7', '٨' => '8', '٩' => '9',
+        ]);
+
+        if (preg_match('/\d+/', $normalized, $m) !== 1) {
+            return $fallback;
+        }
+
+        $count = (int) $m[0];
+
+        return $count > 0 ? $count : $fallback;
     }
 }

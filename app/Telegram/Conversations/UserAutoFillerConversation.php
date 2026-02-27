@@ -203,12 +203,12 @@ class UserAutoFillerConversation extends Conversation
             "📆 {$date}  ⏰ {$time}\n" .
             "• @NitroHostBot •";
 
-        $imagePath = public_path('images/mozahem.png');
+        $animationPath = public_path('images/mozahem.mp4');
 
         try {
-            if (is_readable($imagePath)) {
-                $bot->sendPhoto(
-                    photo: InputFile::make($imagePath, 'mozahem.png'),
+            if (is_readable($animationPath)) {
+                $bot->sendAnimation(
+                    animation: InputFile::make($animationPath, 'mozahem.mp4'),
                     caption: $message,
                     reply_markup: BackToMainKeyboard::make(),
                     parse_mode: 'HTML'
@@ -216,7 +216,7 @@ class UserAutoFillerConversation extends Conversation
                 return;
             }
         } catch (\Throwable $e) {
-            // Fallback to text-only message if sending the image fails
+            // Fallback to text-only message if sending animation fails
         }
 
         $bot->sendMessage($message, reply_markup: BackToMainKeyboard::make());
