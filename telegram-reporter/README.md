@@ -77,6 +77,13 @@ curl -X POST http://localhost:8000/sessions/upload \
   -F "file=@/path/to/sessions.db"
 ```
 
+Import from local `sessions/` folder without API upload:
+```bash
+python3 import_sessions_dir.py --source ./sessions
+```
+The script searches for a SQLite file with an `accounts` table (prefers
+`sessions/data.db`) and copies rows into `sessions.db`.
+
 Report messages:
 ```bash
 curl -X POST http://localhost:8000/reports/message \
