@@ -31,10 +31,10 @@ class ReporterWhatIsHandler
 <tg-emoji emoji-id="4929619512224909015">🪱</tg-emoji> @kermplus <tg-emoji emoji-id="4927295007204836791">🪱</tg-emoji>
 HTML;
 
-        $photo = $this->getReporterPhoto();
-        if ($photo) {
-            $bot->sendPhoto(photo: $photo);
-        }
+        // $photo = $this->getReporterPhoto();
+        // if ($photo) {
+        //     $bot->sendPhoto(photo: $photo);
+        // }
 
         try {
             $bot->editMessageText(

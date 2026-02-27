@@ -16,7 +16,15 @@ class BuySubscriptionHandler
         $plans = SubscriptionPlan::query()
             ->where('is_active', true)
             ->orderByRaw('LOWER(name)')
-            ->get();
+            ->get()
+            ->sortBy(function (SubscriptionPlan $plan): int {
+                return match (mb_strtolower(trim((string) $plan->name))) {
+                    'pro' => 0,
+                    'plus' => 1,
+                    default => 2,
+                };
+            })
+            ->values();
         $data = $bot->callbackQuery()?->data ?? '';
 
         if ($plans->isEmpty()) {
@@ -38,27 +46,26 @@ class BuySubscriptionHandler
             return;
         }
 
-        $msg = "❁ به بخش ارتقا به نسخه پلاس خوش اومدی 😉\n\n";
-        $msg .= "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> قابلیت های جذاب نسخه پلاس ربات <b>کرم پلاس</b>:\n";
-        $msg .= "- دسترسی کامل به تمامی قابلیت های ربات 😍\n";
-        $msg .= "- انجام درخواست ها با سرعت چند برابری 😚\n";
-        $msg .= "- دسترسی دائمی به تمامی آپدیت ها و قابلیت ها 🙃\n\n";
-        $msg .= "💳 روش پرداخت: میتونی هر نسخه ای رو که خواستی با تومان، ارز دیجیتال (ton تون یا trx ترون) یا حتی استارز تلگرام بخری\n\n";
-        $msg .= "📌 قیمت پلن‌ها:\n";
-        foreach ($plans as $plan) {
-            $msg .= "• {$plan->name}: {$this->formatUsd($plan->usdPrice())}$ | {$this->formatIrr($plan->irrPrice())} ریال | {$plan->starsPrice()} ⭐️\n";
+        if ($data === 'buy_sub_referral') {
+            $this->showPlansForMethod($bot, $plans, 'referral');
+            return;
         }
-        $msg .= "\n";
-        $msg .= "❁ روش مورد نظرتون رو برای ارتقا انتخاب کنید 👇";
+
+        $msg = "<tg-emoji emoji-id=\"4929619512224909015\">🪱</tg-emoji> به بخش ارتقای ربات کرم پلاس خوش اومدی\n\n";
+        $msg .= "<tg-emoji emoji-id=\"4927295007204836791\">🪱</tg-emoji> ربات جذاب کرم پلاس تو دو نسخه پلاس<tg-emoji emoji-id=\"5433758796289685818\">👑</tg-emoji> و پرو<tg-emoji emoji-id=\"6244241334320762892\">💎</tg-emoji> عرضه میشه که میتونید ویژگی های هر نسخه رو این پایین بخونید.\n\n";
+        $msg .= "<tg-emoji emoji-id=\"5433758796289685818\">👑</tg-emoji><a href='https://t.me/kermpluslearn/18'>ویژگی های نسخه پلاس </a><tg-emoji emoji-id=\"5433758796289685818\">👑</tg-emoji>\n";
+        $msg .= "<tg-emoji emoji-id=\"6244241334320762892\">💎</tg-emoji><a href='https://t.me/kermpluslearn/19'>ویژگی های نسخه پرو </a><tg-emoji emoji-id=\"6244241334320762892\">💎</tg-emoji>\n\n";
+        $msg .= "<tg-emoji emoji-id=\"5116648080787112958\">💰</tg-emoji> روش پرداخت: میتونی هر نسخه ای رو که خواستی با تومان ، ارز دیجیتال ( ton تون ، trx ترون ) یا حتی استارز تلگرام بخری\n\n";
+        $msg .= "<tg-emoji emoji-id=\"4927295007204836791\">🪱</tg-emoji> روش مورد نظرتون رو برای ارتقا انتخاب کنید <tg-emoji emoji-id=\"5231102735817918643\">👇</tg-emoji>";
 
         $keyboard = InlineKeyboardMarkup::make()
             ->addRow(InlineKeyboardButton::make('پرداخت کریپتویی (ارز ترون یا تون)', callback_data: 'buy_sub_crypto', style: 'danger', icon: '5361656830944624968'))
             ->addRow(InlineKeyboardButton::make('پرداخت با استارز (واحد پول تلگرام)', callback_data: 'buy_sub_star', style: 'danger', icon: '5958376256788502078'))
-            ->addRow(InlineKeyboardButton::make('پرداخت با زیر مجموعه', callback_data: 'user_referral', style: 'danger', icon: '4913497231492908158'))
+            ->addRow(InlineKeyboardButton::make('پرداخت با زیر مجموعه', callback_data: 'buy_sub_referral', style: 'danger', icon: '4913497231492908158'))
             ->addRow(InlineKeyboardButton::make('پرداخت تومانی (با کمی معطلی)', url: 'https://t.me/kermsup', style: 'danger', icon: '5472250091332993630'))
             ->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747'));
 
-        $bot->editMessageText($msg, reply_markup: $keyboard, parse_mode: 'HTML');
+        $bot->editMessageText($msg, reply_markup: $keyboard, parse_mode: 'HTML', disable_web_page_preview: true);
     }
 
     /**
@@ -66,46 +73,94 @@ class BuySubscriptionHandler
      */
     private function showPlansForMethod(Nutgram $bot, iterable $plans, string $method): void
     {
-        $title = $method === 'crypto' ? '🪙 پرداخت کریپتویی (ترون یا تون)' : '⭐️ پرداخت با استارز تلگرام';
-        $intro = $method === 'crypto'
-            ? "روی پلن بزن تا فاکتور کریپتویی    ساخته بشه."
-            : "روی پلن بزن تا پرداخت استار تلگرام برات باز بشه.";
-
-        $msg = "{$title}\nپلن مورد نظرت رو انتخاب کن:\n\n";
+        $msg = $this->methodSectionIntro($method) . "\n\n";
         $chunks = [];
         foreach ($plans as $plan) {
-            $usd = $this->formatUsd($plan->usdPrice());
-            $stars = number_format((float) $plan->starsPrice(), 0);
-            $irr = $this->formatIrr($plan->irrPrice());
             $durationText = ($plan->duration_days ?? 0) > 0 ? "{$plan->duration_days} روز" : 'نامحدود';
-
-            $chunks[] = "◾️ **{$plan->name}**\n"
-                . "   💰 {$usd}$ | {$irr} ریال | {$stars} استار\n"
-                . "   ⏱ مدت: {$durationText}\n";
+            $chunks[] = $this->planSectionTitle($plan) . "\n"
+                . $this->planValueLineByMethod($plan, $method) . "\n"
+                . "⏱ مدت: {$durationText}";
         }
 
-        $msg .= implode("\n\n", $chunks) . "\n\n" . $intro;
+        $msg .= implode("\n\n", $chunks);
 
         $keyboard = InlineKeyboardMarkup::make();
         foreach ($plans as $plan) {
-            $callback = $method === 'crypto'
-                ? "pay_crypto_{$plan->id}"
-                : "pay_star_{$plan->id}";
-            $keyboard->addRow(InlineKeyboardButton::make("{$plan->name}", callback_data: $callback, style: 'danger'));
+            $callback = match ($method) {
+                'crypto' => "pay_crypto_{$plan->id}",
+                'star' => "pay_star_{$plan->id}",
+                default => 'user_referral',
+            };
+            $keyboard->addRow(
+                InlineKeyboardButton::make(
+                    $this->planButtonLabel($plan),
+                    callback_data: $callback,
+                    style: 'danger',
+                    icon: $this->planButtonIcon($plan)
+                )
+            );
         }
 
         $keyboard->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'buy_subscription', style: 'danger', icon: '5352759161945867747'));
 
-        $bot->editMessageText($msg, reply_markup: $keyboard, parse_mode: 'Markdown');
+        $bot->editMessageText($msg, reply_markup: $keyboard, parse_mode: 'HTML');
     }
 
-    private function formatUsd(float $value): string
+    private function methodSectionIntro(string $method): string
     {
-        return number_format($value, 2, '.', '');
+        $msg = "<tg-emoji emoji-id=\"4929619512224909015\">🪱</tg-emoji> نسخه پرو ربات کرم پلاس <tg-emoji emoji-id=\"4929619512224909015\">🪱</tg-emoji>\n\n";
+        $msg .= "<tg-emoji emoji-id=\"5116093437300442328\">⚡️</tg-emoji> با پرداخت این مبلغ، شما به صورت کامل به برخی از قابلیت های ربات به طور دائمی دسترسی خواهید داشت و تمامی درخواست های شما با سرعت چندین برابری انجام خواهد شد.\n\n";
+
+        return $msg . match ($method) {
+            'crypto' => "<tg-emoji emoji-id=\"4927295007204836791\">🪱</tg-emoji> برای ارتقا به نسخه پلاس لطفا رمز ارز مدنظر خودتون رو انتخاب کنید <tg-emoji emoji-id=\"5231102735817918643\">👇</tg-emoji>",
+            'star' => "<tg-emoji emoji-id=\"4927295007204836791\">🪱</tg-emoji> برای ارتقا به نسخه پلاس لطفا مقدار استارز مدنظر خودتون رو انتخاب کنید <tg-emoji emoji-id=\"5231102735817918643\">👇</tg-emoji>",
+            default => "<tg-emoji emoji-id=\"4927295007204836791\">🪱</tg-emoji> برای ارتقا به نسخه پلاس لطفا مقدار امتیاز مدنظر خودتون رو انتخاب کنید <tg-emoji emoji-id=\"5231102735817918643\">👇</tg-emoji>",
+        };
     }
 
-    private function formatIrr(int $value): string
+    private function planValueLineByMethod(SubscriptionPlan $plan, string $method): string
     {
-        return number_format($value, 0, '.', ',');
+        if ($method === 'star') {
+            return "⭐️ قیمت استاری: " . number_format((float) $plan->starsPrice(), 0) . " استار";
+        }
+
+        if ($method === 'referral') {
+            return "🎯 امتیاز مورد نیاز: " . number_format((float) config('services.referral.reward_threshold', 20), 0) . " امتیاز";
+        }
+
+        return "💰 قیمت ارزی: " . number_format($plan->usdPrice(), 2, '.', '') . "$";
+    }
+
+    private function planButtonLabel(SubscriptionPlan $plan): string
+    {
+        $planName = mb_strtolower(trim((string) $plan->name));
+
+        return match ($planName) {
+            'pro' => 'ارتقا به نسخه پرو',
+            'plus' => 'ارتقا به نسخه پلاس',
+            default => "ارتقا به نسخه {$plan->name}",
+        };
+    }
+
+    private function planButtonIcon(SubscriptionPlan $plan): ?string
+    {
+        $planName = mb_strtolower(trim((string) $plan->name));
+
+        return match ($planName) {
+            'pro' => '6244241334320762892',
+            'plus' => '5433758796289685818',
+            default => null,
+        };
+    }
+
+    private function planSectionTitle(SubscriptionPlan $plan): string
+    {
+        $planName = mb_strtolower(trim((string) $plan->name));
+
+        return match ($planName) {
+            'pro' => "<tg-emoji emoji-id=\"6244241334320762892\">💎</tg-emoji> <b>اشتراک پرو</b> <tg-emoji emoji-id=\"6244241334320762892\">💎</tg-emoji>",
+            'plus' => "<tg-emoji emoji-id=\"5433758796289685818\">👑</tg-emoji> <b>اشتراک پلاس</b> <tg-emoji emoji-id=\"5433758796289685818\">👑</tg-emoji>",
+            default => "◾️ <b>{$plan->name}</b>",
+        };
     }
 }

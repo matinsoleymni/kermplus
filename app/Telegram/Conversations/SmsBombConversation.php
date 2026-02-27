@@ -52,20 +52,15 @@ class SmsBombConversation extends Conversation
             return;
         }
 
-        $keyboard = \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup::make()
-            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('بازگشت به منو', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747'));
-        $msg = $bot->sendMessage('📱 شماره موبایل هدف را وارد کنید:', reply_markup: $keyboard);
-        $this->rememberBotMessage($msg);
-        $this->next('askCount');
+        $this->promptSmsTarget($bot);
     }
 
     public function askCount(Nutgram $bot)
     {
         $this->rememberUserMessage($bot);
-        $phone = trim((string) $bot->message()?->text);
-        if (!preg_match('/^09\d{9,13}$/', $phone)) {
-            $bot->sendMessage('❌ شماره وارد شده صحیح نیست. لطفا دوباره وارد کنید:');
-            $this->start($bot);
+        $phone = $this->normalizePhone((string)$bot->message()?->text);
+        if (!$phone) {
+            $this->promptSmsTarget($bot, '❌ شماره وارد شده صحیح نیست. لطفا دوباره وارد کن.');
             return;
         }
 
@@ -259,6 +254,58 @@ class SmsBombConversation extends Conversation
         }
         $this->botMessages = [];
         $this->userMessages = [];
+    }
+
+    private function normalizePhone(string $input): ?string
+    {
+        $input = preg_replace('/\D/', '', $input);
+
+        if (strlen($input) === 11 && str_starts_with($input, '09')) {
+            return $input;
+        }
+
+        if (strlen($input) === 10 && str_starts_with($input, '9')) {
+            return '0' . $input;
+        }
+
+        if (strlen($input) === 12 && str_starts_with($input, '98')) {
+            return '0' . substr($input, 2);
+        }
+
+        return null;
+    }
+
+    private function promptSmsTarget(Nutgram $bot, ?string $error = null): void
+    {
+        $keyboard = \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup::make()
+            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('بازگشت به منو', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747'));
+
+        $text = '';
+        if ($error) {
+            $text .= $error . "\n\n";
+        }
+
+        $text .= $this->buildSmsInputPrompt();
+        $sent = $bot->sendMessage($text, parse_mode: 'HTML', reply_markup: $keyboard);
+        $this->rememberBotMessage($sent);
+        $this->next('askCount');
+    }
+
+    private function buildSmsInputPrompt(): string
+    {
+        return "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> کرم پلاس <tg-emoji emoji-id='5134654202894615343'>🪱</tg-emoji>\n\n" .
+            "<tg-emoji emoji-id='5407025283456835913'>📱</tg-emoji> شماره موبایل تارگتت رو برام بفرست:\n\n" .
+            "<tg-emoji emoji-id='5334882760735598374'>📝</tg-emoji> فرمت های قابل قبول:\n" .
+            "• با صفر: 09123456789 (11 رقم)\n" .
+            "• بدون صفر: 9123456789 (10 رقم)\n" .
+            "• با کد کشور: 989123456789 (12 رقم)\n\n" .
+            "<tg-emoji emoji-id='5123359615727174427'>💡</tg-emoji> مثلا:\n" .
+            "• با صفر: 09123456789\n" .
+            "• بدون صفر: 9123456789\n" .
+            "• با کد کشور: 989123456789\n\n" .
+            "<tg-emoji emoji-id='6226426402682441481'>⚠️</tg-emoji> دقت کن:\n" .
+            "• شماره رو بدون فاصله و بدون خط تیره وارد کن\n" .
+            "• فقط اعداد انگلیسی مجازه";
     }
 
     private function promptSpeedMode(Nutgram $bot): void

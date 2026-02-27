@@ -2,5 +2,9 @@
   {
     "type": "sqlite",
     "path": "/home/zmat24/Desktop/KermPlus/database/database.sqlite"
+  },
+  {
+    "type": "sqlite",
+    "path": "/home/zmat24/Desktop/KermPlus/telegram-reporter/sessions/data.db"
   }
 ]

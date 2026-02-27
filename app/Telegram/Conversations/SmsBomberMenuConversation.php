@@ -352,14 +352,14 @@ class SmsBomberMenuConversation extends Conversation
         $keyboard = InlineKeyboardMarkup::make()
             ->addRow(InlineKeyboardButton::make('❌ لغو', callback_data: 'sms_plus_cancel', style: 'danger'));
 
-        $msg = "❀ کرم پلاس ❀\n\n";
-        $msg .= "🪱<tg-emoji emoji-id='5407025283456835913'>📱</tg-emoji> شماره موبایل تارگتت رو برام بفرست:\n\n";
+        $msg = "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> کرم پلاس <tg-emoji emoji-id='5134654202894615343'>🪱</tg-emoji>\n\n";
+        $msg .= "<tg-emoji emoji-id='5407025283456835913'>📱</tg-emoji> شماره موبایل تارگتت رو برام بفرست:\n\n";
         $msg .= "<tg-emoji emoji-id='5334882760735598374'>📝</tg-emoji> فرمت ‌های قابل قبول:\n";
-        $msg .= "• با صفر: 09123456789 (۱۱ رقم)\n";
-        $msg .= "• بدون صفر: 9123456789 (۱۰ رقم)\n";
-        $msg .= "• با کد کشور: 989123456789 (۱۲ رقم)\n\n";
-        $msg .= "💡 مثلا :\n";
-        $msg .= "• با صفر : 09123456789\n";
+        $msg .= "• با صفر: 09123456789 (11 رقم)\n";
+        $msg .= "• بدون صفر: 9123456789 (10 رقم)\n";
+        $msg .= "• با کد کشور: 989123456789 (12 رقم)\n\n";
+        $msg .= "<tg-emoji emoji-id='5123359615727174427'>💡</tg-emoji> مثلا:\n";
+        $msg .= "• با صفر: 09123456789\n";
         $msg .= "• بدون صفر: 9123456789\n";
         $msg .= "• با کد کشور: 989123456789\n\n";
         $msg .= "<tg-emoji emoji-id='6226426402682441481'>⚠️</tg-emoji> دقت کن:\n";
@@ -378,8 +378,8 @@ class SmsBomberMenuConversation extends Conversation
         $keyboard = $this->stepKeyboard();
         $template = $this->buildScheduleTemplate(null, null, null, 'start');
         $text = "{$template}\n\n"
-            . "👈 تو الگوی بالا به جای علامت سؤال‌های قرمز عدد مورد نظرت رو وارد کن.\n"
-            . "❕تو هر دوره حدود {$this->batchSize} اس ام اس برای تارگتت ارسال میشه.\n\n"
+            . "👈 تو الگوی بالا به جای علامت سؤال‌های قرمز عدد مورد نظرت رو وارد کن.\n\n"
+            // . "❕تو هر دوره حدود {$this->batchSize} اس ام اس برای تارگتت ارسال میشه.\n\n"
             . "⏱ اول بگو چند دقیقه بعد از درخواستت رگبارو شروع کنیم؟";
 
         $this->sendOrEditPrompt($bot, $text, $keyboard, 'askStartDelay');

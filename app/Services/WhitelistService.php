@@ -109,13 +109,19 @@ class WhitelistService
     /**
      * Human friendly message for blocked identifiers.
      */
-    public function getBlockMessage(string $identifier, string|array|null $type = null): string
+    public function getBlockMessage(string $identifier, string|array|null $type = null, ?string $targetLabel = null): string
     {
         $matchedType = $this->matchedType($identifier, $type);
         $typeForLabel = $matchedType ?? $this->normalizeTypeInput($identifier, $type)[0];
-        $label = $this->getTypeLabel($typeForLabel);
+        $label = trim((string)$targetLabel) !== ''
+            ? trim((string)$targetLabel)
+            : $this->getTypeLabel($typeForLabel);
 
-        return "⛔️ {$label} {$identifier} در لیست سفید ثبت شده و انجام این عملیات مجاز نیست.";
+        $safeLabel = htmlspecialchars($label, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $safeIdentifier = htmlspecialchars($identifier, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+        return "<tg-emoji emoji-id='5326056199215406977'>❌</tg-emoji> Error ! <tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji>\n\n"
+            . "{$safeLabel} {$safeIdentifier} تو لیست سفید<tg-emoji emoji-id='5429392313493242588'>🤍</tg-emoji> رباتمونه و نمیتونی روش کرم بریزی.";
     }
 
     public function getUserTargets(User $user): Collection

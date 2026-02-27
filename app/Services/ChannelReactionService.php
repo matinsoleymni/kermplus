@@ -69,7 +69,7 @@ class ChannelReactionService
         }
 
         if ($this->whitelistService->isWhitelisted($postLink, WhitelistedTarget::TYPE_TELEGRAM)) {
-            return ['error' => $this->whitelistService->getBlockMessage($postLink, WhitelistedTarget::TYPE_TELEGRAM)];
+            return ['error' => $this->whitelistService->getBlockMessage($postLink, WhitelistedTarget::TYPE_TELEGRAM, 'چنل')];
         }
 
         if (empty($this->apiUrl)) {

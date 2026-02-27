@@ -62,12 +62,7 @@ class RubikaReporterConversation extends Conversation
         $bot->setUserData('rb_reason_summary_prompt_message_id', null);
         $bot->setUserData('rb_reason_summary_prompt_uses_caption', false);
 
-        $targetLabel = $this->getTargetLabel($targetType);
-        $this->sendOrEditMessage(
-            $bot,
-            "👤 لطفا یوزرنیم {$targetLabel} روبیکا را وارد کنید (بدون @):",
-            $this->targetInputKeyboard()
-        );
+        $this->sendOrEditMessage($bot, $this->buildRubikaTargetInputPrompt($targetType), $this->targetInputKeyboard());
         $this->next('awaitUsername');
     }
 
@@ -94,15 +89,15 @@ class RubikaReporterConversation extends Conversation
 
         $username = ltrim(trim($username), '@');
 
+        $targetType = $bot->getUserData('rb_reporter_type') ?? self::TARGET_ACCOUNT;
+        $targetLabel = $this->getTargetLabel($targetType);
+
         $whitelist = app(WhitelistService::class);
         if ($whitelist->isWhitelisted($username, WhitelistedTarget::TYPE_CUSTOM)) {
-            $bot->sendMessage($whitelist->getBlockMessage($username, WhitelistedTarget::TYPE_CUSTOM));
+            $bot->sendMessage($whitelist->getBlockMessage($username, WhitelistedTarget::TYPE_CUSTOM, $targetLabel));
             $this->end();
             return;
         }
-
-        $targetType = $bot->getUserData('rb_reporter_type') ?? self::TARGET_ACCOUNT;
-        $targetLabel = $this->getTargetLabel($targetType);
 
         $bot->setUserData('rb_reporter_username', $username);
 
@@ -290,12 +285,15 @@ class RubikaReporterConversation extends Conversation
             return;
         }
 
+        $targetType = $bot->getUserData('rb_reporter_type') ?? self::TARGET_ACCOUNT;
+        $targetLabel = $this->getTargetLabel($targetType);
+
         $whitelist = app(WhitelistService::class);
         if ($whitelist->isWhitelisted($username, WhitelistedTarget::TYPE_CUSTOM)) {
             if ($bot->callbackQuery()) {
                 $bot->answerCallbackQuery();
             }
-            $bot->sendMessage($whitelist->getBlockMessage($username, WhitelistedTarget::TYPE_CUSTOM));
+            $bot->sendMessage($whitelist->getBlockMessage($username, WhitelistedTarget::TYPE_CUSTOM, $targetLabel));
             $this->end();
             return;
         }
@@ -309,7 +307,6 @@ class RubikaReporterConversation extends Conversation
             $baseUsesCaption = $this->isCallbackMessagePhoto($bot);
         }
 
-        $targetType = $bot->getUserData('rb_reporter_type') ?? self::TARGET_ACCOUNT;
         $this->runRubikaReport($bot, $username, $targetType, $reason, $reasonSummary, $baseMessageId, $baseUsesCaption);
     }
 
@@ -560,6 +557,27 @@ class RubikaReporterConversation extends Conversation
             self::TARGET_GROUP => 'گروه',
             default => 'اکانت',
         };
+    }
+
+    private function buildRubikaTargetInputPrompt(string $targetType): string
+    {
+        $targetTitle = match ($targetType) {
+            self::TARGET_CHANNEL => 'کانال',
+            self::TARGET_GROUP => 'گروه',
+            default => 'اکانت',
+        };
+
+        return "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> کرم پلاس <tg-emoji emoji-id='5134654202894615343'>🪱</tg-emoji>\n\n" .
+            "<tg-emoji emoji-id='5407025283456835913'>📱</tg-emoji> یوزرنیم {$targetTitle} روبیکا تارگت رو برام بفرست:\n\n" .
+            "<tg-emoji emoji-id='5334882760735598374'>📝</tg-emoji> فرمت های قابل قبول:\n" .
+            "• بدون @: targetid\n" .
+            "• با @: @targetid\n\n" .
+            "<tg-emoji emoji-id='5123359615727174427'>💡</tg-emoji> مثلا:\n" .
+            "• badchannel\n" .
+            "• @badchannel\n\n" .
+            "<tg-emoji emoji-id='6226426402682441481'>⚠️</tg-emoji> دقت کن:\n" .
+            "• یوزرنیم رو بدون فاصله و بدون خط تیره بفرست\n" .
+            "• فقط حروف انگلیسی، عدد و _ مجازه و حداقل 3 کاراکتر باشه";
     }
 
     private function rubikaReasons(): array

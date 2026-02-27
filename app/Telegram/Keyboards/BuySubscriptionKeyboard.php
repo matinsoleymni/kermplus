@@ -15,7 +15,19 @@ class BuySubscriptionKeyboard
         $keyboard = InlineKeyboardMarkup::make();
 
         foreach ($plans as $plan) {
-            $keyboard->addRow(InlineKeyboardButton::make("✅ {$plan->name}", callback_data: "select_plan_{$plan->id}", style: 'danger'));
+            $planName = mb_strtolower(trim((string) $plan->name));
+            $label = match ($planName) {
+                'pro' => 'ارتقا به نسخه پرو',
+                'plus' => 'ارتقا به نسخه پلاس',
+                default => "ارتقا به نسخه {$plan->name}",
+            };
+            $icon = match ($planName) {
+                'pro' => '6244241334320762892',
+                'plus' => '5433758796289685818',
+                default => null,
+            };
+
+            $keyboard->addRow(InlineKeyboardButton::make($label, callback_data: "select_plan_{$plan->id}", style: 'danger', icon: $icon));
         }
 
         return $keyboard->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'user_profile', style: 'danger', icon: '5352759161945867747'));

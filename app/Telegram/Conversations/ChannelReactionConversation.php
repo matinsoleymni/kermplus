@@ -88,7 +88,7 @@ https://t.me/channel/123
 
         $whitelist = app(WhitelistService::class);
         if ($whitelist->isWhitelisted($link, WhitelistedTarget::TYPE_TELEGRAM)) {
-            $bot->sendMessage($whitelist->getBlockMessage($link, WhitelistedTarget::TYPE_TELEGRAM));
+            $bot->sendMessage($whitelist->getBlockMessage($link, WhitelistedTarget::TYPE_TELEGRAM, 'چنل'));
             $this->end();
             return;
         }

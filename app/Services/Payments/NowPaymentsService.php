@@ -37,17 +37,19 @@ class NowPaymentsService
         float $priceAmount,
         string $orderId,
         string $description,
-        ?string $customerEmail = null
+        ?string $customerEmail = null,
+        ?string $payCurrency = null
     ): array {
         // Legacy helper kept for backward-compat; internally uses payment endpoint
-        return $this->createPayment($priceAmount, $orderId, $description, $customerEmail);
+        return $this->createPayment($priceAmount, $orderId, $description, $customerEmail, $payCurrency);
     }
 
     public function createPayment(
         float $priceAmount,
         string $orderId,
         string $description,
-        ?string $customerEmail = null
+        ?string $customerEmail = null,
+        ?string $payCurrency = null
     ): array {
         $payload = [
             'price_amount' => round($priceAmount, 2),
@@ -56,8 +58,9 @@ class NowPaymentsService
             'order_description' => $description,
         ];
 
-        if ($this->payCurrency) {
-            $payload['pay_currency'] = $this->payCurrency;
+        $effectivePayCurrency = $payCurrency ?: $this->payCurrency;
+        if ($effectivePayCurrency) {
+            $payload['pay_currency'] = $effectivePayCurrency;
         }
         if ($this->ipnCallbackUrl) {
             $payload['ipn_callback_url'] = $this->ipnCallbackUrl;

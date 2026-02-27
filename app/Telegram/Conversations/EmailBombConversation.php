@@ -58,18 +58,14 @@ class EmailBombConversation extends Conversation
             return;
         }
 
-        $keyboard = \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup::make()
-            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('بازگشت به منو', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747'));
-        $bot->sendMessage('✉️ ایمیل هدف را وارد کنید:', reply_markup: $keyboard);
-        $this->next('askScheduleStart');
+        $this->promptEmailTarget($bot);
     }
 
     public function askScheduleStart(Nutgram $bot)
     {
-        $email = $bot->message()?->text;
+        $email = trim((string)$bot->message()?->text);
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $bot->sendMessage('❌ ایمیل وارد شده صحیح نیست. لطفا دوباره وارد کنید:');
-            $this->start($bot);
+            $this->promptEmailTarget($bot, '❌ ایمیل وارد شده صحیح نیست. لطفا دوباره وارد کن.');
             return;
         }
 
@@ -244,6 +240,37 @@ class EmailBombConversation extends Conversation
         }
 
         return $currentStep === $step ? '❓' : '❔';
+    }
+
+    private function promptEmailTarget(Nutgram $bot, ?string $error = null): void
+    {
+        $keyboard = \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup::make()
+            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('بازگشت به منو', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747'));
+
+        $text = '';
+        if ($error) {
+            $text .= $error . "\n\n";
+        }
+
+        $text .= $this->buildEmailInputPrompt();
+        $bot->sendMessage($text, parse_mode: 'HTML', reply_markup: $keyboard);
+        $this->next('askScheduleStart');
+    }
+
+    private function buildEmailInputPrompt(): string
+    {
+        return "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> کرم پلاس <tg-emoji emoji-id='5134654202894615343'>🪱</tg-emoji>\n\n" .
+            "<tg-emoji emoji-id='5407025283456835913'>📱</tg-emoji> ایمیل تارگتت رو برام بفرست:\n\n" .
+            "<tg-emoji emoji-id='5334882760735598374'>📝</tg-emoji> فرمت های قابل قبول:\n" .
+            "• example@gmail.com\n" .
+            "• user.name@domain.com\n" .
+            "• user+tag@domain.co\n\n" .
+            "<tg-emoji emoji-id='5123359615727174427'>💡</tg-emoji> مثلا:\n" .
+            "• support@kermplus.com\n" .
+            "• sample.user@gmail.com\n\n" .
+            "<tg-emoji emoji-id='6226426402682441481'>⚠️</tg-emoji> دقت کن:\n" .
+            "• ایمیل رو بدون فاصله و بدون کاراکتر اضافی بفرست\n" .
+            "• فقط حروف/اعداد انگلیسی و نمادهای استاندارد ایمیل مجازه";
     }
 
     private function promptSpeedMode(Nutgram $bot): void

@@ -57,11 +57,7 @@ class TelegramReporterConversation extends Conversation
         $bot->setUserData('tg_reason_summary_prompt_message_id', null);
         $bot->setUserData('tg_cleanup_messages', []);
 
-        $prompt = match ($targetType) {
-            'channel' => '📢 لطفا لینک یا یوزرنیم کانال رو بفرست (مثال: https://t.me/example یا example).',
-            'post' => '📮 لینک پست تلگرام رو بفرست (مثال: https://t.me/example/123).',
-            default => '👤 لطفا یوزرنیم تلگرام را وارد کنید (بدون @):',
-        };
+        $prompt = $this->buildTelegramTargetInputPrompt($targetType);
 
         $this->sendOrEditMessage($bot, $prompt, $this->targetInputKeyboard());
         $this->next('awaitTargetInput');
@@ -102,7 +98,8 @@ class TelegramReporterConversation extends Conversation
 
         $whitelist = app(WhitelistService::class);
         if ($whitelist->isWhitelisted($username, WhitelistedTarget::TYPE_TELEGRAM)) {
-            $bot->sendMessage($whitelist->getBlockMessage($username, WhitelistedTarget::TYPE_TELEGRAM));
+            $blockLabel = $this->resolveTelegramWhitelistLabel((string)($normalized['type'] ?? $targetType), $username);
+            $bot->sendMessage($whitelist->getBlockMessage($username, WhitelistedTarget::TYPE_TELEGRAM, $blockLabel));
             $this->end();
             return;
         }
@@ -287,10 +284,12 @@ class TelegramReporterConversation extends Conversation
 
         $whitelist = app(WhitelistService::class);
         if ($whitelist->isWhitelisted($username, WhitelistedTarget::TYPE_TELEGRAM)) {
+            $targetType = (string)($target['type'] ?? $bot->getUserData('tg_reporter_target_type') ?? 'account');
+            $blockLabel = $this->resolveTelegramWhitelistLabel($targetType, (string)$username);
             if ($bot->callbackQuery()) {
                 $bot->answerCallbackQuery();
             }
-            $bot->sendMessage($whitelist->getBlockMessage($username, WhitelistedTarget::TYPE_TELEGRAM));
+            $bot->sendMessage($whitelist->getBlockMessage($username, WhitelistedTarget::TYPE_TELEGRAM, $blockLabel));
             $this->end();
             return;
         }
@@ -662,6 +661,67 @@ class TelegramReporterConversation extends Conversation
             'telegram_report_post' => 'post',
             default => 'account',
         };
+    }
+
+    private function resolveTelegramWhitelistLabel(string $targetType, string $username): string
+    {
+        if ($targetType === 'channel') {
+            return 'چنل';
+        }
+
+        if ($targetType === 'post') {
+            return 'پست';
+        }
+
+        return preg_match('/bot$/i', $username) === 1 ? 'بات' : 'اکانت';
+    }
+
+    private function buildTelegramTargetInputPrompt(string $targetType): string
+    {
+        if ($targetType === 'post') {
+            return "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> کرم پلاس <tg-emoji emoji-id='5134654202894615343'>🪱</tg-emoji>\n\n" .
+                "<tg-emoji emoji-id='5407025283456835913'>📱</tg-emoji> لینک یا آیدی پست تلگرام تارگت رو برام بفرست:\n\n" .
+                "<tg-emoji emoji-id='5334882760735598374'>📝</tg-emoji> فرمت های قابل قبول:\n" .
+                "• لینک کامل: https://t.me/username/123\n" .
+                "• بدون دامنه: username/123\n" .
+                "• با @: @username/123\n\n" .
+                "<tg-emoji emoji-id='5123359615727174427'>💡</tg-emoji> مثلا:\n" .
+                "• https://t.me/telegram/100\n" .
+                "• telegram/100\n\n" .
+                "<tg-emoji emoji-id='6226426402682441481'>⚠️</tg-emoji> دقت کن:\n" .
+                "• آیدی پیام باید فقط عدد انگلیسی باشه\n" .
+                "• لینک/آیدی رو بدون فاصله و بدون خط تیره بفرست";
+        }
+
+        if ($targetType === 'channel') {
+            return "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> کرم پلاس <tg-emoji emoji-id='5134654202894615343'>🪱</tg-emoji>\n\n" .
+                "<tg-emoji emoji-id='5407025283456835913'>📱</tg-emoji> یوزرنیم یا لینک کانال تلگرام تارگت رو برام بفرست:\n\n" .
+                "<tg-emoji emoji-id='5334882760735598374'>📝</tg-emoji> فرمت های قابل قبول:\n" .
+                "• بدون @: channelname\n" .
+                "• با @: @channelname\n" .
+                "• لینک: https://t.me/channelname\n\n" .
+                "<tg-emoji emoji-id='5123359615727174427'>💡</tg-emoji> مثلا:\n" .
+                "• telegram\n" .
+                "• @telegram\n" .
+                "• https://t.me/telegram\n\n" .
+                "<tg-emoji emoji-id='6226426402682441481'>⚠️</tg-emoji> دقت کن:\n" .
+                "• فقط حروف انگلیسی، عدد و _ مجازه\n" .
+                "• یوزرنیم باید بین 3 تا 32 کاراکتر باشه";
+        }
+
+        return "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> کرم پلاس <tg-emoji emoji-id='5134654202894615343'>🪱</tg-emoji>\n\n" .
+            "<tg-emoji emoji-id='5407025283456835913'>📱</tg-emoji> یوزرنیم اکانت تلگرام تارگت رو برام بفرست:\n\n" .
+            "<tg-emoji emoji-id='5334882760735598374'>📝</tg-emoji> فرمت های قابل قبول:\n" .
+            "• بدون @: username\n" .
+            "• با @: @username\n" .
+            "• لینک: https://t.me/username\n\n" .
+            "<tg-emoji emoji-id='5123359615727174427'>💡</tg-emoji> مثلا:\n" .
+            "• durov\n" .
+            "• @durov\n" .
+            "• https://t.me/durov\n\n" .
+            "<tg-emoji emoji-id='6226426402682441481'>⚠️</tg-emoji> دقت کن:\n" .
+            "• فقط حروف انگلیسی، عدد و _ مجازه\n" .
+            "• یوزرنیم باید بین 3 تا 32 کاراکتر باشه";
     }
 
     private function normalizeTelegramTarget(string $input, string $targetType): ?array

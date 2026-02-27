@@ -29,18 +29,23 @@ class SelectPlanHandler
             // جلوگیری از پیام Timeout تلگرام
             $bot->answerCallbackQuery();
         }
-        if (str_starts_with($data, 'select_plan_')) {
-            $this->showPaymentMethods($bot, (int) str_replace('select_plan_', '', $data));
+        if (preg_match('/^select_plan_(\d+)$/', $data, $m)) {
+            $this->showPaymentMethods($bot, (int) $m[1]);
             return;
         }
 
-        if (str_starts_with($data, 'pay_crypto_')) {
-            $this->handleCryptoPayment($bot, $local, (int) str_replace('pay_crypto_', '', $data));
+        if (preg_match('/^pay_crypto_(trx|ton)_(\d+)$/', $data, $m)) {
+            $this->handleCryptoPayment($bot, $local, (int) $m[2], $m[1]);
             return;
         }
 
-        if (str_starts_with($data, 'pay_star_')) {
-            $this->handleStarPayment($bot, $local, (int) str_replace('pay_star_', '', $data));
+        if (preg_match('/^pay_crypto_(\d+)$/', $data, $m)) {
+            $this->showCryptoPaymentCurrencies($bot, (int) $m[1]);
+            return;
+        }
+
+        if (preg_match('/^pay_star_(\d+)$/', $data, $m)) {
+            $this->handleStarPayment($bot, $local, (int) $m[1]);
             return;
         }
 
@@ -60,24 +65,23 @@ class SelectPlanHandler
         $irr = number_format($plan->irrPrice(), 0);
         $durationText = ($plan->duration_days ?? 0) > 0 ? "{$plan->duration_days} روز" : 'نامحدود';
 
-        $msg = "🧾 **پلن انتخاب‌شده:** {$plan->name}\n";
-        $msg .= "💰 مبلغ: {$usd}$ | {$irr} ریال | {$stars} استار\n";
+        $msg = "<tg-emoji emoji-id=\"4929619512224909015\">🪱</tg-emoji> پلن انتخاب‌شده: <b>{$plan->name}</b>\n";
+        $msg .= "<tg-emoji emoji-id=\"5116648080787112958\">💰</tg-emoji> مبلغ: {$usd}$ | {$irr} ریال | {$stars} استار\n";
         $msg .= "📅 مدت: {$durationText}\n";
         $msg .= "💬 SMS روزانه: {$plan->max_sms_per_day}\n";
         $msg .= "📧 Email روزانه: {$plan->max_email_per_day}\n\n";
-        $msg .= "روش پرداخت را انتخاب کنید:";
+        $msg .= "<tg-emoji emoji-id=\"4927295007204836791\">🪱</tg-emoji> روش پرداخت را انتخاب کنید <tg-emoji emoji-id=\"5231102735817918643\">👇</tg-emoji>";
 
         $kb = InlineKeyboardMarkup::make()
-            ->addRow(
-                InlineKeyboardButton::make('💳 پرداخت رمز ارزی', callback_data: "pay_crypto_{$plan->id}", style: 'danger'),
-                InlineKeyboardButton::make('⭐️ پرداخت با استار تلگرام', callback_data: "pay_star_{$plan->id}", style: 'danger')
-            )
+            ->addRow(InlineKeyboardButton::make('ترون ( TRX )', callback_data: "pay_crypto_trx_{$plan->id}", style: 'danger', icon: '5391239186994967770'))
+            ->addRow(InlineKeyboardButton::make('تون ( TON )', callback_data: "pay_crypto_ton_{$plan->id}", style: 'danger', icon: '5265151230790884988'))
+            ->addRow(InlineKeyboardButton::make('پرداخت با استار تلگرام', callback_data: "pay_star_{$plan->id}", style: 'danger', icon: '5958376256788502078'))
             ->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'buy_subscription', style: 'danger', icon: '5352759161945867747'));
 
-        $bot->editMessageText($msg, reply_markup: $kb, parse_mode: 'Markdown');
+        $bot->editMessageText($msg, reply_markup: $kb, parse_mode: 'HTML');
     }
 
-    private function handleCryptoPayment(Nutgram $bot, User $user, int $planId): void
+    private function showCryptoPaymentCurrencies(Nutgram $bot, int $planId): void
     {
         $plan = SubscriptionPlan::find($planId);
         if (!$plan) {
@@ -85,10 +89,40 @@ class SelectPlanHandler
             return;
         }
 
-        $stars = $plan->starsPrice();
+        $usd = number_format($plan->usdPrice(), 2, '.', '');
+        $durationText = ($plan->duration_days ?? 0) > 0 ? "{$plan->duration_days} روز" : 'نامحدود';
+
+        $msg = $this->planSectionTitle($plan) . "\n";
+        $msg .= "<tg-emoji emoji-id=\"5116648080787112958\">💰</tg-emoji> مبلغ: {$usd}$\n";
+        $msg .= "📅 مدت: {$durationText}\n\n";
+        $msg .= "<tg-emoji emoji-id=\"4927295007204836791\">🪱</tg-emoji> ارز پرداخت کریپتویی را انتخاب کنید <tg-emoji emoji-id=\"5231102735817918643\">👇</tg-emoji>";
+
+        $keyboard = InlineKeyboardMarkup::make()
+            ->addRow(InlineKeyboardButton::make('ترون ( TRX )', callback_data: "pay_crypto_trx_{$plan->id}", style: 'danger', icon: '5391239186994967770'))
+            ->addRow(InlineKeyboardButton::make('تون ( TON )', callback_data: "pay_crypto_ton_{$plan->id}", style: 'danger', icon: '5265151230790884988'))
+            ->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'buy_sub_crypto', style: 'danger', icon: '5352759161945867747'));
+
+        $bot->editMessageText($msg, reply_markup: $keyboard, parse_mode: 'HTML');
+    }
+
+    private function handleCryptoPayment(Nutgram $bot, User $user, int $planId, string $asset): void
+    {
+        $plan = SubscriptionPlan::find($planId);
+        if (!$plan) {
+            $bot->sendMessage('❌ پلن پیدا نشد.');
+            return;
+        }
+
+        $payCurrency = mb_strtolower(trim($asset));
+        if (!in_array($payCurrency, ['trx', 'ton'], true)) {
+            $bot->sendMessage('❌ ارز کریپتویی نامعتبر است.');
+            return;
+        }
+
+        $assetLabel = mb_strtoupper($payCurrency);
         $usdAmount = $plan->usdPrice();
         $durationText = ($plan->duration_days ?? 0) > 0 ? "{$plan->duration_days} روز" : 'نامحدود';
-        $orderId = 'SUB-' . $plan->id . '-' . Str::upper(Str::random(6)) . '-U' . $user->id;
+        $orderId = 'SUB-' . $plan->id . '-' . $assetLabel . '-' . Str::upper(Str::random(6)) . '-U' . $user->id;
 
         try {
             /** @var NowPaymentsService $payments */
@@ -97,7 +131,8 @@ class SelectPlanHandler
                 $usdAmount,
                 $orderId,
                 "اشتراک {$plan->name}",
-                $user->email
+                $user->email,
+                $payCurrency
             );
         } catch (\Throwable $e) {
             $bot->sendMessage('❌ خطا در ساخت فاکتور NOWPayments: ' . $e->getMessage());
@@ -119,9 +154,9 @@ class SelectPlanHandler
             'meta' => $payment,
         ]);
 
-        $msg = "🧾 **فاکتور پرداخت ایجاد شد!**\n\n";
+        $msg = "<tg-emoji emoji-id=\"4929619512224909015\">🪱</tg-emoji> <b>فاکتور پرداخت ایجاد شد!</b>\n\n";
         $msg .= "📋 پلن: {$plan->name}\n";
-        $msg .= "💰 مبلغ: " . number_format($usdAmount, 2) . "$ (~{$stars} استار)\n";
+        $msg .= "🌐 ارز انتخابی: {$assetLabel}\n";
         $msg .= "📅 مدت: {$durationText}\n";
         $msg .= "💬 SMS روزانه: {$plan->max_sms_per_day}\n";
         $msg .= "📧 Email روزانه: {$plan->max_email_per_day}\n\n";
@@ -139,9 +174,10 @@ class SelectPlanHandler
         $msg .= "\nپس از پرداخت، رسید را برای پشتیبانی ارسال کنید.";
 
         $keyboard = InlineKeyboardMarkup::make()
+            ->addRow(InlineKeyboardButton::make('برسی خرید', url: 'https://t.me/kermsup', style: 'danger', icon: '6296367896398399651'))
             ->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'buy_subscription', style: 'danger', icon: '5352759161945867747'));
 
-        $bot->editMessageText($msg, reply_markup: $keyboard, parse_mode: 'Markdown');
+        $bot->editMessageText($msg, reply_markup: $keyboard, parse_mode: 'HTML');
     }
 
     private function handleStarPayment(Nutgram $bot, User $user, int $planId): void
@@ -153,19 +189,17 @@ class SelectPlanHandler
         }
 
         $stars = $plan->starsPrice();
-        $usd = number_format($plan->usdPrice(), 2);
 
         $payload = 'STAR-SUB-' . $plan->id . '-' . Str::upper(Str::random(6)) . '-U' . $user->id;
         $price = new LabeledPrice(label: $plan->name, amount: $stars);
-
-        $bot->sendMessage("⭐️ پرداخت استار برای پلن {$plan->name}\nمبلغ: {$usd} دلار (~{$stars} استار)\nدکمه Pay را بزنید.");
+        $invoiceDescription = "🪱 جهت پرداخت هزینه استارزی برای ارتقای ربات کرم پلاس به نسخه پلاس به صورت دائمی با استارز ⭐️ ، لطفا روی دکمه زیر کلیک کنید 👇";
 
         try {
             $bot->sendInvoice(
-                title: "اشتراک {$plan->name}",
-                description: "پرداخت با استار تلگرام برای پلن {$plan->name} ({$plan->duration_days} روزه)",
+                title: "خرید اشتراک",
+                description: $invoiceDescription,
                 payload: $payload,
-                provider_token: '', // استار تلگرام
+                provider_token: '',
                 currency: 'XTR',
                 prices: [$price],
             );
@@ -190,5 +224,16 @@ class SelectPlanHandler
                 'irr_price' => $plan->irrPrice(),
             ],
         ]);
+    }
+
+    private function planSectionTitle(SubscriptionPlan $plan): string
+    {
+        $planName = mb_strtolower(trim((string) $plan->name));
+
+        return match ($planName) {
+            'pro' => "<tg-emoji emoji-id=\"6244241334320762892\">💎</tg-emoji> <b>اشتراک پرو</b> <tg-emoji emoji-id=\"6244241334320762892\">💎</tg-emoji>",
+            'plus' => "<tg-emoji emoji-id=\"5433758796289685818\">👑</tg-emoji> <b>اشتراک پلاس</b> <tg-emoji emoji-id=\"5433758796289685818\">👑</tg-emoji>",
+            default => "<tg-emoji emoji-id=\"4929619512224909015\">🪱</tg-emoji> پلن انتخاب‌شده: <b>{$plan->name}</b>",
+        };
     }
 }
