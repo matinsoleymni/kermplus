@@ -47,6 +47,7 @@ use App\Telegram\Handlers\UserProfileHandler;
 use App\Telegram\Handlers\UserStatsHandler;
 use App\Telegram\Middleware\EnsureSponsorJoinMiddleware;
 use SergiX44\Nutgram\Nutgram;
+use Carbon\Carbon;
 
 /*
 |--------------------------------------------------------------------------
@@ -133,6 +134,41 @@ $bot->onCallbackQueryData('pay_star_{id}', SelectPlanHandler::class);
 $bot->onCallbackQueryData('check_pay:{id}', SelectPlanHandler::class);
 $bot->onCallbackQueryData('user_stats', UserStatsHandler::class);
 $bot->onCallbackQueryData('main_menu', MainMenuHandler::class);
+
+
+$bot->onCallbackQueryData('check_countdown', function (Nutgram $bot) {
+
+    $targetDate = Carbon::parse('2026-07-13 23:30:00');
+
+    $now = now();
+
+    if ($now->greaterThanOrEqualTo($targetDate)) {
+        $bot->editMessageText("✅ سیستم اکنون در دسترس است!");
+        $bot->answerCallbackQuery();
+        return;
+    }
+
+    $diff = $now->diff($targetDate);
+
+    $parts = [];
+    if ($diff->y > 0) $parts[] = "{$diff->y} سال";
+    if ($diff->m > 0) $parts[] = "{$diff->m} ماه";
+    if ($diff->d > 0) $parts[] = "{$diff->d} Day";
+    if ($diff->h > 0) $parts[] = "{$diff->h} Hours";
+
+    $timeString = implode(' / ', $parts);
+
+    $message = "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji><b> کرم پلاس درحال ساخت پنل اختصاصی کرم ریزی شماست</b>
+
+<tg-emoji emoji-id='4904882772637648609'>⏰</tg-emoji> زمان حدودی آماده شدن پنل شما:
+";
+    $message .= $timeString;
+
+    $bot->editMessageText($message, parse_mode: 'HTML');
+
+    $bot->answerCallbackQuery(text: 'وضعیت آپدیت شد!', show_alert: false);
+});
+
 
 $bot->onPreCheckoutQuery(PaymentPreCheckoutHandler::class);
 $bot->onSuccessfulPayment(App\Telegram\Handlers\PaymentSuccessHandler::class);

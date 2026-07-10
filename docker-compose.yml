@@ -10,7 +10,7 @@ services:
       APP_DEBUG: ${APP_DEBUG:-false}
       APP_URL: ${APP_URL:-http://localhost:8000}
       OCTANE_SERVER: roadrunner
-      TELEGRAM_API_URL: ${TELEGRAM_API_URL:-http://telegram-reporter:8000}
+      TELEGRAM_API_URL: ${TELEGRAM_API_URL:-http://telegram-reporter:8002}
     ports:
       - "8000:8000"
     volumes:
@@ -30,7 +30,30 @@ services:
       SMTP_USERNAME: ${SMTP_USERNAME:-info@mozahemyab.online}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
     ports:
-      - "8080:8080"
+      - "8083:8083"
+
+  form:
+    build:
+      context: .
+      dockerfile: docker/form.Dockerfile
+    environment:
+      SMTP_HOST: ${SMTP_HOST:-mail.mozahemyab.online}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-info@mozahemyab.online}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+    ports:
+      - "8084:8084"
+
+  telegram-bot-api:
+    image: aiogram/telegram-bot-api:latest
+    environment:
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID:-2040}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH:-b18441a1ff607e10a989891a5462e627}
+      TELEGRAM_LOCAL: 1
+    ports:
+      - "8081:8081"
+    volumes:
+      - telegram_bot_api_data:/var/lib/telegram-bot-api
 
   telegram-reporter:
     build:
@@ -49,8 +72,11 @@ services:
       - telegram_sessions:/data
       - telegram_tmp:/tmp/telegram-reporter
     ports:
-      - "8081:8000"
+      - "8082:8082"
+    depends_on:
+      - telegram-bot-api
 
 volumes:
   telegram_sessions:
   telegram_tmp:
+  telegram_bot_api_data:

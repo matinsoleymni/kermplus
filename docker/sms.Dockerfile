@@ -11,5 +11,5 @@ WORKDIR /app
 
 COPY --from=builder /bin/sms-server /usr/local/bin/sms-server
 
-EXPOSE 8080
+EXPOSE 8083
 CMD ["sms-server"]
