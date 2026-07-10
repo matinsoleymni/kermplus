@@ -59,11 +59,11 @@ class BuySubscriptionHandler
         $msg .= "<tg-emoji emoji-id=\"4927295007204836791\">🪱</tg-emoji> روش مورد نظرتون رو برای ارتقا انتخاب کنید <tg-emoji emoji-id=\"5231102735817918643\">👇</tg-emoji>";
 
         $keyboard = InlineKeyboardMarkup::make()
-            ->addRow(InlineKeyboardButton::make('پرداخت کریپتویی (ارز ترون یا تون)', callback_data: 'buy_sub_crypto', style: 'danger', icon: '5361656830944624968'))
-            ->addRow(InlineKeyboardButton::make('پرداخت با استارز (واحد پول تلگرام)', callback_data: 'buy_sub_star', style: 'danger', icon: '5958376256788502078'))
-            ->addRow(InlineKeyboardButton::make('پرداخت با زیر مجموعه', callback_data: 'buy_sub_referral', style: 'danger', icon: '4913497231492908158'))
-            ->addRow(InlineKeyboardButton::make('پرداخت تومانی (با کمی معطلی)', url: 'https://t.me/kermsup', style: 'danger', icon: '5472250091332993630'))
-            ->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747'));
+            ->addRow(InlineKeyboardButton::make('پرداخت کریپتویی (ارز ترون یا تون)', callback_data: 'buy_sub_crypto', style: 'danger', icon_custom_emoji_id: '5361656830944624968'))
+            ->addRow(InlineKeyboardButton::make('پرداخت با استارز (واحد پول تلگرام)', callback_data: 'buy_sub_star', style: 'danger', icon_custom_emoji_id: '5958376256788502078'))
+            ->addRow(InlineKeyboardButton::make('پرداخت با زیر مجموعه', callback_data: 'buy_sub_referral', style: 'danger', icon_custom_emoji_id: '4913497231492908158'))
+            ->addRow(InlineKeyboardButton::make('پرداخت تومانی (با کمی معطلی)', url: 'https://t.me/kermsup', style: 'danger', icon_custom_emoji_id: '5472250091332993630'))
+            ->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'danger', icon_custom_emoji_id: '5352759161945867747'));
 
         $bot->editMessageText($msg, reply_markup: $keyboard, parse_mode: 'HTML', disable_web_page_preview: true);
     }
@@ -96,12 +96,12 @@ class BuySubscriptionHandler
                     $this->planButtonLabel($plan),
                     callback_data: $callback,
                     style: 'danger',
-                    icon: $this->planButtonIcon($plan)
+                    icon_custom_emoji_id: $this->planButtonIcon($plan)
                 )
             );
         }
 
-        $keyboard->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'buy_subscription', style: 'danger', icon: '5352759161945867747'));
+        $keyboard->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'buy_subscription', style: 'danger', icon_custom_emoji_id: '5352759161945867747'));
 
         $bot->editMessageText($msg, reply_markup: $keyboard, parse_mode: 'HTML');
     }

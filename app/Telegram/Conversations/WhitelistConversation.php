@@ -38,7 +38,7 @@ class WhitelistConversation extends Conversation
     {
         return InlineKeyboardMarkup::make()
             ->addRow(
-                InlineKeyboardButton::make('بازگشت', callback_data: self::ACTION_BACK_MENU, style: 'danger', icon: '5352759161945867747')
+                InlineKeyboardButton::make('بازگشت', callback_data: self::ACTION_BACK_MENU, style: 'danger', icon_custom_emoji_id: '5352759161945867747')
             );
     }
 
@@ -46,8 +46,8 @@ class WhitelistConversation extends Conversation
     {
         return InlineKeyboardMarkup::make()
             ->addRow(
-                InlineKeyboardButton::make('بله', callback_data: self::ACTION_CONFIRM, style: 'danger', icon: '6224314343924699041'),
-                InlineKeyboardButton::make('خیر', callback_data: 'cancel_whitelist', style: 'danger', icon: '6224072537265934868')
+                InlineKeyboardButton::make('بله', callback_data: self::ACTION_CONFIRM, style: 'danger', icon_custom_emoji_id: '6224314343924699041'),
+                InlineKeyboardButton::make('خیر', callback_data: 'cancel_whitelist', style: 'danger', icon_custom_emoji_id: '6224072537265934868')
             );
     }
 
@@ -62,22 +62,22 @@ class WhitelistConversation extends Conversation
 
         return InlineKeyboardMarkup::make()
             ->addRow(
-                InlineKeyboardButton::make("شماره", callback_data: $callbackForType(WhitelistedTarget::TYPE_PHONE, self::ACTION_PICK_PHONE), style: 'danger', icon: '5172893417717367746')
+                InlineKeyboardButton::make("شماره", callback_data: $callbackForType(WhitelistedTarget::TYPE_PHONE, self::ACTION_PICK_PHONE), style: 'danger', icon_custom_emoji_id: '5172893417717367746')
             )
             ->addRow(
-                InlineKeyboardButton::make("ایمیل", callback_data: $callbackForType(WhitelistedTarget::TYPE_EMAIL, self::ACTION_PICK_EMAIL), style: 'danger', icon: '5456174900622412791')
+                InlineKeyboardButton::make("ایمیل", callback_data: $callbackForType(WhitelistedTarget::TYPE_EMAIL, self::ACTION_PICK_EMAIL), style: 'danger', icon_custom_emoji_id: '5456174900622412791')
             )
             ->addRow(
-                InlineKeyboardButton::make("تلگرام", callback_data: $callbackForType(WhitelistedTarget::TYPE_TELEGRAM, self::ACTION_PICK_TELEGRAM), style: 'danger', icon: '5364125616801073577')
+                InlineKeyboardButton::make("تلگرام", callback_data: $callbackForType(WhitelistedTarget::TYPE_TELEGRAM, self::ACTION_PICK_TELEGRAM), style: 'danger', icon_custom_emoji_id: '5364125616801073577')
             )
             ->addRow(
-                InlineKeyboardButton::make("اینستاگرام", callback_data: $callbackForType(WhitelistedTarget::TYPE_INSTAGRAM_EMAIL, self::ACTION_PICK_INSTAGRAM_EMAIL), style: 'danger', icon: '5364310996179503764')
+                InlineKeyboardButton::make("اینستاگرام", callback_data: $callbackForType(WhitelistedTarget::TYPE_INSTAGRAM_EMAIL, self::ACTION_PICK_INSTAGRAM_EMAIL), style: 'danger', icon_custom_emoji_id: '5364310996179503764')
             )
             ->addRow(
-                InlineKeyboardButton::make('مشاهده موارد ثبت‌ شده', callback_data: self::ACTION_SHOW_REGISTERED, style: 'danger', icon: '5197269100878907942')
+                InlineKeyboardButton::make('مشاهده موارد ثبت‌ شده', callback_data: self::ACTION_SHOW_REGISTERED, style: 'danger', icon_custom_emoji_id: '5197269100878907942')
             )
             ->addRow(
-                InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747')
+                InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'danger', icon_custom_emoji_id: '5352759161945867747')
             );
     }
 
@@ -431,8 +431,7 @@ class WhitelistConversation extends Conversation
         string $text,
         ?InlineKeyboardMarkup $keyboard = null,
         bool $disableWebPagePreview = false
-    ): void
-    {
+    ): void {
         $messageId = $bot->callbackQuery()?->message?->message_id;
 
         if ($messageId) {

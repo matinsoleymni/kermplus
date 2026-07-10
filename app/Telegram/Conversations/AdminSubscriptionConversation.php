@@ -128,7 +128,7 @@ class AdminSubscriptionConversation extends Conversation
             );
         }
         $keyboard->addRow(InlineKeyboardButton::make('🔎 جستجوی جدید', callback_data: 'admin_user_search', style: 'danger'));
-        $keyboard->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'admin_panel', style: 'danger', icon: '5352759161945867747'));
+        $keyboard->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'admin_panel', style: 'danger', icon_custom_emoji_id: '5352759161945867747'));
 
         $bot->sendMessage("👥 {$users->count()} نتیجه پیدا شد. کاربر مورد نظر را انتخاب کنید:", reply_markup: $keyboard);
         $this->next('handleInput');
@@ -143,7 +143,7 @@ class AdminSubscriptionConversation extends Conversation
         $text .= "شناسه کاربر، آیدی تلگرام، یوزرنیم، نام یا ایمیل را ارسال کنید:";
 
         $keyboard = InlineKeyboardMarkup::make()
-            ->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'admin_panel', style: 'danger', icon: '5352759161945867747'));
+            ->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'admin_panel', style: 'danger', icon_custom_emoji_id: '5352759161945867747'));
 
         $bot->sendMessage($text, reply_markup: $keyboard);
         $this->next('handleInput');
@@ -213,7 +213,7 @@ class AdminSubscriptionConversation extends Conversation
                 InlineKeyboardButton::make('🔎 جستجوی جدید', callback_data: 'admin_user_search', style: 'danger')
             )
             ->addRow(
-                InlineKeyboardButton::make('بازگشت', callback_data: 'admin_panel', style: 'danger', icon: '5352759161945867747')
+                InlineKeyboardButton::make('بازگشت', callback_data: 'admin_panel', style: 'danger', icon_custom_emoji_id: '5352759161945867747')
             );
 
         $bot->sendMessage($text, reply_markup: $keyboard);

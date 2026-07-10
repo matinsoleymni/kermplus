@@ -91,12 +91,13 @@ class ReferralHandler
             $bot->sendPhoto(
                 photo: InputFile::make($imagePath, 'bot-thumb.png'),
                 caption: $promoMessage,
+                parse_mode: 'HTML'
             );
 
             return;
         }
 
-        $bot->sendMessage($promoMessage);
+        $bot->sendMessage($promoMessage, parse_mode: 'HTML');
     }
 
     private function sendShareBanner(Nutgram $bot, User $local): void
@@ -114,14 +115,14 @@ class ReferralHandler
 
     private function buildShareBannerCaption(string $referralLink): string
     {
-        return "🪱 کرم پلاس 🪱\n\n"
-            . "با ربات زیر میتونی هرکی اذیتت کرده رو حسابی اذیتش کنی و ازش انتقام بگیری 👀\n\n"
+        return "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> کرم پلاس <tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji>\n\n"
+            . "<tg-emoji emoji-id='4927295007204836791'>🪱</tg-emoji> با ربات زیر میتونی هرکی اذیتت کرده رو حسابی اذیتش کنی و ازش انتقام بگیری <tg-emoji emoji-id='6226757244013252849'>👀</tg-emoji>\n\n"
             . "• امکان پروندن پیج اینستای شخص\n"
             . "• ریست کردن گوشی شخص\n"
             . "• ارسال هزاران مزاحم تلفنی برای شخص\n"
-            . "و کلییی قابلیت خفن دیگه 😙\n\n"
+            . "و کلییی قابلیت خفن دیگه\n\n"
             . "• {$referralLink} •\n\n"
-            . "کلی قراره به دردت بخوره ؛)";
+            . "کلی قراره به دردت بخوره <tg-emoji emoji-id='4927262258079204871'>🪱</tg-emoji>";
     }
 
     private function claimReward(Nutgram $bot, User $local): void

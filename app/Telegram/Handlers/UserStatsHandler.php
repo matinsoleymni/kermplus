@@ -39,12 +39,7 @@ class UserStatsHandler
 
         $msg = "📊 **آمار استفاده‌ی شما:**\n\n";
         $msg .= "📅 **امروز:**\n";
-        $msg .= "💬 SMS: {$todaySms}\n";
-        $msg .= "📧 Email: {$todayEmail}\n\n";
-    $msg .= "📈 **کل:**\n";
-    $msg .= "💬 SMS: {$totalSms}\n";
-    $msg .= "📧 Email: {$totalEmail}";
-
+        $msg .= "📈 **کل:**\n";
         $bot->editMessageText($msg, reply_markup: UserStatsKeyboard::make());
     }
 }

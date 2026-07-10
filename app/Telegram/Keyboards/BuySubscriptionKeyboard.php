@@ -27,9 +27,9 @@ class BuySubscriptionKeyboard
                 default => null,
             };
 
-            $keyboard->addRow(InlineKeyboardButton::make($label, callback_data: "select_plan_{$plan->id}", style: 'danger', icon: $icon));
+            $keyboard->addRow(InlineKeyboardButton::make($label, callback_data: "select_plan_{$plan->id}", style: 'danger', icon_custom_emoji_id: $icon));
         }
 
-        return $keyboard->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'user_profile', style: 'danger', icon: '5352759161945867747'));
+        return $keyboard->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'user_profile', style: 'danger', icon_custom_emoji_id: '5352759161945867747'));
     }
 }

@@ -10,6 +10,6 @@ class BackToMainKeyboard
     public static function make(): InlineKeyboardMarkup
     {
         return InlineKeyboardMarkup::make()
-            ->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747'));
+            ->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'danger', icon_custom_emoji_id: '5352759161945867747'));
     }
 }

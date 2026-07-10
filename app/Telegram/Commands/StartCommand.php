@@ -47,7 +47,6 @@ class StartCommand extends Command
         $referralService = app(ReferralService::class);
         $local = User::where('telegram_id', $tgUser->id)->first();
         if (!$local) {
-            // تلگرام ایمیل نمی‌دهد؛ برای عبور از constraint ایمیل یک مقدار یکتا می‌سازیم
             $email = $telegramUsername
                 ? ($telegramUsername . '@telegram.local')
                 : ('tg_' . $tgUser->id . '@telegram.local');

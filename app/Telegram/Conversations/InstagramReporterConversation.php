@@ -6,26 +6,17 @@ use App\Models\User;
 use App\Models\WhitelistedTarget;
 use App\Services\FeatureLimitService;
 use App\Services\WhitelistService;
+use App\Services\BoxApiService;
 use App\Telegram\Keyboards\InstagramReportReasonKeyboard;
 use App\Telegram\Keyboards\InstagramReporterMenuKeyboard;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Carbon;
-use SergiX44\Nutgram\Conversations\Conversation;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Types\Internal\InputFile;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 
-class InstagramReporterConversation extends Conversation
+class InstagramReporterConversation extends BaseReporterConversation
 {
-    protected function getLocalUser(Nutgram $bot): ?User
-    {
-        $tgUser = $bot->callbackQuery()?->from ?? $bot->user();
-        if (!$tgUser) return null;
-
-        return User::where('telegram_id', $tgUser->id)->first();
-    }
-
     public function start(Nutgram $bot)
     {
         $local = $this->getLocalUser($bot);
@@ -91,7 +82,6 @@ class InstagramReporterConversation extends Conversation
             return;
         }
 
-        // Remove @ if present
         $username = ltrim(trim($username), '@');
 
         $whitelist = app(WhitelistService::class);
@@ -109,7 +99,7 @@ class InstagramReporterConversation extends Conversation
 
         if ($loadingMessageId) {
             try {
-                $this->editMessageByType($bot, (int)$loadingMessageId, '⏳ درحال دریافت اطلاعات پروفایل...', $loadingUsesCaption, null, true);
+                $this->editMessageByType($bot, (int)$loadingMessageId, '<tg-emoji emoji-id="5116159438062879454">🙏</tg-emoji> درحال دریافت اطلاعات پروفایل...', $loadingUsesCaption, null, true);
             } catch (\Throwable) {
                 $loadingMessageId = null;
                 $loadingUsesCaption = false;
@@ -121,7 +111,7 @@ class InstagramReporterConversation extends Conversation
             try {
                 $loadingMsg = $bot->sendPhoto(
                     photo: $reportPhoto,
-                    caption: '⏳ درحال دریافت اطلاعات پروفایل...'
+                    caption: '<tg-emoji emoji-id="5116159438062879454">🙏</tg-emoji> درحال دریافت اطلاعات پروفایل...'
                 );
                 $loadingMessageId = $loadingMsg->message_id ?? null;
                 $loadingUsesCaption = (bool)$loadingMessageId;
@@ -131,7 +121,7 @@ class InstagramReporterConversation extends Conversation
         }
 
         if (!$loadingMessageId) {
-            $loadingMsg = $bot->sendMessage('⏳ درحال دریافت اطلاعات پروفایل...');
+            $loadingMsg = $bot->sendMessage('<tg-emoji emoji-id="5116159438062879454">🙏</tg-emoji> درحال دریافت اطلاعات پروفایل...');
             $loadingMessageId = $loadingMsg->message_id ?? null;
             $loadingUsesCaption = false;
         }
@@ -150,35 +140,33 @@ class InstagramReporterConversation extends Conversation
 
         $details = $this->buildProfileMessage($profile);
         $keyboard = InstagramReportReasonKeyboard::make();
-        $photoUrl = $profile['profile_pic_url_hd'] ?? null;
+        $photoUrl = $profile['profile_pic_url'] ?? null;
+
 
         if ($loadingMessageId) {
             try {
-                $this->editMessageByType($bot, (int)$loadingMessageId, $details, $loadingUsesCaption, $keyboard, true);
-                $this->setStageMessage($bot, (int)$loadingMessageId, $loadingUsesCaption);
-                $this->next('processInstagramReason');
-                return;
-            } catch (\Throwable) {
-                // continue with fallback sending
+                $bot->deleteMessage($bot->chatId(), $loadingMessageId);
+            } catch (\Throwable $e) {
             }
         }
 
-        if ($photoUrl) {
-            try {
-                $sent = $bot->sendPhoto(
-                    photo: $photoUrl,
-                    caption: $details,
-                    reply_markup: $keyboard,
-                    parse_mode: 'HTML'
-                );
-                $sentId = $sent->message_id ?? null;
-                $this->setStageMessage($bot, $sentId, true);
-                $this->addCleanupMessage($bot, $sentId);
-                $this->next('processInstagramReason');
-                return;
-            } catch (\Throwable $e) {
-                // If sending photo fails, fallback to text message
-            }
+        try {
+            $sent = $bot->sendPhoto(
+                photo: $photoUrl ?? 'آدرس_عکس_پیش_فرض',
+                caption: $details,
+                reply_markup: $keyboard,
+                parse_mode: 'HTML'
+            );
+
+            $sentId = $sent->message_id;
+            $this->setStageMessage($bot, $sentId, true);
+            $this->addCleanupMessage($bot, $sentId);
+            $this->next('processInstagramReason');
+            return;
+        } catch (\Throwable $e) {
+            $sent = $bot->sendMessage($details, reply_markup: $keyboard, parse_mode: 'HTML');
+            $this->setStageMessage($bot, $sent->message_id, false);
+            $this->next('processInstagramReason');
         }
 
         $sent = $bot->sendMessage($details, reply_markup: $keyboard, parse_mode: 'HTML');
@@ -478,7 +466,7 @@ class InstagramReporterConversation extends Conversation
                 InlineKeyboardButton::make('متن پیش فرض', callback_data: 'instagram_reason_summary_default', style: 'danger')
             )
             ->addRow(
-                InlineKeyboardButton::make('بازگشت', callback_data: 'reporter_instagram_menu', style: 'danger', icon: '5352759161945867747')
+                InlineKeyboardButton::make('بازگشت', callback_data: 'reporter_instagram_menu', style: 'danger', icon_custom_emoji_id: '5352759161945867747')
             );
     }
 
@@ -527,7 +515,7 @@ class InstagramReporterConversation extends Conversation
         bool $baseUsesCaption = false
     ) {
         $totalSteps = 5;
-        $delayPerStep = 5; // seconds, ~25s total
+        $delayPerStep = 5;
 
         $label = $targetType === 'post'
             ? "📮 پست: @{$username}"
@@ -672,44 +660,9 @@ class InstagramReporterConversation extends Conversation
         $this->end();
     }
 
-    private function getProgressBar(int $percent): string
-    {
-        $filled = max(0, min(10, (int)round($percent / 10)));
-        $empty = 10 - $filled;
-        $bar = '[' . str_repeat('█', $filled) . str_repeat('░', $empty) . ']';
-        return $bar . ' ' . $percent . '%';
-    }
-
-    private function respondWithLimit(Nutgram $bot, string $message): void
-    {
-        if ($bot->callbackQuery()) {
-            $bot->answerCallbackQuery(text: $message, show_alert: true);
-            return;
-        }
-
-        $bot->sendMessage($message, parse_mode: 'HTML');
-    }
-
     private function fetchInstagramProfile(string $username): ?array
     {
-        $response = Http::withBasicAuth(
-            config('services.boxapi.username'),
-            config('services.boxapi.password')
-        )->post('https://boxapi.ir/api/instagram/user/get_web_profile_info', [
-            'username' => $username,
-        ]);
-
-        if (!$response->ok()) {
-            return null;
-        }
-
-        $user = $response->json('response.body.data.user');
-
-        if (!is_array($user)) {
-            return null;
-        }
-
-        return $user;
+        return app(BoxApiService::class)->getInstagramProfile($username);
     }
 
     private function buildProfileMessage(array $profile): string
@@ -724,15 +677,15 @@ class InstagramReporterConversation extends Conversation
 
         return "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> KermPlus | Profile Found\n" .
             "━━━━━━━━━━━━━━━\n" .
-            "👤 name: @{$username}\n" .
-            "🪪 username: {$fullName}\n" .
-            "🧾 bio:  {$bio}\n" .
-            "🔘 followers: {$followers}  \n" .
-            "🔘 following: {$following}  \n" .
-            "🔘 posts: {$posts}  \n" .
-            "🔒 is private? : {$isPrivate}  \n" .
+            "<tg-emoji emoji-id='4913497231492908158'>👤</tg-emoji> name: @{$username}\n" .
+            "<tg-emoji emoji-id='5422683699130933153'>🪪</tg-emoji> username: {$fullName}\n" .
+            "<tg-emoji emoji-id='5123359615727174427'>💡</tg-emoji> bio:  {$bio}\n" .
+            "<tg-emoji emoji-id='5803420768826038185'>🔘</tg-emoji> followers: {$followers}  \n" .
+            "<tg-emoji emoji-id='5803420768826038185'>🔘</tg-emoji> following: {$following}  \n" .
+            "<tg-emoji emoji-id='5803420768826038185'>🔘</tg-emoji> posts: {$posts}  \n" .
+            "<tg-emoji emoji-id='4904500559203009298'>🔒</tg-emoji> is private? : {$isPrivate}  \n" .
             "━━━━━━━━━━━━━━━\n\n" .
-            "🗣️ دلیل ریپورت رو انتخاب کن :";
+            "<tg-emoji emoji-id='4904973211763999824'>🗣️</tg-emoji> دلیل ریپورت رو انتخاب کن :";
     }
 
     private function instagramReasons(): array
@@ -758,88 +711,6 @@ class InstagramReporterConversation extends Conversation
 
         $text .= "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> کرم پلاس <tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji>\n\n<tg-emoji emoji-id='4904973211763999824'>🗣️</tg-emoji> دلیل ریپورت رو انتخاب کن :";
         $this->sendOrEditMessage($bot, $text, InstagramReportReasonKeyboard::make());
-    }
-
-    private function buildProcessingMessage(
-        int $percent,
-        int $step,
-        int $totalSteps,
-        string $targetLabel,
-        string $reason,
-        string $reasonSummary,
-        int $queue,
-        int $active,
-        int $done,
-        int $ok,
-        int $fail,
-        int $retry,
-        string $elapsed,
-        string $eta,
-        array $statuses
-    ): string {
-        $progressBar = $this->getProgressBar($percent);
-        $barOnly = explode(' ', $progressBar, 2)[0];
-        $statusBlock = implode("\n", array_map(static fn(string $line): string => "> {$line}", $statuses));
-        $safeTarget = htmlspecialchars($targetLabel, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        $safeReason = htmlspecialchars($reason, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        $safeSummary = htmlspecialchars($reasonSummary, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        $date = now()->format('Y/m/d');
-        $time = now()->format('H:i:s');
-
-        return "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> KermPlus | Processing Job\n" .
-            "━━━━━━━━━━━━━━━━\n\n" .
-            "{$barOnly} {$percent}%   <tg-emoji emoji-id='5116159438062879454'>🙏</tg-emoji> step {$step}/{$totalSteps}\n\n" .
-            "🎯 target: {$safeTarget}\n" .
-            "🏷️ reason: {$safeReason}\n" .
-            "🗣️ summary: {$safeSummary}\n\n" .
-            "📦 queue: {$queue} items\n" .
-            "<tg-emoji emoji-id='4904936030232117798'>⚙️</tg-emoji> active: {$active}   <tg-emoji emoji-id='6224314343924699041'>✅</tg-emoji> done: {$done}\n" .
-            "<tg-emoji emoji-id='5325945307454789973'>🟢</tg-emoji> ok: {$ok}   <tg-emoji emoji-id='5326056199215406977'>❌</tg-emoji> fail: {$fail}   🔁 retry: {$retry}\n\n" .
-            "rate: 12/s backoff: 2.5s\n" .
-            "elapsed: {$elapsed} ETA: {$eta}\n\n" .
-            "{$statusBlock}\n\n" .
-            "trace: job=8f2a mode=ro gate=open\n" .
-            "Please wait...\n\n" .
-            "<tg-emoji emoji-id='5431897022456145283'>📆</tg-emoji> {$date}  <tg-emoji emoji-id='4904882772637648609'>⏰</tg-emoji> {$time}\n" .
-            "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> @NitroHostBot <tg-emoji emoji-id='4927295007204836791'>🪱</tg-emoji>";
-    }
-
-    private function buildFinalMessage(string $targetLabel, ?string $link = null): string
-    {
-        $date = now()->format('Y/n/j');
-        $time = now()->format('H:i:s');
-
-        return "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> KermPlus | Reported Successful\n" .
-            "━━━━━━━━━━━━━━━━\n\n" .
-            "<tg-emoji emoji-id='5116093437300442328'>⚡️</tg-emoji> تعداد کل درخواست ها : 1321\n" .
-            "<tg-emoji emoji-id='6224314343924699041'>✅</tg-emoji> 1235 موفق | <tg-emoji emoji-id='6224072537265934868'>❌</tg-emoji> 134 ناموفق\n\n" .
-            "تمامی ریپورت ها از سمت کرم پلاس<tg-emoji emoji-id='5134654202894615343'>🪱</tg-emoji> با موفقیت ارسال شدند.\n" .
-            "نتیجه نهایی وابسته به بررسی پلتفرم مقصد می‌باشد.\n\n" .
-            "<tg-emoji emoji-id='5431897022456145283'>📆</tg-emoji> {$date} <tg-emoji emoji-id='4904882772637648609'>⏰</tg-emoji> {$time}\n" .
-            "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> @NitroHostBot <tg-emoji emoji-id='4927295007204836791'>🪱</tg-emoji>";
-    }
-
-    private function buildStatusLines(int $step): array
-    {
-        $lines = [
-            "<tg-emoji emoji-id='5134183530313548836'>🧪</tg-emoji> validate inputs      [ OK ]",
-            "<tg-emoji emoji-id='5116093437300442328'>⚡️</tg-emoji> open connections     [ OK ]",
-            "<tg-emoji emoji-id='5292226786229236118'>🔄</tg-emoji> process batch #09    [ .. ]",
-            "<tg-emoji emoji-id='5334882760735598374'>📝</tg-emoji> write results        [ -- ]",
-            "<tg-emoji emoji-id='5411520005386806155'>🏁</tg-emoji> finalize             [ -- ]",
-        ];
-
-        if ($step >= 2) {
-            $lines[2] = "<tg-emoji emoji-id='5292226786229236118'>🔄</tg-emoji> process batch #09    [ OK ]";
-        }
-        if ($step >= 3) {
-            $lines[3] = "<tg-emoji emoji-id='5334882760735598374'>📝</tg-emoji> write results        [ OK ]";
-        }
-        if ($step >= 4) {
-            $lines[4] = "<tg-emoji emoji-id='5411520005386806155'>🏁</tg-emoji> finalize             [ OK ]";
-        }
-
-        return $lines;
     }
 
     private function editMessageByType(
@@ -876,7 +747,7 @@ class InstagramReporterConversation extends Conversation
     {
         return InlineKeyboardMarkup::make()
             ->addRow(
-                InlineKeyboardButton::make('بازگشت', callback_data: 'reporter_instagram_menu', style: 'danger', icon: '5352759161945867747')
+                InlineKeyboardButton::make('بازگشت', callback_data: 'reporter_instagram_menu', style: 'danger', icon_custom_emoji_id: '5352759161945867747')
             );
     }
 
@@ -926,15 +797,6 @@ class InstagramReporterConversation extends Conversation
     private function isCallbackMessagePhoto(Nutgram $bot): bool
     {
         return (bool)$bot->callbackQuery()?->message?->photo;
-    }
-
-    private function deleteMessageSafe(Nutgram $bot, int $messageId): void
-    {
-        try {
-            $bot->deleteMessage(chat_id: $bot->user()->id, message_id: $messageId);
-        } catch (\Throwable $e) {
-            // ignore
-        }
     }
 
     private function addCleanupMessage(Nutgram $bot, ?int $messageId): void
@@ -1011,12 +873,10 @@ class InstagramReporterConversation extends Conversation
     {
         $normalized = trim($input);
 
-        // If user sent raw shortcode/id
         if (preg_match('/^[A-Za-z0-9_-]{5,20}$/', $normalized)) {
             return $normalized;
         }
 
-        // Try to pull shortcode from URL
         if (preg_match('#instagram\\.com/(p|reel|tv)/([A-Za-z0-9_-]{5,20})#i', $normalized, $matches)) {
             return $matches[2];
         }
@@ -1031,23 +891,7 @@ class InstagramReporterConversation extends Conversation
 
     private function fetchInstagramMedia(string $shortcode): ?array
     {
-        $response = Http::withBasicAuth(
-            config('services.boxapi.username'),
-            config('services.boxapi.password')
-        )->post('https://boxapi.ir/api/instagram/media/get_info_by_shortcode', [
-            'shortcode' => $shortcode,
-        ]);
-
-        if (!$response->ok()) {
-            return null;
-        }
-
-        $media = $response->json('response.body.items.0')
-            ?? $response->json('response.body.media')
-            ?? $response->json('response.body.data')
-            ?? $response->json();
-
-        return is_array($media) ? $media : null;
+        return app(BoxApiService::class)->getInstagramMediaInfo($shortcode);
     }
 
     private function buildMediaMessage(array $media, string $link): string

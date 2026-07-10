@@ -5,7 +5,7 @@ import os
 from contextlib import asynccontextmanager
 from typing import Annotated
 
-from fastapi import Body, Depends, FastAPI, File, HTTPException, UploadFile, status
+from fastapi import Body, Depends, FastAPI, File, HTTPException, UploadFile, status, BackgroundTasks
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
@@ -157,12 +157,24 @@ async def report_message_route(
 @api.post("/reactions")
 async def send_reaction_route(
     payload: ReactionPayload,
+    background_tasks: BackgroundTasks,
     app: Annotated[App, Depends(get_app)] = None,
 ):
-    result = await send_reactions(app, payload.link, payload.emoji, payload.mix_negative)
-    if not result["sent"] and result["errors"]:
-        raise HTTPException(status_code=400, detail=result)
-    return JSONResponse(result)
+    background_tasks.add_task(
+        send_reactions,
+        app,
+        payload.link,
+        payload.emoji,
+        payload.mix_negative
+    )
+
+    return JSONResponse(
+        status_code=202,
+        content={
+            "status": "processing",
+            "message": "درخواست شما دریافت شد و در پس‌زمینه در حال انجام است."
+        }
+    )
 
 
 @api.get("/status")

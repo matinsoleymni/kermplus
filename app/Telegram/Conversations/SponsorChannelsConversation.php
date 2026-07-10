@@ -35,7 +35,7 @@ class SponsorChannelsConversation extends Conversation
             )
             ->addRow(
                 InlineKeyboardButton::make('➖ حذف اسپانسر', callback_data: 'sponsor_remove', style: 'danger'),
-                InlineKeyboardButton::make('بازگشت', callback_data: 'admin_panel', style: 'danger', icon: '5352759161945867747')
+                InlineKeyboardButton::make('بازگشت', callback_data: 'admin_panel', style: 'danger', icon_custom_emoji_id: '5352759161945867747')
             );
 
         $bot->sendMessage('📣 مدیریت کانال‌های اسپانسر — یک گزینه انتخاب کنید:', reply_markup: $keyboard);

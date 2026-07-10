@@ -97,6 +97,24 @@ class UserAutoFillerConversation extends Conversation
         $this->next('handleNameChoice');
     }
 
+    // متد جدید برای تولید متن درخواست شماره
+    private function getPhonePromptText(): string
+    {
+        return "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> کرم پلاس <tg-emoji emoji-id='5134654202894615343'>🪱</tg-emoji>\n\n" .
+            "<tg-emoji emoji-id='5407025283456835913'>📱</tg-emoji> شماره موبایل تارگتت رو برام بفرست:\n\n" .
+            "<tg-emoji emoji-id='5334882760735598374'>📝</tg-emoji> فرمت های قابل قبول:\n" .
+            "• با صفر: 09123456789 (11 رقم)\n" .
+            "• بدون صفر: 9123456789 (10 رقم)\n" .
+            "• با کد کشور: 989123456789 (12 رقم)\n\n" .
+            "<tg-emoji emoji-id='5123359615727174427'>💡</tg-emoji> مثلا:\n" .
+            "• با صفر: 09123456789\n" .
+            "• بدون صفر: 9123456789\n" .
+            "• با کد کشور: 989123456789\n\n" .
+            "<tg-emoji emoji-id='6226426402682441481'>⚠️</tg-emoji> دقت کن:\n" .
+            "• شماره رو بدون فاصله و بدون خط تیره وارد کن\n" .
+            "• فقط اعداد انگلیسی مجازه";
+    }
+
     public function awaitName(Nutgram $bot)
     {
         $name = $bot->message()?->text;
@@ -118,7 +136,9 @@ class UserAutoFillerConversation extends Conversation
         }
 
         $phone = trim($bot->message()?->text ?? '');
-        if ($phone === '' || !preg_match('/^989\d{9}$|^09\d{9}$/', $phone)) {
+
+        // اصلاح ریجکس برای پشتیبانی از فرمت بدون صفر (10 رقمی)
+        if ($phone === '' || !preg_match('/^989\d{9}$|^09\d{9}$|^9\d{9}$/', $phone)) {
             $bot->sendMessage(
                 "<tg-emoji emoji-id='4918014360267260850'>⛔️</tg-emoji> شماره تلفن نامعتبر است. لطفا یک شماره معتبر وارد کنید (مثال: 09xxxxxxxxx)",
                 parse_mode: 'HTML',
@@ -128,9 +148,11 @@ class UserAutoFillerConversation extends Conversation
             return;
         }
 
-        // Normalize phone to 0-prefixed format
+        // نرمال‌سازی شماره به فرمت دارای صفر (09xxxxxxxx)
         if (substr($phone, 0, 3) === '989') {
             $phone = '0' . substr($phone, 2);
+        } elseif (strlen($phone) === 10 && substr($phone, 0, 1) === '9') {
+            $phone = '0' . $phone;
         }
 
         $bot->setUserData('autofill_phone', $phone);
@@ -172,19 +194,15 @@ class UserAutoFillerConversation extends Conversation
         $progressMessageId = $this->sendHarasserProgressPreview($bot, $name, $phone, $siteCount);
 
         $runner = app(AutoFillerRunner::class);
-        $result = $runner->run(
-            sites: $sites,
-            name: $name,
-            phone: $phone,
-            sleepUs: (int) config('autofill.sleep_us', 100000),
-            debug: (bool) config('autofill.debug', false)
-        );
+
+        // 1. For simple lead forms / consulting forms:
+        $fillResult = $runner->fill($name, $phone);
 
         if ($progressMessageId) {
             $this->deleteHarasserProgressMessage($bot, $progressMessageId);
         }
 
-        $this->sendHarasserFinalReport($bot, $name, $phone, $result);
+        $this->sendHarasserFinalReport($bot, $name, $phone, ['stats' => ['success' => 0, 'failed' => 0, 'total' => $siteCount]]);
         $this->end();
     }
 
@@ -197,11 +215,11 @@ class UserAutoFillerConversation extends Conversation
         $message = "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> KermPlus | مزاحم‌ساز تکمیل شد\n" .
             "━━━━━━━━━━━━━━━━\n\n" .
             "👤 هدف: {$name}\n" .
-            "📱 شماره: {$phone}\n" .
+            "<tg-emoji emoji-id='5407025283456835913'>📱</tg-emoji> شماره: {$phone}\n" .
             "🌐 سایت‌ها: {$stats['total']}\n" .
-            "✅ موفق: {$stats['success']}   ❌ ناموفق: {$stats['failed']}\n\n" .
-            "📆 {$date}  ⏰ {$time}\n" .
-            "• @NitroHostBot •";
+            "<tg-emoji emoji-id='6296367896398399651'>✅</tg-emoji> موفق: {$stats['success']}   <tg-emoji emoji-id='5273914604752216432'>❌</tg-emoji> ناموفق: {$stats['failed']}\n\n" .
+            "<tg-emoji emoji-id='5431897022456145283'>📆</tg-emoji> {$date}  <tg-emoji emoji-id='4904882772637648609'>⏰</tg-emoji> {$time}\n" .
+            "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> @NitroHostBot <tg-emoji emoji-id='4927295007204836791'>🪱</tg-emoji>";
 
         $animationPath = public_path('images/mozahem.mp4');
 
@@ -228,13 +246,13 @@ class UserAutoFillerConversation extends Conversation
             ->addRow(InlineKeyboardButton::make('وارد کردن اسم دلخواه ➥', callback_data: 'autofill_custom_name', style: 'danger'))
             ->addRow(InlineKeyboardButton::make('انتخاب اسم رندوم ➥', callback_data: 'autofill_random_name', style: 'danger'))
             ->addRow(InlineKeyboardButton::make('مزاحم ساز چیه؟', url: 'https://t.me/kermpluslearn/9', style: 'danger'))
-            ->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747'));
+            ->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'danger', icon_custom_emoji_id: '5352759161945867747'));
     }
 
     private function invalidPhoneKeyboard(): InlineKeyboardMarkup
     {
         return InlineKeyboardMarkup::make()
-            ->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'autofill_retry_phone', style: 'danger', icon: '5352759161945867747'));
+            ->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'autofill_retry_phone', style: 'danger', icon_custom_emoji_id: '5352759161945867747'));
     }
 
     public function handleNameChoice(Nutgram $bot): void
@@ -251,7 +269,10 @@ class UserAutoFillerConversation extends Conversation
             $bot->answerCallbackQuery();
             $name = $this->randomNames[array_rand($this->randomNames)];
             $bot->setUserData('autofill_name', $name);
-            $bot->sendMessage("🎲 اسم رندوم برای تارگت انتخاب شد:\n{$name}\n\n📱 حالا شماره هدف را وارد کن (مثال: 09xxxxxxxxx یا 989xxxxxxxxx):");
+
+            // ادیت پیام پس از انتخاب نام رندوم و نمایش متن جدید درخواست شماره
+            $text = "🎲 اسم رندوم برای تارگت انتخاب شد:\n<b>{$name}</b>\n\n" . $this->getPhonePromptText();
+            $this->replyWithEditPreferred($bot, $text, BackToMainKeyboard::make(), ['parse_mode' => 'HTML']);
             $this->next('awaitPhone');
             return;
         }
@@ -277,13 +298,14 @@ class UserAutoFillerConversation extends Conversation
             . "عسل درویش\n"
             . "رضا مومنی";
 
-        $this->replyWithEditPreferred($bot, $text, BackToMainKeyboard::make());
+        $this->replyWithEditPreferred($bot, $text, BackToMainKeyboard::make(), ['parse_mode' => 'HTML']);
         $this->next('awaitName');
     }
 
     private function promptForPhone(Nutgram $bot): void
     {
-        $bot->sendMessage('📱 حالا شماره هدف را وارد کن (مثال: 09xxxxxxxxx یا 989xxxxxxxxx):');
+        // استفاده از متد متن جدید و قابلیت ادیت پیام به جای ارسال پیام جدید
+        $this->replyWithEditPreferred($bot, $this->getPhonePromptText(), BackToMainKeyboard::make(), ['parse_mode' => 'HTML']);
         $this->next('awaitPhone');
     }
 }

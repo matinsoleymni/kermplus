@@ -41,7 +41,7 @@ class SuspendUserConversation extends Conversation
                 \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('🚫 معلق کردن کاربر', callback_data: 'suspend_user', style: 'danger'),
                 \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('✅ رفع معلقیت', callback_data: 'unsuspend_user', style: 'danger')
             )
-            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('بازگشت', callback_data: 'admin_panel', style: 'danger', icon: '5352759161945867747'));
+            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('بازگشت', callback_data: 'admin_panel', style: 'danger', icon_custom_emoji_id: '5352759161945867747'));
 
         $bot->sendMessage('🔒 معلق/فعالسازی کاربر — انتخاب کنید:', reply_markup: $keyboard);
         $this->next('handleMenu');

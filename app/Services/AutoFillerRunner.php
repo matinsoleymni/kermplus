@@ -2,93 +2,116 @@
 
 namespace App\Services;
 
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class AutoFillerRunner
 {
-    /**
-     * Run autofill locally (no external /auto-fillter calls).
-     */
-    public function run(array $sites, string $name, string $phone, int $sleepUs = 100000, bool $debug = false): array
+    protected string $goBaseUrl;
+
+    public function __construct()
     {
-        $report = [];
-        $stats = ['success' => 0, 'failed' => 0, 'total' => count($sites)];
-        $summary = null;
-        $errors = [];
-
-        if (empty($sites)) {
-            return [
-                'stats' => $stats,
-                'report' => [],
-                'summary' => 'هیچ سایتی پیکربندی نشده است.',
-                'log_path' => null,
-            ];
-        }
-
-        foreach ($sites as $index => $url) {
-            try {
-                $bot = new AutoFormFiller();
-                $bot->setDebug($debug);
-                $result = $bot->submitForm($url, $phone, $name);
-
-                $status = $result['status'] ? 'success' : 'failed';
-                if ($result['status']) {
-                    $stats['success']++;
-                } else {
-                    $stats['failed']++;
-                }
-
-                $report[] = [
-                    'id' => $index + 1,
-                    'url' => $url,
-                    'status' => $status,
-                    'message' => $result['message'] ?? null,
-                    'sent_data' => $result['sent_data'] ?? null,
-                ];
-            } catch (\Throwable $e) {
-                $stats['failed']++;
-                $errors[] = $e->getMessage();
-                $report[] = [
-                    'id' => $index + 1,
-                    'url' => $url,
-                    'status' => 'error',
-                    'message' => $e->getMessage(),
-                    'sent_data' => [],
-                ];
-            }
-
-            if ($sleepUs > 0) {
-                usleep($sleepUs);
-            }
-        }
-
-        if (!$summary && !empty($errors)) {
-            $summary = 'Errors: ' . implode(' | ', $errors);
-        }
-
-        $summary = $summary ?: sprintf(
-            'Summary: success=%d, failed=%d, total=%d',
-            $stats['success'],
-            $stats['failed'],
-            $stats['total']
-        );
-
-        $logPath = $this->writeLog($summary, $report);
-
-        return [
-            'stats' => $stats,
-            'report' => $report,
-            'summary' => $summary,
-            'log_path' => $logPath,
-        ];
+        $this->goBaseUrl = config('services.go_autofill.url', 'http://localhost:8080');
     }
 
-    private function writeLog(string $summary, array $report): ?string
+    /**
+     * Dispatch a standard form filling job to the Go microservice.
+     */
+    public function fill(string $name, string $phone): array
+    {
+        $payload = [
+            'phone_number' => $phone,
+            'full_name'    => $name,
+        ];
+
+        return $this->dispatchToGo('/api/fill', $payload);
+    }
+
+    /**
+     * Dispatch a registration form filling job to the Go microservice.
+     */
+    public function register(string $name, string $phone, string $email): array
+    {
+        $payload = [
+            'phone_number' => $phone,
+            'full_name'    => $name,
+            'email'        => $email,
+        ];
+
+        return $this->dispatchToGo('/api/register', $payload);
+    }
+
+    /**
+     * Shared internal helper to handle the HTTP communication with the Go API.
+     */
+    private function dispatchToGo(string $endpoint, array $payload): array
+    {
+        $url = $this->goBaseUrl . $endpoint;
+        $report = [];
+        $summary = null;
+
+        try {
+            $response = Http::withHeaders([
+                'Content-Type' => 'application/json',
+            ])->timeout(10)->post($url, $payload);
+
+            if ($response->successful()) {
+                $responseData = $response->json();
+                $taskId = $responseData['task_id'] ?? 'unknown';
+
+                $summary = sprintf(
+                    'Success: Job successfully dispatched to Go %s. Task ID: %s',
+                    $endpoint,
+                    $taskId
+                );
+
+                $report[] = [
+                    'endpoint' => $endpoint,
+                    'status'   => 'dispatched',
+                    'task_id'  => $taskId,
+                    'message'  => 'Task accepted asynchronously by Go worker.',
+                ];
+
+                $this->writeLog($summary, $report);
+
+                return [
+                    'success' => true,
+                    'task_id' => $taskId,
+                    'summary' => $summary,
+                ];
+            }
+
+            throw new \Exception("Go Service returned HTTP status " . $response->status());
+
+        } catch (\Throwable $e) {
+            $summary = "Go Integration Error ({$endpoint}): " . $e->getMessage();
+            Log::error($summary);
+
+            $report[] = [
+                'endpoint' => $endpoint,
+                'status'   => 'error',
+                'message'  => $e->getMessage(),
+            ];
+
+            $this->writeLog($summary, $report);
+
+            return [
+                'success' => false,
+                'task_id' => null,
+                'summary' => $summary,
+            ];
+        }
+    }
+
+    /**
+     * Standard centralized logging handler
+     */
+    private function writeLog(string $summary, array $report): void
     {
         $date = date('Y-m-d');
-        $logPath = storage_path("logs/autofill-{$date}.log");
-        $logContent = "=== AutoFormFiller Run: " . date('c') . " ===\n";
-        $logContent .= $summary . "\n\n";
+        $logPath = storage_path("logs/autofill-go-gateway-{$date}.log");
+        $logContent = "=== Go API Gateway Sync: " . date('c') . " ===\n";
+        $logContent .= $summary . "\n";
         foreach ($report as $r) {
             $logContent .= json_encode($r, JSON_UNESCAPED_UNICODE) . "\n";
         }
@@ -96,10 +119,8 @@ class AutoFillerRunner
 
         try {
             file_put_contents($logPath, $logContent, FILE_APPEND | LOCK_EX);
-            return $logPath;
         } catch (\Throwable $e) {
-            Log::error('Failed to write AutoFormFiller log: ' . $e->getMessage());
-            return null;
+            Log::error('Failed to write Go Gateway wrapper log: ' . $e->getMessage());
         }
     }
 }

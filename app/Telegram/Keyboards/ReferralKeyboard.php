@@ -13,13 +13,13 @@ class ReferralKeyboard
 
         if ($canClaimReward) {
             $keyboard->addRow(
-                InlineKeyboardButton::make('دریافت اشتراک هدیه', callback_data: 'referral_claim', style: 'danger', icon: '5361649430715972984')
+                InlineKeyboardButton::make('دریافت اشتراک هدیه', callback_data: 'referral_claim', style: 'danger', icon_custom_emoji_id: '5361649430715972984')
             );
         }
 
         $keyboard->addRow(
-            InlineKeyboardButton::make('بروزرسانی آمار', callback_data: 'user_referral', style: 'danger', icon: '6005843436479975944'),
-            InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747')
+            InlineKeyboardButton::make('بروزرسانی آمار', callback_data: 'user_referral', style: 'danger', icon_custom_emoji_id: '6005843436479975944'),
+            InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'danger', icon_custom_emoji_id: '5352759161945867747')
         );
 
         return $keyboard;

@@ -53,7 +53,7 @@ class WhitelistMenuHandler
         $msg .= "<tg-emoji emoji-id='5407025283456835913'>📱</tg-emoji> شماره مورد نظرت رو برام بفرست تا ضد بمبرش کنم :";
 
         $keyboard = InlineKeyboardMarkup::make()
-            ->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747'));
+            ->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'danger', icon_custom_emoji_id: '5352759161945867747'));
 
         $bot->sendMessage($msg, parse_mode: 'HTML', reply_markup: $keyboard);
     }

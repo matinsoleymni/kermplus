@@ -22,6 +22,7 @@ use App\Telegram\Conversations\SmsBomberMenuConversation;
 use App\Telegram\Conversations\TelegramReporterConversation;
 use App\Telegram\Conversations\UserAutoFillerConversation;
 use App\Telegram\Conversations\WhitelistConversation;
+use App\Telegram\Conversations\DispatchKermEventConversation;
 use App\Telegram\Handlers\Admin\AdminExitHandler;
 use App\Telegram\Handlers\BuySubscriptionHandler;
 use App\Telegram\Handlers\MainMenuHandler;
@@ -129,6 +130,7 @@ $bot->onCallbackQueryData('pay_crypto_{id}', SelectPlanHandler::class);
 $bot->onCallbackQueryData('pay_crypto_trx_{id}', SelectPlanHandler::class);
 $bot->onCallbackQueryData('pay_crypto_ton_{id}', SelectPlanHandler::class);
 $bot->onCallbackQueryData('pay_star_{id}', SelectPlanHandler::class);
+$bot->onCallbackQueryData('check_pay:{id}', SelectPlanHandler::class);
 $bot->onCallbackQueryData('user_stats', UserStatsHandler::class);
 $bot->onCallbackQueryData('main_menu', MainMenuHandler::class);
 
@@ -138,3 +140,9 @@ $bot->onSuccessfulPayment(App\Telegram\Handlers\PaymentSuccessHandler::class);
 $bot->onCallbackQueryData('admin_exit', AdminExitHandler::class);
 
 // $bot->fallback(NotImplementedHandler::class);
+
+$bot->onCallbackQueryData('kerm_action:{action}', function (Nutgram $bot, string $action) {
+    $bot->answerCallbackQuery();
+
+    DispatchKermEventConversation::begin($bot, data: [$action]);
+});

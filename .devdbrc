@@ -6,5 +6,9 @@
   {
     "type": "sqlite",
     "path": "/home/zmat24/Desktop/KermPlus/telegram-reporter/sessions/data.db"
+  },
+  {
+    "type": "sqlite",
+    "path": "/mnt/d0d3c044-05d4-4957-a74b-eb17bff50b2f/Projects/KermPlus/telegram-reporter/sessions.db"
   }
 ]

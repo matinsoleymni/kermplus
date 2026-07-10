@@ -18,7 +18,7 @@ class FormManagerConversation extends Conversation
                 InlineKeyboardButton::make('➕ ایجاد فرم', callback_data: 'form_create', style: 'danger')
             )
             ->addRow(
-                InlineKeyboardButton::make('بازگشت', callback_data: 'admin_panel', style: 'danger', icon: '5352759161945867747')
+                InlineKeyboardButton::make('بازگشت', callback_data: 'admin_panel', style: 'danger', icon_custom_emoji_id: '5352759161945867747')
             );
         $bot->sendMessage('📝 مدیریت فرم‌ها:', reply_markup: $keyboard);
         $this->next('handleMenu');
@@ -50,7 +50,7 @@ class FormManagerConversation extends Conversation
                     InlineKeyboardButton::make('🗑️', callback_data: "form_delete_{$form->id}", style: 'danger')
                 );
             }
-            $keyboard->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'admin_panel', style: 'danger', icon: '5352759161945867747'));
+            $keyboard->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'admin_panel', style: 'danger', icon_custom_emoji_id: '5352759161945867747'));
             $bot->sendMessage($msg, reply_markup: $keyboard);
         } elseif ($data === 'form_create') {
             $bot->sendMessage('📝 نام فرم را وارد کنید:');
@@ -84,7 +84,7 @@ class FormManagerConversation extends Conversation
                 }
             }
             $keyboard = InlineKeyboardMarkup::make()
-                ->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'form_list', style: 'danger', icon: '5352759161945867747'));
+                ->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'form_list', style: 'danger', icon_custom_emoji_id: '5352759161945867747'));
             $bot->sendMessage($msg ?? '❌ فرم پیدا نشد.', reply_markup: $keyboard);
         } else {
             $this->start($bot);

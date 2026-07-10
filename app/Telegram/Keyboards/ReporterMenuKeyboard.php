@@ -11,21 +11,21 @@ class ReporterMenuKeyboard
     {
         return InlineKeyboardMarkup::make()
             ->addRow(
-                InlineKeyboardButton::make('ریپورتر تلگرام', callback_data: 'reporter_telegram_menu', style: 'danger', icon: '5330237710655306682')
+                InlineKeyboardButton::make('ریپورتر تلگرام', callback_data: 'reporter_telegram_menu', style: 'danger', icon_custom_emoji_id: '5330237710655306682')
             )
             ->addRow(
-                InlineKeyboardButton::make('ریپورتر روبیکا', callback_data: 'reporter_rubika_menu', style: 'danger', icon: '4978973209056511046')
+                InlineKeyboardButton::make('ریپورتر روبیکا', callback_data: 'reporter_rubika_menu', style: 'danger', icon_custom_emoji_id: '4978973209056511046')
             )
             ->addRow(
-                InlineKeyboardButton::make('ریپورتر اینستاگرام', callback_data: 'reporter_instagram_menu', style: 'danger', icon: '5319160079465857105')
+                InlineKeyboardButton::make('ریپورتر اینستاگرام', callback_data: 'reporter_instagram_menu', style: 'danger', icon_custom_emoji_id: '5319160079465857105')
             )
             ->addRow(
-                InlineKeyboardButton::make('نکات مهم ریپورتر', callback_data: 'reporter_what_is', style: 'danger', icon: '6226426402682441481')
+                InlineKeyboardButton::make('نکات مهم ریپورتر', callback_data: 'reporter_what_is', style: 'danger', icon_custom_emoji_id: '6226426402682441481')
             )->addRow(
-                InlineKeyboardButton::make('ریپیورتر چیه؟', url: 'https://t.me/kermpluslearn/6', style: 'danger', icon: '5470060791883374114')
+                InlineKeyboardButton::make('ریپیورتر چیه؟', url: 'https://t.me/kermpluslearn/6', style: 'danger', icon_custom_emoji_id: '5470060791883374114')
             )
             ->addRow(
-                InlineKeyboardButton::make('بازگشت', callback_data: 'kerm_menu', style: 'danger', icon: '5352759161945867747')
+                InlineKeyboardButton::make('بازگشت', callback_data: 'kerm_menu', style: 'danger', icon_custom_emoji_id: '5352759161945867747')
             );
     }
 
@@ -33,7 +33,7 @@ class ReporterMenuKeyboard
     {
         return InlineKeyboardMarkup::make()
             ->addRow(
-                InlineKeyboardButton::make('بازگشت', callback_data: 'reporter_menu', style: 'danger', icon: '5352759161945867747')
+                InlineKeyboardButton::make('بازگشت', callback_data: 'reporter_menu', style: 'danger', icon_custom_emoji_id: '5352759161945867747')
             );
     }
 }

@@ -14,7 +14,7 @@
         "laravel/octane": "^2.13",
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^2.10.1",
-        "nutgram/laravel": "^1.5",
+        "nutgram/laravel": "^1.7",
         "nyholm/psr7": "^1.8",
         "spiral/roadrunner": "^2025.1",
         "spiral/roadrunner-cli": "^2.6.0",

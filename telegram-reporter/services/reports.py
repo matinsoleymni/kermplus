@@ -219,8 +219,10 @@ async def send_reactions(app: App, link: str, emoji: str | None = None, mix_nega
         return {"sent": 0, "errors": ["No active sessions available."], "available_reactions": []}
 
     try:
+        await app.bot.get_chat(username)
         peer = await app.bot.resolve_peer(username)
-    except errors.RPCError as exc:
+
+    except (errors.RPCError, KeyError) as exc:
         return {
             "sent": 0,
             "errors": [f"{username}: {exc.__class__.__name__} - {exc}"],

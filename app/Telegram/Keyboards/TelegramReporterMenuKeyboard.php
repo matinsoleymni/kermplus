@@ -11,16 +11,16 @@ class TelegramReporterMenuKeyboard
     {
         return InlineKeyboardMarkup::make()
             ->addRow(
-                InlineKeyboardButton::make('ریپورت اکانت', callback_data: 'telegram_report_account', style: 'danger', icon: '4904848288345228262')
+                InlineKeyboardButton::make('ریپورت اکانت', callback_data: 'telegram_report_account', style: 'danger', icon_custom_emoji_id: '4904848288345228262')
             )
             ->addRow(
-                InlineKeyboardButton::make('ریپورت کانال', callback_data: 'telegram_report_channel', style: 'danger', icon: '4918203446202467778')
+                InlineKeyboardButton::make('ریپورت کانال', callback_data: 'telegram_report_channel', style: 'danger', icon_custom_emoji_id: '4918203446202467778')
             )
             ->addRow(
-                InlineKeyboardButton::make('ریپورت پست', callback_data: 'telegram_report_post', style: 'danger', icon: '6226448624843231576')
+                InlineKeyboardButton::make('ریپورت پست', callback_data: 'telegram_report_post', style: 'danger', icon_custom_emoji_id: '6226448624843231576')
             )
             ->addRow(
-                InlineKeyboardButton::make('بازگشت', callback_data: 'reporter_menu', style: 'danger', icon: '5352759161945867747')
+                InlineKeyboardButton::make('بازگشت', callback_data: 'reporter_menu', style: 'danger', icon_custom_emoji_id: '5352759161945867747')
             );
     }
 }

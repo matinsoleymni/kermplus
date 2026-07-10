@@ -46,7 +46,7 @@ class AdminPanelConversation extends Conversation
             // ->addRow(InlineKeyboardButton::make('📝 فرم‌ها', callback_data: 'admin_forms', style: 'danger'))
             // ->addRow(InlineKeyboardButton::make('💬 ری‌اکشن‌ها', callback_data: 'admin_reactions', style: 'danger'))
             ->addRow(InlineKeyboardButton::make('📑 مدیریت اسپانسر', callback_data: 'admin_sponsor_manage', style: 'danger'))
-            ->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747'));
+            ->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'danger', icon_custom_emoji_id: '5352759161945867747'));
         $bot->sendMessage($adminText, reply_markup: $keyboard);
         $this->next('handleMenu');
     }
@@ -188,7 +188,7 @@ class AdminPanelConversation extends Conversation
                 InlineKeyboardButton::make('🔗 Run Single URL', callback_data: 'autofiller_single_start', style: 'danger')
             )
             ->addRow(
-                InlineKeyboardButton::make('بازگشت', callback_data: 'back_admin', style: 'danger', icon: '5352759161945867747')
+                InlineKeyboardButton::make('بازگشت', callback_data: 'back_admin', style: 'danger', icon_custom_emoji_id: '5352759161945867747')
             );
         $bot->sendMessage('🤖 **AutoFiller Control Panel**\n\nانتخاب کنید:', reply_markup: $keyboard);
         $this->next('processAutofillerAction');

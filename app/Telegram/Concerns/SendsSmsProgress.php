@@ -147,7 +147,7 @@ trait SendsSmsProgress
         return "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> KermPlus | Processing Job\n" .
             "━━━━━━━━━━━━━━━━\n\n" .
             "{$barOnly} {$percent}%   <tg-emoji emoji-id='5116159438062879454'>🙏</tg-emoji> step {$step}/{$totalSteps}\n\n" .
-            "📦 queue: {$queue} items\n" .
+            "<blockquote>📦 queue: {$queue} items\n" .
             "<tg-emoji emoji-id='4904936030232117798'>⚙️</tg-emoji> active: {$active}   <tg-emoji emoji-id='6224314343924699041'>✅</tg-emoji> done: {$done}\n" .
             "<tg-emoji emoji-id='5325945307454789973'>🟢</tg-emoji> ok: {$ok}   <tg-emoji emoji-id='5326056199215406977'>❌</tg-emoji> fail: {$fail}   🔁 retry: {$retry}\n\n" .
             "rate: 12/s backoff: 2.5s\n" .
@@ -166,7 +166,7 @@ trait SendsSmsProgress
             "<tg-emoji emoji-id='5116093437300442328'>⚡️</tg-emoji> open connections     [ OK ]",
             "<tg-emoji emoji-id='5292226786229236118'>🔄</tg-emoji> process batch #09    [ .. ]",
             "<tg-emoji emoji-id='5334882760735598374'>📝</tg-emoji> write results        [ -- ]",
-            "<tg-emoji emoji-id='5411520005386806155'>🏁</tg-emoji> finalize             [ -- ]",
+            "<tg-emoji emoji-id='5411520005386806155'>🏁</tg-emoji> finalize             [ -- ]</blockquote>",
         ];
 
         if ($step >= 3) {
@@ -212,18 +212,14 @@ trait SendsSmsProgress
         $failures = max(0, $fail);
         $date = now()->format('Y/m/d');
         $time = now()->format('H:i:s');
-        $resultText = $failures > 0
-            ? "ارسال انجام شد ولی بخشی از درخواست‌ها ناموفق بود."
-            : "تمامی پیامک‌ها از سمت <b>کرم پلاس</b>🪱 با موفقیت ارسال شدند.";
 
         $message = "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> KermPlus | Bomber Successful\n" .
             "━━━━━━━━━━━━━━━━\n\n" .
-            "📱 target: {$phone}\n" .
+            "<tg-emoji emoji-id='5407025283456835913'>📱</tg-emoji> target: {$phone}\n" .
             "📦 تعداد کل درخواست ها : {$count}\n" .
-            "✅ {$success} موفق | ❌ {$failures} ناموفق\n\n" .
-            "{$resultText}\n\n" .
-            "📆 {$date} ⏰ {$time}\n" .
-            "• @NitroHostBot •";
+            "<tg-emoji emoji-id='6296367896398399651'>✅</tg-emoji> {$success} موفق | <tg-emoji emoji-id='5273914604752216432'>❌</tg-emoji> {$failures} ناموفق\n\n" .
+            "<tg-emoji emoji-id='5431897022456145283'>📆</tg-emoji> {$date} <tg-emoji emoji-id='4904882772637648609'>⏰</tg-emoji> {$time}\n" .
+            "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> @NitroHostBot <tg-emoji emoji-id='4927295007204836791'>🪱</tg-emoji>";
 
         $animationPath = public_path('images/bomber.mp4');
 

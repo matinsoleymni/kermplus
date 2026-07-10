@@ -34,7 +34,7 @@ class SponsorJoinService
         }
 
         $verifiableChannels = $activeChannels->filter(
-            fn (SponsorChannel $channel): bool => $this->canVerifyChannel($channel)
+            fn(SponsorChannel $channel): bool => $this->canVerifyChannel($channel)
         )->values();
 
         if ($verifiableChannels->isEmpty()) {
@@ -284,7 +284,7 @@ class SponsorJoinService
             return null;
         }
 
-        $segments = array_values(array_filter(explode('/', $path), fn (string $segment): bool => $segment !== ''));
+        $segments = array_values(array_filter(explode('/', $path), fn(string $segment): bool => $segment !== ''));
         if ($segments === []) {
             return null;
         }
@@ -397,7 +397,7 @@ class SponsorJoinService
     private function buildPromptMessage(Collection $channels, array $channelUrls): string
     {
         $channelLines = $channels
-            ->map(fn (SponsorChannel $channel): string => $this->buildPromptChannelLine($channel, $channelUrls))
+            ->map(fn(SponsorChannel $channel): string => $this->buildPromptChannelLine($channel, $channelUrls))
             ->values();
 
         return "<tg-emoji emoji-id='5246772116543512028'>⛔️</tg-emoji> برای استفاده از ربات باید اول عضو کانال‌ های اسپانسر بشی.\n\n"
@@ -469,7 +469,7 @@ class SponsorJoinService
         }
 
         $keyboard->addRow(
-            InlineKeyboardButton::make('عضو شدم', callback_data: self::CHECK_CALLBACK, style: 'danger', icon: '6224314343924699041')
+            InlineKeyboardButton::make('عضو شدم', callback_data: self::CHECK_CALLBACK, style: 'danger', icon_custom_emoji_id: '6224314343924699041')
         );
 
         return $keyboard;

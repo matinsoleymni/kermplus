@@ -128,7 +128,7 @@ class EmailBombConversation extends Conversation
 
         $this->startDelayMinutes = $startDelay;
         $keyboard = \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup::make()
-            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('بازگشت به منو', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747'));
+            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('بازگشت به منو', callback_data: 'main_menu', style: 'danger', icon_custom_emoji_id: '5352759161945867747'));
         $msg = $this->buildScheduleTemplate($this->startDelayMinutes, null, 'interval')
             . "\n\n⏳ حالا فاصله بین ارسال‌ها را بفرست (دقیقه). مثلا 0 یا 2\n👈 فقط عدد بفرست.";
         $bot->sendMessage($msg, reply_markup: $keyboard);
@@ -223,7 +223,7 @@ class EmailBombConversation extends Conversation
     private function promptEmailTarget(Nutgram $bot, ?string $error = null): void
     {
         $keyboard = \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup::make()
-            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('بازگشت به منو', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747'));
+            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('بازگشت به منو', callback_data: 'main_menu', style: 'danger', icon_custom_emoji_id: '5352759161945867747'));
 
         $text = '';
         if ($error) {
@@ -267,7 +267,7 @@ class EmailBombConversation extends Conversation
     private function promptStartDelay(Nutgram $bot): void
     {
         $keyboard = \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup::make()
-            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('بازگشت به منو', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747'));
+            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('بازگشت به منو', callback_data: 'main_menu', style: 'danger', icon_custom_emoji_id: '5352759161945867747'));
         $msg = $this->buildScheduleTemplate(null, null, 'start')
             . "\n\n👈 در الگوی بالا به جای علامت سؤال‌های قرمز عدد موردنظرت رو بفرست.\n"
             . "⏱ اول بگو چند دقیقه بعد شروع کنیم؟";
@@ -278,7 +278,7 @@ class EmailBombConversation extends Conversation
     private function promptBatchSize(Nutgram $bot): void
     {
         $keyboard = \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup::make()
-            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('بازگشت به منو', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747'));
+            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('بازگشت به منو', callback_data: 'main_menu', style: 'danger', icon_custom_emoji_id: '5352759161945867747'));
         $msg = "📦 حالا بگو چند تا ایمیل بفرستیم؟\n"
             . "👈 فقط عدد بفرست.";
         $bot->sendMessage($msg, reply_markup: $keyboard);
@@ -288,10 +288,26 @@ class EmailBombConversation extends Conversation
     private function extractRequestedCount(string $input, int $fallback): int
     {
         $normalized = strtr(trim($input), [
-            '۰' => '0', '۱' => '1', '۲' => '2', '۳' => '3', '۴' => '4',
-            '۵' => '5', '۶' => '6', '۷' => '7', '۸' => '8', '۹' => '9',
-            '٠' => '0', '١' => '1', '٢' => '2', '٣' => '3', '٤' => '4',
-            '٥' => '5', '٦' => '6', '٧' => '7', '٨' => '8', '٩' => '9',
+            '۰' => '0',
+            '۱' => '1',
+            '۲' => '2',
+            '۳' => '3',
+            '۴' => '4',
+            '۵' => '5',
+            '۶' => '6',
+            '۷' => '7',
+            '۸' => '8',
+            '۹' => '9',
+            '٠' => '0',
+            '١' => '1',
+            '٢' => '2',
+            '٣' => '3',
+            '٤' => '4',
+            '٥' => '5',
+            '٦' => '6',
+            '٧' => '7',
+            '٨' => '8',
+            '٩' => '9',
         ]);
 
         if (preg_match('/\d+/', $normalized, $m) !== 1) {

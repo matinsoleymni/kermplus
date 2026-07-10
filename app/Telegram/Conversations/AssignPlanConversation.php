@@ -30,7 +30,7 @@ class AssignPlanConversation extends Conversation
         $keyboard = \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup::make()
             ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('➕ افزودن اشتراک', callback_data: 'assign_plan_set', style: 'danger'))
             ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('🗑 حذف اشتراک', callback_data: 'assign_plan_remove', style: 'danger'))
-            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('⬅️ بازگشت به منوی ادمین', callback_data: 'admin_panel', style: 'danger', icon: '5352759161945867747'));
+            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('⬅️ بازگشت به منوی ادمین', callback_data: 'admin_panel', style: 'danger', icon_custom_emoji_id: '5352759161945867747'));
 
         $bot->sendMessage($msg, reply_markup: $keyboard);
         $this->next('menu');

@@ -36,7 +36,7 @@ class AutoFormConversation extends Conversation
                 InlineKeyboardButton::make('➕ ایجاد فرم', callback_data: 'form_create_admin', style: 'danger')
             )
             ->addRow(
-                InlineKeyboardButton::make('بازگشت', callback_data: 'admin_panel', style: 'danger', icon: '5352759161945867747')
+                InlineKeyboardButton::make('بازگشت', callback_data: 'admin_panel', style: 'danger', icon_custom_emoji_id: '5352759161945867747')
             );
         $bot->sendMessage('📝 مدیریت فرم‌ها:', reply_markup: $keyboard);
         $this->next('handleMenu');
@@ -104,7 +104,7 @@ class AutoFormConversation extends Conversation
             );
         }
         $keyboard->addRow(InlineKeyboardButton::make('➕ جدید', callback_data: 'form_create_admin', style: 'danger'));
-        $keyboard->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'admin_panel', style: 'danger', icon: '5352759161945867747'));
+        $keyboard->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'admin_panel', style: 'danger', icon_custom_emoji_id: '5352759161945867747'));
 
         $bot->sendMessage($msg, reply_markup: $keyboard);
     }

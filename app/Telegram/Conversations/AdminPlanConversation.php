@@ -247,7 +247,7 @@ class AdminPlanConversation extends Conversation
             );
         }
 
-        $keyboard->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'admin_panel', style: 'danger', icon: '5352759161945867747'));
+        $keyboard->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'admin_panel', style: 'danger', icon_custom_emoji_id: '5352759161945867747'));
 
         return $keyboard;
     }
@@ -274,10 +274,10 @@ class AdminPlanConversation extends Conversation
                 InlineKeyboardButton::make($plan->is_active ? '🔴 غیرفعال کردن پلن' : '🟢 فعال کردن پلن', callback_data: "admin_plan_toggle:{$plan->id}", style: 'danger')
             )
             ->addRow(
-                InlineKeyboardButton::make('↩️ بازگشت به لیست پلن‌ها', callback_data: 'admin_plan_back', style: 'danger', icon: '5352759161945867747')
+                InlineKeyboardButton::make('↩️ بازگشت به لیست پلن‌ها', callback_data: 'admin_plan_back', style: 'danger', icon_custom_emoji_id: '5352759161945867747')
             )
             ->addRow(
-                InlineKeyboardButton::make('بازگشت به پنل ادمین', callback_data: 'admin_panel', style: 'danger', icon: '5352759161945867747')
+                InlineKeyboardButton::make('بازگشت به پنل ادمین', callback_data: 'admin_panel', style: 'danger', icon_custom_emoji_id: '5352759161945867747')
             );
 
         $bot->sendMessage($msg, reply_markup: $kb);

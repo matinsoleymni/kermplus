@@ -41,7 +41,7 @@ class BroadcastConversation extends Conversation
             )
             ->addRow(
                 \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('👥 همه کاربران', callback_data: 'broadcast_all', style: 'danger'),
-                \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('بازگشت', callback_data: 'admin_panel', style: 'danger', icon: '5352759161945867747')
+                \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('بازگشت', callback_data: 'admin_panel', style: 'danger', icon_custom_emoji_id: '5352759161945867747')
             );
         $bot->sendMessage('📢 به بخش پیام همگانی خوش آمدید! گروه هدف را انتخاب کنید:', reply_markup: $keyboard);
         $this->next('chooseTarget');

@@ -65,4 +65,13 @@ return [
         'reward_plan_id' => env('REFERRAL_REWARD_PLAN_ID'),
     ],
 
+    'kermapp' => [
+        'base_url' => env('KERMAPP_BASE_URL'),
+        'secret'   => env('KERMAPP_BOT_SECRET'),
+    ],
+
+    "go_autofill" => [
+        'url' => env("AUTOFORM_URL", "http://127.0.0.1:8084")
+    ]
+
 ];

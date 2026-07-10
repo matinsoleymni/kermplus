@@ -259,7 +259,7 @@ class SmsBombConversation extends Conversation
     private function promptSmsTarget(Nutgram $bot, ?string $error = null): void
     {
         $keyboard = \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup::make()
-            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('بازگشت به منو', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747'));
+            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('بازگشت به منو', callback_data: 'main_menu', style: 'danger', icon_custom_emoji_id: '5352759161945867747'));
 
         $text = '';
         if ($error) {
@@ -337,7 +337,7 @@ class SmsBombConversation extends Conversation
     private function mainMenuKeyboard(): \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup
     {
         return \SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup::make()
-            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('بازگشت به منو', callback_data: 'main_menu', style: 'danger', icon: '5352759161945867747'));
+            ->addRow(\SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton::make('بازگشت به منو', callback_data: 'main_menu', style: 'danger', icon_custom_emoji_id: '5352759161945867747'));
     }
 
     private function buildScheduleTemplate(?int $startDelay = null, ?int $interval = null, string $currentStep = 'start'): string
@@ -360,10 +360,26 @@ class SmsBombConversation extends Conversation
     private function extractRequestedCount(string $input, int $fallback): int
     {
         $normalized = strtr(trim($input), [
-            '۰' => '0', '۱' => '1', '۲' => '2', '۳' => '3', '۴' => '4',
-            '۵' => '5', '۶' => '6', '۷' => '7', '۸' => '8', '۹' => '9',
-            '٠' => '0', '١' => '1', '٢' => '2', '٣' => '3', '٤' => '4',
-            '٥' => '5', '٦' => '6', '٧' => '7', '٨' => '8', '٩' => '9',
+            '۰' => '0',
+            '۱' => '1',
+            '۲' => '2',
+            '۳' => '3',
+            '۴' => '4',
+            '۵' => '5',
+            '۶' => '6',
+            '۷' => '7',
+            '۸' => '8',
+            '۹' => '9',
+            '٠' => '0',
+            '١' => '1',
+            '٢' => '2',
+            '٣' => '3',
+            '٤' => '4',
+            '٥' => '5',
+            '٦' => '6',
+            '٧' => '7',
+            '٨' => '8',
+            '٩' => '9',
         ]);
 
         if (preg_match('/\d+/', $normalized, $m) !== 1) {
