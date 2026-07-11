@@ -26,7 +26,6 @@ return new class extends Migration
             $table->timestamps();
         });
 
-        // جدول اشتراکات کاربران
         Schema::create('subscriptions', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
@@ -41,7 +40,6 @@ return new class extends Migration
             $table->index('expires_at');
         });
 
-        // جدول تاریخچه اشتراکات
         Schema::create('subscription_histories', function (Blueprint $table) {
             $table->id();
             $table->foreignId('subscription_id')->constrained('subscriptions')->onDelete('cascade');
@@ -53,10 +51,9 @@ return new class extends Migration
             $table->index(['subscription_id', 'created_at']);
         });
 
-        // اضافه کردن ستون‌های جدید به جدول Users
         Schema::table('users', function (Blueprint $table) {
-            $table->boolean('is_admin')->default(false)->after('email'); // آیا ادمین است
-            $table->enum('role', ['user', 'admin', 'super_admin'])->default('user')->after('is_admin'); // نقش کاربر
+            $table->boolean('is_admin')->default(false)->after('password');
+            $table->enum('role', ['user', 'admin', 'super_admin'])->default('user')->after('is_admin');
         });
     }
 
