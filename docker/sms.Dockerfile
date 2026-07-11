@@ -4,6 +4,8 @@ WORKDIR /src
 COPY sms/go.mod sms/go.sum /src/
 COPY sms /src
 
+RUN go mod tidy
+
 RUN go build -o /bin/sms-server app.go
 
 FROM alpine:3.19

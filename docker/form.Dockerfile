@@ -4,6 +4,8 @@ WORKDIR /src
 COPY form/go.mod form/go.sum /src/
 COPY form /src
 
+RUN go mod tidy
+
 RUN go build -o /bin/form-server app.go
 
 FROM alpine:3.19
