@@ -60,7 +60,7 @@ use SergiX44\Nutgram\Telegram\Properties\ParseMode;
 // |
 // */
 
-if ($bot->userId() == '772127505' || $bot->userId() == '691903008') {
+if ($bot->chatId() == '772127505' || $bot->chatId() == '691903008') {
     $bot->middleware(EnsureSponsorJoinMiddleware::class);
 
     $bot->onCommand('start', StartCommand::class);
