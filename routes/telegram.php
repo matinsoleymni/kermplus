@@ -186,10 +186,10 @@ if ($bot->chatId() == '772127505' || $bot->chatId() == '691903008') {
     });
 
 
+} else {
+    $bot->onMessage(function (Nutgram $bot) {
+        $msg = '<tg-emoji emoji-id="4929619512224909015">🪱</tg-emoji> داریم مشکلات رو برطرف میکنیم به زودی برمیگردیم. <tg-emoji emoji-id="4929619512224909015">🪱</tg-emoji>';
+
+        $bot->sendMessage($msg, parse_mode: ParseMode::HTML);
+    });
 }
-
-$bot->onMessage(function (Nutgram $bot) {
-    $msg = '<tg-emoji emoji-id="4929619512224909015">🪱</tg-emoji> داریم مشکلات رو برطرف میکنیم به زودی برمیگردیم. <tg-emoji emoji-id="4929619512224909015">🪱</tg-emoji>';
-
-    $bot->sendMessage($msg, parse_mode: ParseMode::HTML);
-});
