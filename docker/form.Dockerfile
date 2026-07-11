@@ -6,7 +6,7 @@ COPY form /src
 
 RUN go mod tidy
 
-RUN go build -o /bin/form-server app.go
+RUN go build -o /bin/form-server main.go
 
 FROM alpine:3.19
 WORKDIR /app
