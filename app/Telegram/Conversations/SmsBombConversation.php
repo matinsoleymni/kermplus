@@ -2,6 +2,8 @@
 
 namespace App\Telegram\Conversations;
 
+use App\Jobs\SendSmsBombJob;
+use App\Models\UsageRecord;
 use App\Models\WhitelistedTarget;
 use SergiX44\Nutgram\Conversations\Conversation;
 use SergiX44\Nutgram\Nutgram;
@@ -39,7 +41,7 @@ class SmsBombConversation extends Conversation
 
         $local = User::where('telegram_id', $tgUser->id)->first();
         if (!$local) {
-            $bot->sendMessage('ℹ️ حساب شما در سیستم ثبت نشده است. لطفا در وبسایت ثبت‌نام کنید یا به @kermsup پیام بدید.');
+            $bot->sendMessage('خطا');
             $this->end();
             return;
         }
@@ -98,7 +100,7 @@ class SmsBombConversation extends Conversation
             $this->intervalMinutes = 0;
             $this->totalBatches = 1;
             $this->batchSize = self::DEFAULT_SMS_COUNT;
-            $this->promptBatchSize($bot);
+            // $this->promptBatchSize($bot);
             return;
         }
 
@@ -153,7 +155,6 @@ class SmsBombConversation extends Conversation
         $this->displayCount = $this->extractRequestedCount((string) ($bot->message()?->text ?? ''), self::DEFAULT_SMS_COUNT);
 
         if ($this->useCustomSpeed) {
-            // عدد دریافتی در این مرحله فعلا فقط نمایشی است و در درخواست بک‌اند استفاده نمی‌شود.
             $this->batchSize = self::DEFAULT_SMS_COUNT;
         }
 
@@ -180,8 +181,7 @@ class SmsBombConversation extends Conversation
             return;
         }
 
-        // record usage
-        \App\Models\UsageRecord::create([
+        UsageRecord::create([
             'user_id' => $local->id,
             'type' => 'sms',
             'target' => $phone,
@@ -189,7 +189,7 @@ class SmsBombConversation extends Conversation
         ]);
 
         $this->deletePreviousMessages($bot);
-        \App\Jobs\SendSmsBombJob::dispatch($phone, $this->batchSize, $this->totalBatches, $this->intervalMinutes);
+        SendSmsBombJob::dispatch($phone, $this->batchSize, $this->totalBatches, $this->intervalMinutes);
 
         $meta = [
             'batch_size' => $this->batchSize,
@@ -199,12 +199,6 @@ class SmsBombConversation extends Conversation
         ];
 
         $this->sendSmsProgressPreview($bot, $phone, $this->displayCount, $meta);
-        $this->end();
-    }
-
-    public function secondStep(Nutgram $bot)
-    {
-        $bot->sendMessage('Bye!');
         $this->end();
     }
 

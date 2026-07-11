@@ -35,11 +35,37 @@ services:
       - "8000:8000"
     volumes:
       - ./storage:/var/www/html/storage
-      # Removed the SQLite volume mapping
     depends_on:
-      - mariadb # Added dependency on the database
+      - mariadb
       - sms
       - telegram-reporter
+
+  queue:
+      build:
+        context: .
+        dockerfile: docker/laravel.Dockerfile
+      # Override the CMD in the Dockerfile to run the queue worker
+      command: php artisan queue:work --tries=3 --timeout=90
+      restart: unless-stopped
+      env_file:
+        - .env
+      environment:
+        # Copy the exact same environment variables from your 'laravel' service
+        APP_ENV: ${APP_ENV:-production}
+        APP_DEBUG: ${APP_DEBUG:-false}
+        APP_URL: ${APP_URL:-http://localhost:8000}
+        TELEGRAM_API_URL: ${TELEGRAM_API_URL:-http://telegram-bot-api:8081}
+        DB_CONNECTION: mysql
+        DB_HOST: mariadb
+        DB_PORT: 3306
+        DB_DATABASE: ${DB_DATABASE:-laravel}
+        DB_USERNAME: ${DB_USERNAME:-laravel_user}
+        DB_PASSWORD: ${DB_PASSWORD:-secret}
+      volumes:
+        # Shared storage so the queue can access logs, uploads, or cached files
+        - ./storage:/var/www/html/storage
+      depends_on:
+        - mariadb
 
   sms:
     build:

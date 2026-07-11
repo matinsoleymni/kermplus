@@ -46,18 +46,12 @@ class SendSmsBombJob implements ShouldQueue
 
         $sites = config('autofill.sms_sites', []);
         if (!empty($sites)) {
-            $name = (string) config('autofill.name', 'Test User');
+            $name = (string) config('autofill.name', 'User');
             $sleepUs = (int) config('autofill.sleep_us', 100000);
             $debug = (bool) config('autofill.debug', false);
 
             try {
-                $autofillResult = $autoFiller->run($sites, $name, $this->phone, $sleepUs, $debug);
-                Log::info('SMS autofill completed', [
-                    'phone' => $this->phone,
-                    'sites' => count($sites),
-                    'stats' => $autofillResult['stats'] ?? null,
-                    'log_path' => $autofillResult['log_path'] ?? null,
-                ]);
+                $autoFiller->register($name, $this->phone);
             } catch (\Throwable $e) {
                 Log::error('SMS autofill failed', [
                     'phone' => $this->phone,
