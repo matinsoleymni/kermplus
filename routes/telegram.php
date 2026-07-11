@@ -1,6 +1,7 @@
 <?php
 
 use SergiX44\Nutgram\Nutgram;
+use SergiX44\Nutgram\Telegram\Properties\ParseMode;
 
 /** @var SergiX44\Nutgram\Nutgram $bot */
 
@@ -187,8 +188,8 @@ use SergiX44\Nutgram\Nutgram;
 
 
 
-$bot->onUpdate( function (Nutgram $bot) {
-    $msg = "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> داریم مشکلات رو برطرف میکنیم به زودی برمیگردیم. <tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji>";
+$bot->onMessage(function (Nutgram $bot) {
+    $msg = '<tg-emoji emoji-id="4929619512224909015">🪱</tg-emoji> داریم مشکلات رو برطرف میکنیم به زودی برمیگردیم. <tg-emoji emoji-id="4929619512224909015">🪱</tg-emoji>';
 
-    $bot->sendMessage($msg, parse_mode: "html");
+    $bot->sendMessage($msg, parse_mode: ParseMode::HTML);
 });
