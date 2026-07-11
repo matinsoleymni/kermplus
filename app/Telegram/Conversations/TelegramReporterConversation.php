@@ -719,8 +719,19 @@ class TelegramReporterConversation extends BaseReporterConversation
 
     private function formatAccountPreview($chat, string $username): string
     {
-        return "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> KermPlus | Account Found\n" .
+        // بررسی می‌کنیم که آیا اطلاعات اکانت در دسترس است یا خیر
+        if ($chat) {
+            $fullName = trim(($chat->first_name ?? '') . ' ' . ($chat->last_name ?? ''));
+            $nameLine = "🏷️ name: {$fullName}\n";
+            $status = "Account Found";
+        } else {
+            $nameLine = ""; // برای اکانت‌های ناشناس/پرایویت نامی نمایش داده نمی‌شود
+            $status = "Target Selected"; // تغییر متن برای حس بهتر
+        }
+
+        return "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> KermPlus | {$status}\n" .
             "━━━━━━━━━━━━━━━\n" .
+            $nameLine .
             "<tg-emoji emoji-id='4913497231492908158'>👤</tg-emoji> username : @{$username}\n" .
             "━━━━━━━━━━━━━━━\n\n";
     }
@@ -840,11 +851,10 @@ class TelegramReporterConversation extends BaseReporterConversation
                 );
                 return;
             } catch (\Throwable) {
-
             }
         }
 
-        $bot->sendMessage($text, parse_mode: 'HTML', reply_markup: $keyboard, disable_web_page_preview:true);
+        $bot->sendMessage($text, parse_mode: 'HTML', reply_markup: $keyboard, disable_web_page_preview: true);
     }
 
     private function showTelegramReporterMenu(Nutgram $bot): void

@@ -53,7 +53,7 @@ func main() {
 	var err error
 	// ۱. راه‌اندازی مرورگر به صورت سراسری (Singleton) برای جلوگیری از مصرف بی‌رویه RAM
 	globalFiller, err = services.NewAutoFormFiller(
-		services.WithDebug(false), // دیباگ خاموش تا لاگ‌ها شلوغ نشود
+		services.WithDebug(false),
 	)
 	if err != nil {
 		log.Fatalf("❌ خطا در راه‌اندازی مرورگر سرور: %v", err)

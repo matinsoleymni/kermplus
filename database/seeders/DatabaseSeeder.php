@@ -19,10 +19,10 @@ class DatabaseSeeder extends Seeder
             ['name' => 'plus'],
             [
                 'description' => 'دسترسی کامل به همه ویژگی‌ها',
-                'price' => 10.00,
-                'price_usd' => 10.00,
-                'price_irr' => 890000,
-                'price_stars' => 20,
+                'price' => 8.31,
+                'price_usd' => 8.31,
+                'price_irr' => 1480000 ,
+                'price_stars' => 553,
                 'duration_days' => 0, // بدون انقضا
                 'max_sms_per_day' => 0,
                 'max_email_per_day' => 0,
@@ -36,10 +36,10 @@ class DatabaseSeeder extends Seeder
             ['name' => 'pro'],
             [
                 'description' => 'دسترسی به بمبرها و ریپورتر',
-                'price' => 5.00,
-                'price_usd' => 5.00,
-                'price_irr' => 490000,
-                'price_stars' => 10,
+                'price' => 5.50,
+                'price_usd' => 5.50,
+                'price_irr' => 980000,
+                'price_stars' => 366,
                 'duration_days' => 0, // بدون انقضا
                 'max_sms_per_day' => 0,
                 'max_email_per_day' => 0,

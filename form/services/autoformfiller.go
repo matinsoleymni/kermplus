@@ -70,7 +70,7 @@ func NewAutoFormFiller(opts ...Option) (*AutoFormFiller, error) {
 	af := &AutoFormFiller{
 		logs:     make([]string, 0),
 		timeout:  60 * time.Second,
-		headless: false, // برای تحویل به انسان بهتر است false باشد تا تب را ببیند
+		headless: true, 
 	}
 
 	for _, opt := range opts {

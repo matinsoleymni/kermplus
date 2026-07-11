@@ -18,15 +18,18 @@ class NotImplementedHandler
     {
         $tgUser = $bot->user();
         $local = $tgUser ? User::where('telegram_id', $tgUser->id)->first() : null;
-        $hasActiveSubscription = $local
-            ? app(SubscriptionService::class)->hasActiveSubscription($local)
-            : false;
+        // $hasActiveSubscription = $local
+        //     ? app(SubscriptionService::class)->hasActiveSubscription($local)
+        //     : false;
 
-        $message = $hasActiveSubscription ? self::COMING_SOON_MESSAGE : self::PLUS_REQUIRED_MESSAGE;
-        $keyboard = $hasActiveSubscription
-            ? BackToMainKeyboard::make()
-            : PlusRequiredKeyboard::make('main_menu');
+        // $message = $hasActiveSubscription ? self::COMING_SOON_MESSAGE : self::PLUS_REQUIRED_MESSAGE;
+        // $keyboard = $hasActiveSubscription
+        //     ? BackToMainKeyboard::make()
+        //     : PlusRequiredKeyboard::make('main_menu');
 
+         $message = self::COMING_SOON_MESSAGE;
+         $keyboard = BackToMainKeyboard::make();
+         
         try {
             $bot->editMessageText(
                 $message,

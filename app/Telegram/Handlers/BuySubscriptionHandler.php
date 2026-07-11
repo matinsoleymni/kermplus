@@ -61,7 +61,7 @@ class BuySubscriptionHandler
         $keyboard = InlineKeyboardMarkup::make()
             ->addRow(InlineKeyboardButton::make('پرداخت کریپتویی (ارز ترون یا تون)', callback_data: 'buy_sub_crypto', style: 'danger', icon_custom_emoji_id: '5361656830944624968'))
             ->addRow(InlineKeyboardButton::make('پرداخت با استارز (واحد پول تلگرام)', callback_data: 'buy_sub_star', style: 'danger', icon_custom_emoji_id: '5958376256788502078'))
-            ->addRow(InlineKeyboardButton::make('پرداخت با زیر مجموعه', callback_data: 'buy_sub_referral', style: 'danger', icon_custom_emoji_id: '4913497231492908158'))
+            // ->addRow(InlineKeyboardButton::make('پرداخت با زیر مجموعه', callback_data: 'buy_sub_referral', style: 'danger', icon_custom_emoji_id: '4913497231492908158'))
             ->addRow(InlineKeyboardButton::make('پرداخت تومانی (با کمی معطلی)', url: 'https://t.me/kermsup', style: 'danger', icon_custom_emoji_id: '5472250091332993630'))
             ->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'danger', icon_custom_emoji_id: '5352759161945867747'));
 

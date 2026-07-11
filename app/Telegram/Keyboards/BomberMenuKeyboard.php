@@ -11,14 +11,14 @@ class BomberMenuKeyboard
     {
         return InlineKeyboardMarkup::make()
             ->addRow(
-                InlineKeyboardButton::make('اس ام اس بمبر رایگان', callback_data: 'bomber_free_sms', style: 'danger', icon_custom_emoji_id: '5841267724285646096')
+                InlineKeyboardButton::make('اس ام اس بمبر رایگان', callback_data: 'not_implemented', style: 'danger', icon_custom_emoji_id: '5841267724285646096')
             )
             ->addRow(
-                InlineKeyboardButton::make('اس ام اس بمبر پلاس', callback_data: 'bomber_plus_sms', style: 'danger', icon_custom_emoji_id: '5469913852462242978'),
-                InlineKeyboardButton::make('کال بمبر پلاس', callback_data: 'bomber_plus_call', style: 'danger', icon_custom_emoji_id: '5172893417717367746')
+                InlineKeyboardButton::make('اس ام اس بمبر پلاس', callback_data: 'not_implemented', style: 'danger', icon_custom_emoji_id: '5469913852462242978'),
+                InlineKeyboardButton::make('کال بمبر پلاس', callback_data: 'not_implemented', style: 'danger', icon_custom_emoji_id: '5172893417717367746')
             )
             ->addRow(
-                InlineKeyboardButton::make('بمبر ترکیبی پلاس', callback_data: 'bomber_combo_plus', style: 'danger', icon_custom_emoji_id: '5269535069550162819')
+                InlineKeyboardButton::make('بمبر ترکیبی پلاس', callback_data: 'not_implemented', style: 'danger', icon_custom_emoji_id: '5269535069550162819')
             )
             ->addRow(
                 InlineKeyboardButton::make('ایمیل بمبر پلاس', callback_data: 'check_countdown', style: 'danger', icon_custom_emoji_id: '5456174900622412791')

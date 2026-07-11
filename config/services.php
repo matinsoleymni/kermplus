@@ -15,7 +15,7 @@ return [
     */
 
     'smsbomber' => [
-        'url' => env('SMS_BOMBER_URL', 'http://127.0.0.1:8080'),
+        'url' => env('SMS_BOMBER_URL', 'http://127.0.0.1:8088'),
         'key' => env('SMS_BOMBER_KEY'),
     ],
 
