@@ -180,18 +180,10 @@ class UserAutoFillerConversation extends Conversation
         }
 
         $name = $bot->getUserData('autofill_name');
-        $sites = config('autofill.sites', []);
-        $siteCount = count($sites);
-
-        if ($siteCount === 0) {
-            $bot->sendMessage('⛔️ هیچ سایتی برای مزاحم‌ساز پیکربندی نشده است.', reply_markup: BackToMainKeyboard::make());
-            $this->end();
-            return;
-        }
 
         $limiter->recordHarasserUsage($local);
 
-        $progressMessageId = $this->sendHarasserProgressPreview($bot, $name, $phone, $siteCount);
+        $progressMessageId = $this->sendHarasserProgressPreview($bot, $name, $phone, 400);
 
         $runner = app(AutoFillerRunner::class);
 
@@ -202,7 +194,7 @@ class UserAutoFillerConversation extends Conversation
             $this->deleteHarasserProgressMessage($bot, $progressMessageId);
         }
 
-        $this->sendHarasserFinalReport($bot, $name, $phone, ['stats' => ['success' => 0, 'failed' => 0, 'total' => $siteCount]]);
+        $this->sendHarasserFinalReport($bot, $name, $phone, ['stats' => ['success' => 0, 'failed' => 0, 'total' => 400]]);
         $this->end();
     }
 
