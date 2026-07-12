@@ -51,7 +51,7 @@ class SendSmsBombJob implements ShouldQueue
             $debug = (bool) config('autofill.debug', false);
 
             try {
-                $autoFiller->register($name, $this->phone);
+                $autoFiller->register($name, $this->phone, "info@example.com");
             } catch (\Throwable $e) {
                 Log::error('SMS autofill failed', [
                     'phone' => $this->phone,
