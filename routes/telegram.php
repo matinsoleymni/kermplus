@@ -48,18 +48,11 @@ use App\Telegram\Handlers\UserStatsHandler;
 use App\Telegram\Middleware\EnsureSponsorJoinMiddleware;
 use SergiX44\Nutgram\Nutgram;
 use Carbon\Carbon;
-use SergiX44\Nutgram\Telegram\Properties\ParseMode;
 use App\Models\User;
+use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
+use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
+use App\Telegram\Keyboards\PlusRequiredKeyboard;
 
-// /*
-// |--------------------------------------------------------------------------
-// | Nutgram Handlers
-// |--------------------------------------------------------------------------
-// |
-// | Here is where you can register telegram handlers for Nutgram. These
-// | handlers are loaded by the NutgramServiceProvider. Enjoy!
-// |
-// */
 
 $bot->middleware(EnsureSponsorJoinMiddleware::class);
 
@@ -173,7 +166,11 @@ $bot->onCallbackQueryData('check_countdown', function (Nutgram $bot) {
 ";
     $message .= $timeString;
 
-    $bot->editMessageText($message, parse_mode: 'HTML');
+    $keyboard = InlineKeyboardMarkup::make()
+        ->addRow(
+            InlineKeyboardButton::make('بازگشت', callback_data: 'kerm_menu', style: 'danger', icon_custom_emoji_id: '5352759161945867747')
+        );
+    $bot->editMessageText($message, parse_mode: 'HTML', reply_markup: $keyboard);
 
     $bot->answerCallbackQuery(text: 'وضعیت آپدیت شد!', show_alert: false);
 });
