@@ -12,7 +12,7 @@ trait SendsSmsProgress
     protected function sendSmsProgressPreview(Nutgram $bot, string $phone, int $count, array $meta = []): void
     {
         // زمان کل را بین 40 تا 45 ثانیه رندوم در نظر می‌گیریم
-        $targetTime = random_int(40, 45);
+        $targetTime = random_int(20, 22);
 
         // تعداد دفعاتی که پیام در تلگرام ادیت می‌شود (برای جلوگیری از بن شدن ربات، هر 2 الی 4 ثانیه یک بار)
         $totalSteps = random_int(6, 10);
