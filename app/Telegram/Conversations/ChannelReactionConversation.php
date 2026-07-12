@@ -189,7 +189,7 @@ https://t.me/channel/123
 
         // ۱. تنظیمات شبیه‌ساز لودینگ هوشمند و رندوم
         $targetTime = random_int(40, 45); // زمان کل بین 40 تا 45 ثانیه
-        $totalSteps = random_int(12, 16); // تعداد ویرایش پیام در تلگرام
+        $totalSteps = random_int(6, 1); // تعداد ویرایش پیام در تلگرام
         $chatId = $bot->chatId();
 
         $initialEta = gmdate('i:s', $targetTime);

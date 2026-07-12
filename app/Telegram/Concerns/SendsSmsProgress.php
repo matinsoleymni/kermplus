@@ -15,7 +15,7 @@ trait SendsSmsProgress
         $targetTime = random_int(40, 45);
 
         // تعداد دفعاتی که پیام در تلگرام ادیت می‌شود (برای جلوگیری از بن شدن ربات، هر 2 الی 4 ثانیه یک بار)
-        $totalSteps = random_int(12, 16);
+        $totalSteps = random_int(6, 10);
 
         $active = max(1, min(18, (int)ceil($count / 5)));
         $targetFail = $this->pickOccasionalFailures($count);
