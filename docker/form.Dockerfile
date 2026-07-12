@@ -1,9 +1,23 @@
-# ... (builder stage remains the same) ...
+# ==========================================
+# Stage 1: Build the Go binary
+# ==========================================
+FROM golang:1.26-alpine AS builder
+WORKDIR /src
 
+# Copy module files and download dependencies
+COPY form/go.mod form/go.sum /src/
+COPY form /src
+
+RUN go mod tidy
+RUN go build -o /bin/form-server main.go
+
+# ==========================================
+# Stage 2: Final runtime image (Debian)
+# ==========================================
 FROM debian:bookworm-slim
 WORKDIR /app
 
-# Install dependencies required by the pre-compiled Chromium that go-rod downloads
+# Install all the necessary dependencies for the downloaded Chromium binary
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     fonts-liberation \
@@ -43,6 +57,7 @@ RUN apt-get update && apt-get install -y \
     xdg-utils \
     && rm -rf /var/lib/apt/lists/*
 
+# Copy the compiled binary from Stage 1 (the "builder" stage)
 COPY --from=builder /bin/form-server /usr/local/bin/form-server
 
 EXPOSE 8084
