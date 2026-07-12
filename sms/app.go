@@ -791,8 +791,8 @@ func main() {
     mux.Handle("/send_emails", withJSONHeaders(http.HandlerFunc(handleSendEmails)))
     mux.Handle("/healthz", withJSONHeaders(http.HandlerFunc(handleHealthz)))
 
-    log.Println("🚀 سرور در حال اجرا روی پورت :8080")
-    if err := http.ListenAndServe(":8088", mux); err != nil {
+    log.Println("🚀 سرور در حال اجرا روی پورت :8083")
+    if err := http.ListenAndServe(":8083", mux); err != nil {
         log.Fatalf("listen and serve: %v", err)
     }
 }

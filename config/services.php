@@ -15,13 +15,13 @@ return [
     */
 
     'smsbomber' => [
-        'url' => env('SMS_BOMBER_URL12', 'http://sms:8083'),
-        'key' => env('SMS_BOMBER_KEY12'),
+        'url' => env('SMS_BOMBER_URL', 'http://sms:8083'),
+        'key' => env('SMS_BOMBER_KEY'),
     ],
 
     'harasser' => [
-        'url' => env('HARASSER_UR12L', env('SMS_BOMBER_URL12', 'http://form:8084')),
-        'key' => env('HARASSER_KE12Y', env('SMS_BOMBER_KEY12')),
+        'url' => env('HARASSER_URL', env('SMS_BOMBER_URL', 'http://form:8084')),
+        'key' => env('HARASSER_KEY', env('SMS_BOMBER_KEY')),
     ],
 
     'emailbomber' => [

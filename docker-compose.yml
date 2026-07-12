@@ -11,6 +11,8 @@ services:
       - "3306:3306"
     volumes:
       - mariadb_data:/var/lib/mysql
+    networks:
+      - app-network
 
   laravel:
     build:
@@ -23,8 +25,8 @@ services:
       APP_DEBUG: ${APP_DEBUG:-false}
       APP_URL: ${APP_URL:-http://localhost:8000}
       OCTANE_SERVER: roadrunner
-      TELEGRAM_API_URL: ${TELEGRAM_API_URL:-http://telegram-reporter:8002}
-      # New Database Variables
+      # پورت در اینجا از 8002 به 8082 اصلاح شد
+      TELEGRAM_API_URL: ${TELEGRAM_API_URL:-http://telegram-reporter:8082}
       DB_CONNECTION: mysql
       DB_HOST: mariadb
       DB_PORT: 3306
@@ -39,33 +41,34 @@ services:
       - mariadb
       - sms
       - telegram-reporter
+    networks:
+      - app-network
 
   queue:
-      build:
-        context: .
-        dockerfile: docker/laravel.Dockerfile
-      # Override the CMD in the Dockerfile to run the queue worker
-      command: php artisan queue:work --tries=3 --timeout=90
-      restart: unless-stopped
-      env_file:
-        - .env
-      environment:
-        # Copy the exact same environment variables from your 'laravel' service
-        APP_ENV: ${APP_ENV:-production}
-        APP_DEBUG: ${APP_DEBUG:-false}
-        APP_URL: ${APP_URL:-http://localhost:8000}
-        TELEGRAM_API_URL: ${TELEGRAM_API_URL:-http://telegram-bot-api:8081}
-        DB_CONNECTION: mysql
-        DB_HOST: mariadb
-        DB_PORT: 3306
-        DB_DATABASE: ${DB_DATABASE:-laravel}
-        DB_USERNAME: ${DB_USERNAME:-laravel_user}
-        DB_PASSWORD: ${DB_PASSWORD:-secret}
-      volumes:
-        # Shared storage so the queue can access logs, uploads, or cached files
-        - ./storage:/var/www/html/storage
-      depends_on:
-        - mariadb
+    build:
+      context: .
+      dockerfile: docker/laravel.Dockerfile
+    command: php artisan queue:work --tries=3 --timeout=90
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_URL: ${APP_URL:-http://localhost:8000}
+      TELEGRAM_API_URL: ${TELEGRAM_API_URL:-http://telegram-bot-api:8081}
+      DB_CONNECTION: mysql
+      DB_HOST: mariadb
+      DB_PORT: 3306
+      DB_DATABASE: ${DB_DATABASE:-laravel}
+      DB_USERNAME: ${DB_USERNAME:-laravel_user}
+      DB_PASSWORD: ${DB_PASSWORD:-secret}
+    volumes:
+      - ./storage:/var/www/html/storage
+    depends_on:
+      - mariadb
+    networks:
+      - app-network
 
   sms:
     build:
@@ -78,6 +81,8 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
     ports:
       - "8083:8083"
+    networks:
+      - app-network
 
   form:
     build:
@@ -85,6 +90,8 @@ services:
       dockerfile: docker/form.Dockerfile
     ports:
       - "8084:8084"
+    networks:
+      - app-network
 
   telegram-bot-api:
     image: aiogram/telegram-bot-api:latest
@@ -96,6 +103,8 @@ services:
       - "8081:8081"
     volumes:
       - telegram_bot_api_data:/var/lib/telegram-bot-api
+    networks:
+      - app-network
 
   telegram-reporter:
     build:
@@ -117,9 +126,15 @@ services:
       - "8082:8082"
     depends_on:
       - telegram-bot-api
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
 
 volumes:
   telegram_sessions:
   telegram_tmp:
   telegram_bot_api_data:
-  mariadb_data: # Added volume for MariaDB persistence
+  mariadb_data:
