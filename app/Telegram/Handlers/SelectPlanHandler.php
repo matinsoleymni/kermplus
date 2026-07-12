@@ -28,8 +28,6 @@ class SelectPlanHandler
 
         $data = $bot->callbackQuery()?->data ?? '';
 
-        // 🛑 اصلاح شد: اگر دکمه بررسی پرداخت نبود، کالبک را سریع تایید کن تا لودینگ دکمه برود.
-        // برای بررسی پرداخت، خودمان جلوتر پاسخ اختصاصی (با متن پاپ‌آپ) می‌فرستیم.
         if ($bot->callbackQuery() && !str_starts_with($data, 'check_pay:')) {
             $bot->answerCallbackQuery();
         }
@@ -54,7 +52,6 @@ class SelectPlanHandler
             return;
         }
 
-        // 🔄 اصلاح شد: تبدیل pay_check به check_pay برای همخوانی با دکمه ایجاد شده
         if (preg_match('/^check_pay:(\d+)$/', $data, $m)) {
             $this->handleCheckPayment($bot, $local, (int) $m[1]);
             return;

@@ -146,4 +146,29 @@ class User extends Authenticatable
     {
         $this->update(['free_email_used' => true]);
     }
+
+    public function hasActiveSubscription(string $planName): bool
+    {
+        return $this->subscriptions->contains(function ($subscription) use ($planName) {
+            return $subscription->isActive() &&
+                    strtolower($subscription->plan->name) === strtolower($planName);
+        });
+    }
+
+    public function hasPlusSubscription(): bool
+    {
+        return $this->hasActiveSubscription('plus');
+    }
+
+    public function hasProSubscription(): bool
+    {
+        return $this->hasActiveSubscription('pro');
+    }
+
+    public function hasAnyActiveSubscription(): bool
+    {
+        return $this->subscriptions->contains(function ($subscription) {
+            return $subscription->isActive();
+        });
+    }
 }

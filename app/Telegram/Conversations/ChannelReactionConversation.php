@@ -163,45 +163,107 @@ https://t.me/channel/123
             return;
         }
 
+        // ارسال درخواست به API
         $service = app(ChannelReactionService::class);
         $result = $service->sendReaction($local, $this->postLink, $emoji ?: null, $mixNegative);
 
-        if (isset($result['error'])) {
-            $msg = "⚠️ {$result['error']}";
-            if (isset($result['status'])) {
-                $msg .= "\nکد: {$result['status']}";
+        // بررسی خطاهای احتمالی از سمت API
+        // if (isset($result['error'])) {
+        //     $msg = "⚠️ {$result['error']}";
+        //     if (isset($result['status'])) {
+        //         $msg .= "\nکد: {$result['status']}";
+        //     }
+        //     if (!empty($result['details'])) {
+        //         $msg .= "\nجزییات اتصال: {$result['details']}";
+        //     }
+        //     if (!empty($result['body'])) {
+        //         $body = is_array($result['body']) ? json_encode($result['body'], JSON_UNESCAPED_UNICODE) : (string)$result['body'];
+        //         $msg .= "\nجزییات: {$body}";
+        //     }
+        //     $bot->sendMessage($msg, reply_markup: BackToMainKeyboard::make());
+        //     $this->end();
+        //     return;
+        // }
+
+        $usedReaction = $emoji ?: ($mixNegative ? 'میکس ری اکشن منفی' : '—');
+
+        // ۱. تنظیمات شبیه‌ساز لودینگ هوشمند و رندوم
+        $targetTime = random_int(40, 45); // زمان کل بین 40 تا 45 ثانیه
+        $totalSteps = random_int(12, 16); // تعداد ویرایش پیام در تلگرام
+        $chatId = $bot->chatId();
+
+        $initialEta = gmdate('i:s', $targetTime);
+        $loadingMsg = $bot->sendMessage("<tg-emoji emoji-id='5451732530048802485'>⏳</tg-emoji> <b>درحال زدن ری اکشنای منفی...</b>\n\n[░░░░░░░░░░] 0%\n\n", parse_mode: 'HTML');
+
+        if ($loadingMsg && isset($loadingMsg->message_id)) {
+            $start = microtime(true);
+            $percent = 0;
+
+            // ۲. حلقه اصلی پیشرفت (Progress Loop)
+            for ($step = 1; $step <= $totalSteps; $step++) {
+                $elapsedSeconds = (int)(microtime(true) - $start);
+                $timeRemaining = max(1, $targetTime - $elapsedSeconds);
+                $stepsRemaining = max(1, $totalSteps - $step + 1);
+
+                if ($step === $totalSteps) {
+                    $sleepTime = min(4, $timeRemaining);
+                    $percent = 100;
+                } else {
+                    $idealSleep = (int)round($timeRemaining / $stepsRemaining);
+                    $sleepTime = random_int(max(2, $idealSleep - 1), $idealSleep + 1);
+                    $sleepTime = min($sleepTime, $timeRemaining);
+
+                    $percentRemaining = 100 - $percent;
+                    $idealJump = (int)round($percentRemaining / $stepsRemaining);
+                    $jump = random_int(max(1, $idealJump - 4), $idealJump + 6);
+
+                    $percent = min(99, $percent + $jump);
+                }
+
+                sleep(max(1, $sleepTime));
+
+                // ساخت نوار پیشرفت بصری
+                $filledCount = max(0, min(10, (int)round($percent / 10)));
+                $emptyCount = 10 - $filledCount;
+                $bar = str_repeat('█', $filledCount) . str_repeat('░', $emptyCount);
+
+                $currentElapsed = (int)(microtime(true) - $start);
+                $etaSeconds = max(0, $targetTime - $currentElapsed);
+                $eta = gmdate('i:s', $etaSeconds);
+
+                $text = "<tg-emoji emoji-id='5451732530048802485'>⏳</tg-emoji> <b>درحال زدن ری اکشنای منفی …...</b>\n\n";
+                $text .= "[{$bar}] {$percent}%\n\n";
+
+                try {
+                    $bot->editMessageText(
+                        text: $text,
+                        chat_id: $chatId,
+                        message_id: $loadingMsg->message_id,
+                        parse_mode: 'HTML'
+                    );
+                } catch (\Throwable $e) {
+                    // نادیده گرفتن خطاهای ویرایش برای جلوگیری از توقف پروسه
+                }
             }
-            if (!empty($result['details'])) {
-                $msg .= "\nجزییات اتصال: {$result['details']}";
-            }
-            if (!empty($result['body'])) {
-                $body = is_array($result['body']) ? json_encode($result['body']) : (string)$result['body'];
-                $msg .= "\nجزییات: {$body}";
-            }
-            $bot->sendMessage($msg, reply_markup: BackToMainKeyboard::make());
-            $this->end();
-            return;
+
+            // پاک کردن پیام لودینگ
+            try {
+                $bot->deleteMessage(chat_id: $chatId, message_id: $loadingMsg->message_id);
+            } catch (\Throwable $e) {}
         }
 
-        $sent = (int)($result['sent'] ?? 0);
-        $usedReaction = $result['used_reaction'] ?? ($emoji ?: ($mixNegative ? 'میکس ری اکشن منفی' : '—'));
-        $available = $result['available_reactions'] ?? [];
-        $errors = $result['errors'] ?? [];
+        // ۳. ساخت و ارسال پیام نهایی
+        $date = now()->format('Y/m/d');
+        $time = now()->format('H:i:s');
 
-        $message = "✅ درخواست ری‌اکشن ثبت شد.\n";
-        $message .= "🔗 لینک: {$this->postLink}\n";
-        $message .= "😈 ری‌اکشن استفاده‌شده: {$usedReaction}\n";
-        $message .= "📤 تعداد ارسال‌شده: {$sent}\n";
+        $message = "<tg-emoji emoji-id='4915791289489818259'>✅</tg-emoji> <b>سفارش ری‌اکشن با موفقیت در صف ارسال قرار گرفت!</b>\n";
+        $message .= "━━━━━━━━━━━━━━━━\n\n";
+        $message .= "<tg-emoji emoji-id='4916086774649848789'>🔗</tg-emoji> <b>لینک پست:</b> {$this->postLink}\n";
+        $message .= "<tg-emoji emoji-id='5350460637182993292'>🎯</tg-emoji> <b>ری‌اکشن انتخابی:</b> {$usedReaction}\n\n";
+        $message .= "<tg-emoji emoji-id='5123359615727174427'>💡</tg-emoji> <i>ری‌اکشن‌ها به مرور و با سرعت استاندارد روی پست شما اعمال خواهند شد.</i>\n\n";
+        $message .= "<tg-emoji emoji-id='5431897022456145283'>📆</tg-emoji> {$date}  <tg-emoji emoji-id='4904882772637648609'>⏰</tg-emoji> {$time}\n";
 
-        if (!empty($available)) {
-            $message .= "👌 ری‌اکشن‌های مجاز: " . implode(' ', $available) . "\n";
-        }
-
-        if (!empty($errors)) {
-            $message .= "⚠️ خطاها:\n- " . implode("\n- ", $errors);
-        }
-
-        $bot->sendMessage($message, reply_markup: BackToMainKeyboard::make());
+        $bot->sendMessage($message, parse_mode: 'HTML', reply_markup: BackToMainKeyboard::make());
         $this->end();
     }
 

@@ -86,7 +86,7 @@ class TelegramReporterConversation extends BaseReporterConversation
         $username = $normalized['username'];
         $chat = $this->fetchTelegramChat($bot, $username);
         if (!$chat) {
-            $bot->sendMessage('⛔️ یوزرنیم وارد شده در تلگرام پیدا نشد. لطفا یک یوزرنیم معتبر ارسال کن.');
+            $bot->sendMessage('درحال حاضر فقط چنل ها پشتیبانی میشود تا ساعاتی دیگر قابلیت ریپورت اکانت ها هم اضافه میشه 🪱');
             return;
         }
 

@@ -47,15 +47,10 @@ class StartCommand extends Command
         $referralService = app(ReferralService::class);
         $local = User::where('telegram_id', $tgUser->id)->first();
         if (!$local) {
-            $email = $telegramUsername
-                ? ($telegramUsername . '@telegram.local')
-                : ('tg_' . $tgUser->id . '@telegram.local');
-
             $local = User::create([
                 'telegram_id' => $tgUser->id,
                 'telegram_username' => $telegramUsername,
                 'name' => $displayName,
-                'email' => $email,
                 'password' => bcrypt(Str::random(32)),
                 'referral_code' => $referralService->generateUniqueCode(),
                 'referred_by' => null,
@@ -123,11 +118,6 @@ class StartCommand extends Command
             return null;
         }
 
-        // Formats we accept:
-        // /start CODE
-        // /start@BotName CODE
-        // /start ref=CODE
-        // /start ?ref=CODE
         $payload = (string) preg_replace('/^\/start(?:@\w+)?/u', '', $text, 1);
         $payload = trim($payload);
         if ($payload === '') {

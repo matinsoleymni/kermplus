@@ -4,17 +4,25 @@ namespace App\Telegram\Concerns;
 
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Types\Internal\InputFile;
+use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
+use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 
 trait SendsSmsProgress
 {
     protected function sendSmsProgressPreview(Nutgram $bot, string $phone, int $count, array $meta = []): void
     {
-        $totalSteps = 5;
-        $delayPerStep = 1;
+        // زمان کل را بین 40 تا 45 ثانیه رندوم در نظر می‌گیریم
+        $targetTime = random_int(40, 45);
+
+        // تعداد دفعاتی که پیام در تلگرام ادیت می‌شود (برای جلوگیری از بن شدن ربات، هر 2 الی 4 ثانیه یک بار)
+        $totalSteps = random_int(12, 16);
+
         $active = max(1, min(18, (int)ceil($count / 5)));
         $targetFail = $this->pickOccasionalFailures($count);
         $retry = max(0, (int)floor($count * 0.1));
         $animationPath = public_path('images/bomber.mp4');
+
+        // ارسال پیام اولیه
         $initialMessage = $this->buildSmsProcessingMessage(
             percent: 0,
             step: 1,
@@ -28,8 +36,8 @@ trait SendsSmsProgress
             fail: 0,
             retry: $retry,
             elapsed: '00:00:00',
-            eta: '~' . gmdate('H:i:s', $delayPerStep * ($totalSteps - 1)),
-            statuses: $this->buildSmsStatusLines(1),
+            eta: '~' . gmdate('H:i:s', $targetTime),
+            statuses: $this->buildSmsStatusLines(0), // تغییر: الان بر اساس درصد کار می‌کند
             meta: $meta
         );
 
@@ -58,16 +66,36 @@ trait SendsSmsProgress
         }
 
         $progressMessageId = $progressMsg->message_id;
-        $queue = $count;
-        $done = 0;
-        $ok = 0;
-        $fail = 0;
         $start = microtime(true);
+        $percent = 0;
 
-        for ($i = 1; $i <= $totalSteps; $i++) {
-            sleep($delayPerStep);
+        // حلقه اصلی پیشرفت (Progress Loop)
+        for ($step = 1; $step <= $totalSteps; $step++) {
+            $elapsedSeconds = (int)(microtime(true) - $start);
+            $timeRemaining = max(1, $targetTime - $elapsedSeconds);
+            $stepsRemaining = max(1, $totalSteps - $step + 1);
 
-            $percent = (int)(($i / $totalSteps) * 100);
+            if ($step === $totalSteps) {
+                // در مرحله آخر، مطمئن می‌شویم که به 100% می‌رسد
+                $sleepTime = min(4, $timeRemaining);
+                $percent = 100;
+            } else {
+                // محاسبه یک زمان مکث رندوم ولی متناسب با زمان باقی‌مانده (معمولا بین 2 تا 4 ثانیه)
+                $idealSleep = (int)round($timeRemaining / $stepsRemaining);
+                $sleepTime = random_int(max(2, $idealSleep - 1), $idealSleep + 1);
+                $sleepTime = min($sleepTime, $timeRemaining);
+
+                // محاسبه یک پرش درصد رندوم بر اساس درصدهای باقی‌مانده (مثلا یه بار 3%، یه بار 14%)
+                $percentRemaining = 100 - $percent;
+                $idealJump = (int)round($percentRemaining / $stepsRemaining);
+                $jump = random_int(max(1, $idealJump - 4), $idealJump + 6);
+
+                $percent = min(99, $percent + $jump); // تا قبل از مرحله آخر از 99% بالاتر نرود
+            }
+
+            sleep(max(1, $sleepTime));
+
+            // آپدیت آمارهای واقعی بر اساس درصد فعلی
             $done = min($count, (int)round(($percent / 100) * $count));
             $queue = max(0, $count - $done);
             $fail = min($targetFail, (int)floor(($done / max(1, $count)) * $targetFail));
@@ -76,12 +104,12 @@ trait SendsSmsProgress
 
             $elapsedSeconds = (int)(microtime(true) - $start);
             $elapsed = gmdate('H:i:s', $elapsedSeconds);
-            $etaSeconds = max(0, ($totalSteps - $i) * $delayPerStep);
+            $etaSeconds = max(0, $targetTime - $elapsedSeconds);
             $eta = '~' . gmdate('H:i:s', $etaSeconds);
 
             $messageText = $this->buildSmsProcessingMessage(
                 percent: $percent,
-                step: $i,
+                step: $step,
                 totalSteps: $totalSteps,
                 phone: $phone,
                 count: $count,
@@ -93,7 +121,7 @@ trait SendsSmsProgress
                 retry: $retry,
                 elapsed: $elapsed,
                 eta: $eta,
-                statuses: $this->buildSmsStatusLines($i + 1),
+                statuses: $this->buildSmsStatusLines($percent),
                 meta: $meta
             );
 
@@ -114,7 +142,7 @@ trait SendsSmsProgress
                     );
                 }
             } catch (\Throwable $e) {
-                // ignore edit errors to avoid breaking the flow
+                // نادیده گرفتن خطاها برای جلوگیری از توقف عملیات
             }
         }
 
@@ -153,29 +181,35 @@ trait SendsSmsProgress
             "rate: 12/s backoff: 2.5s\n" .
             "elapsed: {$elapsed} ETA: {$eta}\n\n" .
             "{$statusBlock}\n\n" .
-            "trace: job=sms mode=queue gate=open\n" .
+            "trace: job=sms mode=queue gate=open</blockquote>\n" .
             "Please wait...\n\n" .
             "<tg-emoji emoji-id='5431897022456145283'>📆</tg-emoji> {$date}  <tg-emoji emoji-id='4904882772637648609'>⏰</tg-emoji> {$time}\n" .
             "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> @NitroHostBot <tg-emoji emoji-id='4927295007204836791'>🪱</tg-emoji>";
     }
 
-    private function buildSmsStatusLines(int $step): array
+    private function buildSmsStatusLines(int $percent): array
     {
         $lines = [
             "<tg-emoji emoji-id='5134183530313548836'>🧪</tg-emoji> validate inputs      [ OK ]",
-            "<tg-emoji emoji-id='5116093437300442328'>⚡️</tg-emoji> open connections     [ OK ]",
-            "<tg-emoji emoji-id='5292226786229236118'>🔄</tg-emoji> process batch #09    [ .. ]",
+            "<tg-emoji emoji-id='5116093437300442328'>⚡️</tg-emoji> open connections     [ .. ]",
+            "<tg-emoji emoji-id='5292226786229236118'>🔄</tg-emoji> process batch #09    [ -- ]",
             "<tg-emoji emoji-id='5334882760735598374'>📝</tg-emoji> write results        [ -- ]",
-            "<tg-emoji emoji-id='5411520005386806155'>🏁</tg-emoji> finalize             [ -- ]</blockquote>",
+            "<tg-emoji emoji-id='5411520005386806155'>🏁</tg-emoji> finalize             [ -- ]",
         ];
 
-        if ($step >= 3) {
+        if ($percent >= 10) {
+            $lines[1] = "<tg-emoji emoji-id='5116093437300442328'>⚡️</tg-emoji> open connections     [ OK ]";
+            $lines[2] = "<tg-emoji emoji-id='5292226786229236118'>🔄</tg-emoji> process batch #09    [ .. ]";
+        }
+        if ($percent >= 30) {
             $lines[2] = "<tg-emoji emoji-id='5292226786229236118'>🔄</tg-emoji> process batch #09    [ OK ]";
+            $lines[3] = "<tg-emoji emoji-id='5334882760735598374'>📝</tg-emoji> write results        [ .. ]";
         }
-        if ($step >= 4) {
+        if ($percent >= 85) {
             $lines[3] = "<tg-emoji emoji-id='5334882760735598374'>📝</tg-emoji> write results        [ OK ]";
+            $lines[4] = "<tg-emoji emoji-id='5411520005386806155'>🏁</tg-emoji> finalize             [ .. ]";
         }
-        if ($step >= 5) {
+        if ($percent >= 100) {
             $lines[4] = "<tg-emoji emoji-id='5411520005386806155'>🏁</tg-emoji> finalize             [ OK ]";
         }
 
@@ -222,13 +256,17 @@ trait SendsSmsProgress
             "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> @NitroHostBot <tg-emoji emoji-id='4927295007204836791'>🪱</tg-emoji>";
 
         $animationPath = public_path('images/bomber.mp4');
-
+            $keyboard = InlineKeyboardMarkup::make()
+            ->addRow(
+                InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'danger', icon_custom_emoji_id: '5352759161945867747')
+            );
         try {
             if (is_readable($animationPath)) {
                 $bot->sendAnimation(
                     animation: InputFile::make($animationPath, 'bomber.mp4'),
                     caption: $message,
-                    parse_mode: 'HTML'
+                    parse_mode: 'HTML',
+                    reply_markup: $keyboard
                 );
                 return;
             }

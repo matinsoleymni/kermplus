@@ -27,25 +27,9 @@ class NotImplementedHandler
         //     ? BackToMainKeyboard::make()
         //     : PlusRequiredKeyboard::make('main_menu');
 
-         $message = self::COMING_SOON_MESSAGE;
-         $keyboard = BackToMainKeyboard::make();
-         
-        try {
-            $bot->editMessageText(
-                $message,
-                parse_mode: 'HTML',
-                reply_markup: $keyboard
-            );
-        } catch (Throwable $e) {
-            $bot->sendMessage(
-                $message,
-                parse_mode: 'HTML',
-                reply_markup: $keyboard
-            );
+        //  $message = self::COMING_SOON_MESSAGE;
+        //  $keyboard = BackToMainKeyboard::make();
 
-            logger()->warning('Failed to edit not implemented message, sending a new message instead.', [
-                'error' => $e->getMessage(),
-            ]);
-        }
+        $bot->answerCallbackQuery(text: 'این بخش بزودی در دسترس قرار میگیره 🪱', show_alert: true);
     }
 }

@@ -261,7 +261,7 @@ class SmsBombConversation extends Conversation
         }
 
         $text .= $this->buildSmsInputPrompt();
-        $sent = $bot->sendMessage($text, parse_mode: 'HTML', reply_markup: $keyboard);
+        $sent = $bot->editMessageText($text, parse_mode: 'HTML', reply_markup: $keyboard);
         $this->rememberBotMessage($sent);
         $this->next('askCount');
     }

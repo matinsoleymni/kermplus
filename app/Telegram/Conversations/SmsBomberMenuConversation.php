@@ -57,7 +57,7 @@ class SmsBomberMenuConversation extends Conversation
         $this->intervalMinutes = null;
         $this->totalBatches = null;
         $this->useCustomSpeed = false;
-        $this->promptMessageId = null;
+        $this->promptMessageId = $bot->message()?->message_id ?? null;
 
         $this->promptPhone($bot);
     }
@@ -128,7 +128,7 @@ class SmsBomberMenuConversation extends Conversation
             $this->startDelayMinutes = 0;
             $this->intervalMinutes = 0;
             $this->totalBatches = self::PLUS_TOTAL_BATCHES;
-            $this->promptBatchSize($bot);
+            $this->askBatchSize($bot);
             return;
         }
 
@@ -195,7 +195,7 @@ class SmsBomberMenuConversation extends Conversation
         }
 
         $this->intervalMinutes = $intervalMinutes;
-        $this->promptBatchSize($bot);
+        $this->askBatchSize($bot);
     }
 
     public function askBatchSize(Nutgram $bot): void
@@ -366,7 +366,7 @@ class SmsBomberMenuConversation extends Conversation
         $msg .= "• شماره رو بدون فاصله و بدون خط تیره وارد کن\n";
         $msg .= "• فقط اعداد انگلیسی مجازه";
 
-        $this->sendOrEditPrompt($bot, $msg, $keyboard, 'askPhone');
+        $this->sendOrEditPrompt($bot, $msg, $keyboard, 'askPhone', true);
     }
 
     private function promptStartDelay(Nutgram $bot): void
@@ -381,7 +381,7 @@ class SmsBomberMenuConversation extends Conversation
             . "👈 تو الگوی بالا به جای علامت سؤال‌های قرمز عدد مورد نظرت رو وارد کن.\n\n"
             . "⏱ اول بگو چند دقیقه بعد از درخواستت رگبارو شروع کنیم؟";
 
-        $this->sendOrEditPrompt($bot, $text, $keyboard, 'askStartDelay');
+        $this->sendOrEditPrompt($bot, $text, $keyboard, 'askStartDelay', true);
     }
 
     private function promptSpeedMode(Nutgram $bot): void
@@ -393,7 +393,7 @@ class SmsBomberMenuConversation extends Conversation
             );
 
         $text = '<tg-emoji emoji-id="5123230779593196220">⏰</tg-emoji> سرعت انجام سفارش را با استفاده از دکمه های نمایش داده شده انتخاب نمایید.';
-        $this->sendOrEditPrompt($bot, $text, $keyboard, 'askSpeedMode');
+        $this->sendOrEditPrompt($bot, $text, $keyboard, 'askSpeedMode', true);
     }
 
     private function promptInterval(Nutgram $bot): void
@@ -408,51 +408,54 @@ class SmsBomberMenuConversation extends Conversation
             . "⏳ حالا فاصله بین ارسال‌ها را بفرست (دقیقه). مثلا 0 یا 2\n"
             . "👈 فقط عدد بفرست.";
 
-        $this->sendOrEditPrompt($bot, $text, $keyboard, 'askInterval');
-    }
-
-    private function promptBatchSize(Nutgram $bot): void
-    {
-        $keyboard = $this->stepKeyboard();
-
-        $text = "📦 حالا بگو چند تا پیامک بفرستیم؟\n"
-            . "👈 فقط عدد بفرست.";
-
-        $this->sendOrEditPrompt($bot, $text, $keyboard, 'askBatchSize');
+        $this->sendOrEditPrompt($bot, $text, $keyboard, 'askInterval', true);
     }
 
     private function stepKeyboard(): InlineKeyboardMarkup
     {
         return InlineKeyboardMarkup::make()
             ->addRow(InlineKeyboardButton::make('🔙 مرحله قبل', callback_data: 'sms_plus_back', style: 'danger'))
-            ->addRow(InlineKeyboardButton::make('❌ لغو', callback_data: 'sms_plus_cancel', style: 'danger'));
+            ->addRow(InlineKeyboardButton::make('❌ لغو', callback_data: 'main_menu', style: 'danger'));
     }
 
-    private function sendOrEditPrompt(Nutgram $bot, string $text, InlineKeyboardMarkup $keyboard, string $nextStep): void
+    private function sendOrEditPrompt(Nutgram $bot, string $text, InlineKeyboardMarkup $keyboard, string $nextStep, bool $forceNew = false): void
     {
         $chatId = $bot->chatId();
 
-        if ($this->promptMessageId) {
+        if (!$forceNew && $this->promptMessageId) {
             try {
                 $bot->editMessageText(
+                    text: $text,
                     chat_id: $chatId,
                     message_id: $this->promptMessageId,
-                    text: $text,
                     parse_mode: 'HTML',
                     reply_markup: $keyboard
                 );
                 $this->next($nextStep);
                 return;
-            } catch (\Throwable) {
-                // fall back to sending a new message
+            } catch (\Throwable $e) {
+                if (str_contains(strtolower($e->getMessage()), 'message is not modified')) {
+                    $this->next($nextStep);
+                    return;
+                }
+
+            }
+        }
+
+        if ($forceNew && $this->promptMessageId) {
+            try {
+                $bot->deleteMessage(chat_id: $chatId, message_id: $this->promptMessageId);
+            } catch (\Throwable $e) {
             }
         }
 
         $sent = $bot->sendMessage($text, parse_mode: 'HTML', reply_markup: $keyboard);
+
         if ($sent && isset($sent->message_id)) {
             $this->promptMessageId = $sent->message_id;
             $this->rememberBotMessage($sent);
         }
+
         $this->next($nextStep);
     }
 

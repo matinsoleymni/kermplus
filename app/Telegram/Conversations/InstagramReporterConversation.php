@@ -131,7 +131,11 @@ class InstagramReporterConversation extends BaseReporterConversation
         $profile = $this->fetchInstagramProfile($username);
 
         if ($profile === null) {
-            $this->sendOrEditMessage($bot, '⚠️ متاسفانه نتوانستیم اطلاعات این حساب را دریافت کنیم. لطفا بعدا دوباره تلاش کنید یا یوزرنیم دیگری وارد کنید.');
+            $keyboard = InlineKeyboardMarkup::make()
+            ->addRow(
+                InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'danger', icon_custom_emoji_id: '5352759161945867747')
+            );
+            $this->sendOrEditMessage($bot, "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> اطلاعات حسابی که فرستادی پیدا نشد. \n\n<blockquote>ممکنه اشتباه وارد کرده باشی یا حساب مدنظر وجود نداشته باشه ، لطفا برسی کنید و دوباره پروسه رو طی کنید.</blockquote>", $keyboard);
             $this->end();
             return;
         }
@@ -719,11 +723,23 @@ class InstagramReporterConversation extends BaseReporterConversation
         string $text,
         bool $useCaption,
         ?InlineKeyboardMarkup $keyboard = null,
-        bool $parseHtml = false
+        bool $parseHtml = false,
+        bool $force_new = false
     ): void {
         $parseMode = $parseHtml ? 'HTML' : null;
 
         if ($useCaption) {
+            if($force_new) {
+                // $bot->deleteMessage($bot->user()->id, $messageId);
+                $sent = $bot->sendPhoto(
+                    photo: $this->getReportPhoto(),
+                    caption: $text,
+                    parse_mode: $parseMode,
+                    reply_markup: $keyboard
+                );
+                $this->setStageMessage($bot, $sent->message_id ?? null, true);
+                return;
+            }
             $bot->editMessageCaption(
                 chat_id: $bot->user()->id,
                 message_id: $messageId,
@@ -734,6 +750,16 @@ class InstagramReporterConversation extends BaseReporterConversation
             return;
         }
 
+        if ($force_new) {
+            // $bot->deleteMessage($bot->user()->id, $messageId);
+            $sent = $bot->sendMessage(
+                text: $text,
+                parse_mode: $parseMode,
+                reply_markup: $keyboard
+            );
+            $this->setStageMessage($bot, $sent->message_id ?? null, false);
+            return;
+        }
         $bot->editMessageText(
             chat_id: $bot->user()->id,
             message_id: $messageId,
@@ -751,7 +777,7 @@ class InstagramReporterConversation extends BaseReporterConversation
             );
     }
 
-    private function sendOrEditMessage(Nutgram $bot, string $text, ?InlineKeyboardMarkup $keyboard = null): array
+    private function sendOrEditMessage(Nutgram $bot, string $text, ?InlineKeyboardMarkup $keyboard = null, bool $force_new = true): array
     {
         $callbackMessageId = $bot->callbackQuery()?->message?->message_id;
         $messageId = $callbackMessageId ?: ($bot->getUserData('ig_stage_message_id') ?: null);
@@ -759,7 +785,7 @@ class InstagramReporterConversation extends BaseReporterConversation
             ? $this->isCallbackMessagePhoto($bot)
             : (bool)$bot->getUserData('ig_stage_message_uses_caption');
 
-        if ($messageId) {
+        if ($messageId && !$force_new) {
             try {
                 $this->editMessageByType($bot, (int)$messageId, $text, $useCaption, $keyboard, true);
                 $this->setStageMessage($bot, (int)$messageId, $useCaption);
@@ -912,15 +938,15 @@ class InstagramReporterConversation extends BaseReporterConversation
 
         return "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> KermPlus | Post Found\n" .
             "━━━━━━━━━━━━━━━\n" .
-            "👤 author: @{$owner}\n" .
-            "🆔 post id: {$id}\n" .
-            "📝 caption: {$caption}\n" .
-            "🖇️ link : {$link}\n\n" .
-            "❤️ likes: {$likes}\n" .
-            "💬 comments: {$comments}\n" .
-            "📅 published: {$sentAt}\n" .
+            "<tg-emoji emoji-id='4913497231492908158'>👤</tg-emoji> author: @{$owner}\n" .
+            "<tg-emoji emoji-id='4915791289489818259'>✅</tg-emoji> post id: {$id}\n" .
+            "<tg-emoji emoji-id='5334882760735598374'>📝</tg-emoji> caption: {$caption}\n" .
+            "<tg-emoji emoji-id='4916086774649848789'>🔗</tg-emoji> link : {$link}\n\n" .
+            "<tg-emoji emoji-id='5118454879039259395'>❤️</tg-emoji> likes: {$likes}\n" .
+            "<tg-emoji emoji-id='5215538577496090960'>💬</tg-emoji> comments: {$comments}\n" .
+            "<tg-emoji emoji-id='5364233403300330811'>📅</tg-emoji> published: {$sentAt}\n" .
             "━━━━━━━━━━━━━━━\n\n" .
-            "🗣️ دلیل ریپورت رو انتخاب کن :\n";
+            "<tg-emoji emoji-id='4904973211763999824'>🗣️</tg-emoji> دلیل ریپورت رو انتخاب کن :\n";
     }
 
     private function normalizeInstagramMedia(array $raw, string $shortcode): array

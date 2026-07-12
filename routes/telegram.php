@@ -49,6 +49,7 @@ use App\Telegram\Middleware\EnsureSponsorJoinMiddleware;
 use SergiX44\Nutgram\Nutgram;
 use Carbon\Carbon;
 use SergiX44\Nutgram\Telegram\Properties\ParseMode;
+use App\Models\User;
 
 // /*
 // |--------------------------------------------------------------------------
@@ -60,136 +61,140 @@ use SergiX44\Nutgram\Telegram\Properties\ParseMode;
 // |
 // */
 
-if ($bot->chatId() == '772127505' || $bot->chatId() == '691903008') {
-    $bot->middleware(EnsureSponsorJoinMiddleware::class);
+$bot->middleware(EnsureSponsorJoinMiddleware::class);
 
-    $bot->onCommand('start', StartCommand::class);
-    $bot->onText('/start {code}', StartCommand::class);
-    $bot->onCommand('admin', AdminCommand::class);
-    $bot->onCallbackQueryData('admin_panel', AdminPanelConversation::class);
-    $bot->onCallbackQueryData('admin_manage_subscriptions', AdminSubscriptionConversation::class);
-    $bot->onCallbackQueryData('admin_manage_plans', AdminPlanConversation::class);
-    $bot->onCallbackQueryData('admin_manage_admins', AdminsManagementConversation::class);
-    $bot->onCallbackQueryData('admin_forms', AutoFormConversation::class);
-    $bot->onCallbackQueryData('admin_reactions', ReactionManagerConversation::class);
-    $bot->onCallbackQueryData('admin_sponsor_manage', SponsorChannelsConversation::class);
-    $bot->onCallbackQueryData('admin_sponsor_list', SponsorChannelsConversation::class);
-    $bot->onCallbackQueryData('admin_sponsor_add', SponsorChannelsConversation::class);
-    $bot->onCallbackQueryData('admin_sponsor_remove', SponsorChannelsConversation::class);
-    $bot->onCallbackQueryData('admin_autofiller', AdminPanelConversation::class);
-    $bot->onCallbackQueryData('back_admin', AdminPanelConversation::class);
+$bot->onCommand('start', StartCommand::class);
+$bot->onText('/start {code}', StartCommand::class);
+$bot->onCommand('admin', AdminCommand::class);
+$bot->onCallbackQueryData('admin_panel', AdminPanelConversation::class);
+$bot->onCallbackQueryData('admin_manage_subscriptions', AdminSubscriptionConversation::class);
+$bot->onCallbackQueryData('admin_manage_plans', AdminPlanConversation::class);
+$bot->onCallbackQueryData('admin_manage_admins', AdminsManagementConversation::class);
+$bot->onCallbackQueryData('admin_forms', AutoFormConversation::class);
+$bot->onCallbackQueryData('admin_reactions', ReactionManagerConversation::class);
+$bot->onCallbackQueryData('admin_sponsor_manage', SponsorChannelsConversation::class);
+$bot->onCallbackQueryData('admin_sponsor_list', SponsorChannelsConversation::class);
+$bot->onCallbackQueryData('admin_sponsor_add', SponsorChannelsConversation::class);
+$bot->onCallbackQueryData('admin_sponsor_remove', SponsorChannelsConversation::class);
+$bot->onCallbackQueryData('admin_autofiller', AdminPanelConversation::class);
+$bot->onCallbackQueryData('back_admin', AdminPanelConversation::class);
 
-    $bot->onCallbackQueryData('user_smsbomb', SmsBombConversation::class);
-    $bot->onCallbackQueryData('user_emailbomb', EmailBombConversation::class);
-    $bot->onCallbackQueryData('admin_broadcast', BroadcastConversation::class);
-    $bot->onCallbackQueryData('user_autofiller', UserAutoFillerConversation::class);
-    $bot->onCallbackQueryData('whitelist_add', WhitelistConversation::class);
-    $bot->onCallbackQueryData('whitelist_menu', WhitelistConversation::class);
-    $bot->onCallbackQueryData('whitelist_edit', WhitelistConversation::class);
-    $bot->onCallbackQueryData('reporter_telegram', TelegramReporterConversation::class);
-    $bot->onCallbackQueryData('reporter_instagram', InstagramReporterConversation::class);
-    $bot->onCallbackQueryData('reporter_rubika_menu', RubikaReporterMenuHandler::class);
-    $bot->onCallbackQueryData('reporter_rubika', RubikaReporterMenuHandler::class);
-    $bot->onCallbackQueryData('fill_form_', FormFillerConversation::class);
+$bot->onCallbackQueryData('user_smsbomb', SmsBombConversation::class);
+$bot->onCallbackQueryData('user_emailbomb', EmailBombConversation::class);
+$bot->onCallbackQueryData('admin_broadcast', BroadcastConversation::class);
+$bot->onCallbackQueryData('user_autofiller', UserAutoFillerConversation::class);
+$bot->onCallbackQueryData('whitelist_add', WhitelistConversation::class);
+$bot->onCallbackQueryData('whitelist_menu', WhitelistConversation::class);
+$bot->onCallbackQueryData('whitelist_edit', WhitelistConversation::class);
+$bot->onCallbackQueryData('reporter_telegram', TelegramReporterConversation::class);
+$bot->onCallbackQueryData('reporter_instagram', InstagramReporterConversation::class);
+$bot->onCallbackQueryData('reporter_rubika_menu', RubikaReporterMenuHandler::class);
+$bot->onCallbackQueryData('reporter_rubika', RubikaReporterMenuHandler::class);
+$bot->onCallbackQueryData('fill_form_', FormFillerConversation::class);
 
-    $bot->onCallbackQueryData('subscription_info', SubscriptionInfoHandler::class);
-    $bot->onCallbackQueryData('support_info', SupportInfoHandler::class);
-    $bot->onCallbackQueryData('user_forms', UserFormsHandler::class);
-    $bot->onCallbackQueryData('reporter_menu', ReporterMenuHandler::class);
-    $bot->onCallbackQueryData('reporter_what_is', ReporterWhatIsHandler::class);
-    $bot->onCallbackQueryData('reporter_telegram_menu', TelegramReporterMenuHandler::class);
-    $bot->onCallbackQueryData('reporter_instagram_menu', InstagramReporterMenuHandler::class);
-    $bot->onCallbackQueryData('rubika_report_account', RubikaReporterConversation::class);
-    $bot->onCallbackQueryData('rubika_report_channel', RubikaReporterConversation::class);
-    $bot->onCallbackQueryData('rubika_report_group', RubikaReporterConversation::class);
-    $bot->onCallbackQueryData('telegram_report_account', TelegramReporterConversation::class);
-    $bot->onCallbackQueryData('telegram_report_channel', TelegramReporterConversation::class);
-    $bot->onCallbackQueryData('telegram_report_post', TelegramReporterConversation::class);
-    $bot->onCallbackQueryData('plus_info', PlusInfoHandler::class);
-    $bot->onCallbackQueryData('pro_info', PlusInfoHandler::class);
-    $bot->onCallbackQueryData('plan_diff_info', PlusInfoHandler::class);
-    $bot->onCallbackQueryData('instagram_report_page', InstagramReporterConversation::class);
-    $bot->onCallbackQueryData('instagram_report_post', InstagramReporterConversation::class);
-    $bot->onCallbackQueryData('kerm_menu', KermRiziHandler::class);
-    $bot->onCallbackQueryData('channel_reaction', ChannelReactionConversation::class);
-    $bot->onCallbackQueryData('mobile_kerm_menu', MobileKermRiziHandler::class);
-    $bot->onCallbackQueryData('bomber_menu', BomberMenuHandler::class);
-    $bot->onCallbackQueryData('bomber_free_sms', SmsBombConversation::class);
-    $bot->onCallbackQueryData('bomber_plus_sms', SmsBomberMenuConversation::class);
-    $bot->onCallbackQueryData('bomber_plus_call', NotImplementedHandler::class);
-    $bot->onCallbackQueryData('bomber_combo_plus', NotImplementedHandler::class);
-    $bot->onCallbackQueryData('not_implemented', NotImplementedHandler::class);
-    $bot->onCallbackQueryData('user_profile', UserProfileHandler::class);
-    $bot->onCallbackQueryData('buy_subscription', BuySubscriptionHandler::class);
-    $bot->onCallbackQueryData('buy_sub_crypto', BuySubscriptionHandler::class);
-    $bot->onCallbackQueryData('buy_sub_star', BuySubscriptionHandler::class);
-    $bot->onCallbackQueryData('buy_sub_referral', BuySubscriptionHandler::class);
-    $bot->onCallbackQueryData('sponsor_join_check', SponsorJoinCheckHandler::class);
-    $bot->onCallbackQueryData('user_referral', ReferralHandler::class);
-    $bot->onCallbackQueryData('referral_send_banner', ReferralHandler::class);
-    $bot->onCallbackQueryData('referral_claim', ReferralHandler::class);
-    $bot->onCallbackQueryData('select_plan_{id}', SelectPlanHandler::class);
-    $bot->onCallbackQueryData('pay_crypto_{id}', SelectPlanHandler::class);
-    $bot->onCallbackQueryData('pay_crypto_trx_{id}', SelectPlanHandler::class);
-    $bot->onCallbackQueryData('pay_crypto_ton_{id}', SelectPlanHandler::class);
-    $bot->onCallbackQueryData('pay_star_{id}', SelectPlanHandler::class);
-    $bot->onCallbackQueryData('check_pay:{id}', SelectPlanHandler::class);
-    $bot->onCallbackQueryData('user_stats', UserStatsHandler::class);
-    $bot->onCallbackQueryData('main_menu', MainMenuHandler::class);
-
-
-    $bot->onCallbackQueryData('check_countdown', function (Nutgram $bot) {
-
-        $targetDate = Carbon::parse('2026-07-13 23:30:00');
-
-        $now = now();
-
-        if ($now->greaterThanOrEqualTo($targetDate)) {
-            $bot->editMessageText("✅ سیستم اکنون در دسترس است!");
-            $bot->answerCallbackQuery();
-            return;
-        }
-
-        $diff = $now->diff($targetDate);
-
-        $parts = [];
-        if ($diff->y > 0) $parts[] = "{$diff->y} سال";
-        if ($diff->m > 0) $parts[] = "{$diff->m} ماه";
-        if ($diff->d > 0) $parts[] = "{$diff->d} Day";
-        if ($diff->h > 0) $parts[] = "{$diff->h} Hours";
-
-        $timeString = implode(' / ', $parts);
-
-        $message = "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji><b> کرم پلاس درحال ساخت پنل اختصاصی کرم ریزی شماست</b>
-
-    <tg-emoji emoji-id='4904882772637648609'>⏰</tg-emoji> زمان حدودی آماده شدن پنل شما:
-    ";
-        $message .= $timeString;
-
-        $bot->editMessageText($message, parse_mode: 'HTML');
-
-        $bot->answerCallbackQuery(text: 'وضعیت آپدیت شد!', show_alert: false);
-    });
+$bot->onCallbackQueryData('subscription_info', SubscriptionInfoHandler::class);
+$bot->onCallbackQueryData('support_info', SupportInfoHandler::class);
+$bot->onCallbackQueryData('user_forms', UserFormsHandler::class);
+$bot->onCallbackQueryData('reporter_menu', ReporterMenuHandler::class);
+$bot->onCallbackQueryData('reporter_what_is', ReporterWhatIsHandler::class);
+$bot->onCallbackQueryData('reporter_telegram_menu', TelegramReporterMenuHandler::class);
+$bot->onCallbackQueryData('reporter_instagram_menu', InstagramReporterMenuHandler::class);
+$bot->onCallbackQueryData('rubika_report_account', RubikaReporterConversation::class);
+$bot->onCallbackQueryData('rubika_report_channel', RubikaReporterConversation::class);
+$bot->onCallbackQueryData('rubika_report_group', RubikaReporterConversation::class);
+$bot->onCallbackQueryData('telegram_report_account', TelegramReporterConversation::class);
+$bot->onCallbackQueryData('telegram_report_channel', TelegramReporterConversation::class);
+$bot->onCallbackQueryData('telegram_report_post', TelegramReporterConversation::class);
+$bot->onCallbackQueryData('plus_info', PlusInfoHandler::class);
+$bot->onCallbackQueryData('pro_info', PlusInfoHandler::class);
+$bot->onCallbackQueryData('plan_diff_info', PlusInfoHandler::class);
+$bot->onCallbackQueryData('instagram_report_page', InstagramReporterConversation::class);
+$bot->onCallbackQueryData('instagram_report_post', InstagramReporterConversation::class);
+$bot->onCallbackQueryData('kerm_menu', KermRiziHandler::class);
+$bot->onCallbackQueryData('channel_reaction', ChannelReactionConversation::class);
+$bot->onCallbackQueryData('mobile_kerm_menu', MobileKermRiziHandler::class);
+$bot->onCallbackQueryData('bomber_menu', BomberMenuHandler::class);
+$bot->onCallbackQueryData('bomber_free_sms', SmsBombConversation::class);
+$bot->onCallbackQueryData('bomber_plus_sms', SmsBomberMenuConversation::class);
+$bot->onCallbackQueryData('bomber_plus_call', NotImplementedHandler::class);
+$bot->onCallbackQueryData('bomber_combo_plus', NotImplementedHandler::class);
+$bot->onCallbackQueryData('not_implemented', NotImplementedHandler::class);
+$bot->onCallbackQueryData('user_profile', UserProfileHandler::class);
+$bot->onCallbackQueryData('buy_subscription', BuySubscriptionHandler::class);
+$bot->onCallbackQueryData('buy_sub_crypto', BuySubscriptionHandler::class);
+$bot->onCallbackQueryData('buy_sub_star', BuySubscriptionHandler::class);
+$bot->onCallbackQueryData('buy_sub_referral', BuySubscriptionHandler::class);
+$bot->onCallbackQueryData('sponsor_join_check', SponsorJoinCheckHandler::class);
+$bot->onCallbackQueryData('user_referral', ReferralHandler::class);
+$bot->onCallbackQueryData('referral_send_banner', ReferralHandler::class);
+$bot->onCallbackQueryData('referral_claim', ReferralHandler::class);
+$bot->onCallbackQueryData('select_plan_{id}', SelectPlanHandler::class);
+$bot->onCallbackQueryData('pay_crypto_{id}', SelectPlanHandler::class);
+$bot->onCallbackQueryData('pay_crypto_trx_{id}', SelectPlanHandler::class);
+$bot->onCallbackQueryData('pay_crypto_ton_{id}', SelectPlanHandler::class);
+$bot->onCallbackQueryData('pay_star_{id}', SelectPlanHandler::class);
+$bot->onCallbackQueryData('check_pay:{id}', SelectPlanHandler::class);
+$bot->onCallbackQueryData('user_stats', UserStatsHandler::class);
+$bot->onCallbackQueryData('main_menu', MainMenuHandler::class);
 
 
-    $bot->onPreCheckoutQuery(PaymentPreCheckoutHandler::class);
-    $bot->onSuccessfulPayment(App\Telegram\Handlers\PaymentSuccessHandler::class);
+$bot->onCallbackQueryData('check_countdown', function (Nutgram $bot) {
+    $user = User::where("telegram_id", "=", $bot->chatId())->first();
+    if (!$user || !$user->hasAnyActiveSubscription()) {
+        $msg = "<tg-emoji emoji-id=\"6224077119996040131\">❗️</tg-emoji><tg-emoji emoji-id=\"4929619512224909015\">🪱</tg-emoji> این بخش نیازمند ارتقای نسخه رباتمونه <tg-emoji emoji-id=\"5370967353674701492\">😚</tg-emoji>\n\n";
+        $msg .= "برای ارتقای نسخه ربات به \"نسخه پلاس<tg-emoji emoji-id=\"5433758796289685818\">👑</tg-emoji>\" و یا به \"نسخه پرو<tg-emoji emoji-id=\"6244241334320762892\">💎</tg-emoji>\" از طریق دکمه های زیر اقدام کنید :";
+        $bot->sendMessage($msg, parse_mode: 'HTML', reply_markup: PlusRequiredKeyboard::make('main_menu'));
+        return;
+    }
 
-    $bot->onCallbackQueryData('admin_exit', AdminExitHandler::class);
+    $targetDate = Carbon::parse('2026-07-13 23:30:00');
 
-    // $bot->fallback(NotImplementedHandler::class);
+    $now = now();
 
-    $bot->onCallbackQueryData('kerm_action:{action}', function (Nutgram $bot, string $action) {
+    if ($now->greaterThanOrEqualTo($targetDate)) {
+        $bot->editMessageText("✅ سیستم اکنون در دسترس است!");
         $bot->answerCallbackQuery();
+        return;
+    }
 
-        DispatchKermEventConversation::begin($bot, data: [$action]);
-    });
+    $diff = $now->diff($targetDate);
+
+    $parts = [];
+    if ($diff->y > 0) $parts[] = "{$diff->y} سال";
+    if ($diff->m > 0) $parts[] = "{$diff->m} ماه";
+    if ($diff->d > 0) $parts[] = "{$diff->d} Day";
+    if ($diff->h > 0) $parts[] = "{$diff->h} Hours";
+
+    $timeString = implode(' / ', $parts);
+
+    $message = "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji><b> کرم پلاس درحال ساخت پنل اختصاصی کرم ریزی شماست</b>
+
+<tg-emoji emoji-id='4904882772637648609'>⏰</tg-emoji> زمان حدودی آماده شدن پنل شما:
+";
+    $message .= $timeString;
+
+    $bot->editMessageText($message, parse_mode: 'HTML');
+
+    $bot->answerCallbackQuery(text: 'وضعیت آپدیت شد!', show_alert: false);
+});
 
 
-} else {
-    $bot->onMessage(function (Nutgram $bot) {
-        $msg = '<tg-emoji emoji-id="4929619512224909015">🪱</tg-emoji> داریم مشکلات رو برطرف میکنیم به زودی برمیگردیم. <tg-emoji emoji-id="4929619512224909015">🪱</tg-emoji>';
+$bot->onPreCheckoutQuery(PaymentPreCheckoutHandler::class);
+$bot->onSuccessfulPayment(App\Telegram\Handlers\PaymentSuccessHandler::class);
 
-        $bot->sendMessage($msg, parse_mode: ParseMode::HTML);
-    });
-}
+$bot->onCallbackQueryData('admin_exit', AdminExitHandler::class);
+
+// $bot->fallback(NotImplementedHandler::class);
+
+$bot->onCallbackQueryData('kerm_action:{action}', function (Nutgram $bot, string $action) {
+    $bot->answerCallbackQuery();
+
+    DispatchKermEventConversation::begin($bot, data: [$action]);
+});
+
+
+// $bot->onMessage(function (Nutgram $bot) {
+//     $msg = '<tg-emoji emoji-id="4929619512224909015">🪱</tg-emoji> داریم مشکلات رو برطرف میکنیم به زودی برمیگردیم. <tg-emoji emoji-id="4929619512224909015">🪱</tg-emoji>';
+
+//     $bot->sendMessage($msg, parse_mode: ParseMode::HTML);
+// });
