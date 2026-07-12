@@ -11,5 +11,5 @@ COPY telegram-reporter /app
 RUN pip install --no-cache-dir --only-binary=:all: . || pip install --no-cache-dir .
 
 EXPOSE 8082
-CMD ["uvicorn", "api_server:api", "--host", "0.0.0.0", "--port", "8082"]
+CMD ["python", "api_server.py", "--host", "0.0.0.0", "--port", "8082"]
 
