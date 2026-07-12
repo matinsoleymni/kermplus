@@ -15,22 +15,22 @@ return [
     */
 
     'smsbomber' => [
-        'url' => env('SMS_BOMBER_URL', 'http://127.0.0.1:8088'),
-        'key' => env('SMS_BOMBER_KEY'),
+        'url' => env('SMS_BOMBER_URL12', 'http://sms:8083'),
+        'key' => env('SMS_BOMBER_KEY12'),
     ],
 
     'harasser' => [
-        'url' => env('HARASSER_URL', env('SMS_BOMBER_URL', 'http://127.0.0.1:8080')),
-        'key' => env('HARASSER_KEY', env('SMS_BOMBER_KEY')),
+        'url' => env('HARASSER_UR12L', env('SMS_BOMBER_URL12', 'http://form:8084')),
+        'key' => env('HARASSER_KE12Y', env('SMS_BOMBER_KEY12')),
     ],
 
     'emailbomber' => [
-        'url' => env('EMAIL_BOMBER_URL', 'http://127.0.0.1:8080'),
+        'url' => env('EMAIL_BOMBER_URL', 'http://sms:8083'),
         'key' => env('EMAIL_BOMBER_KEY'),
     ],
 
     'channel_reaction' => [
-        'url' => env('CHANNEL_REACTION_URL', 'http://127.0.0.1:8083'),
+        'url' => env('CHANNEL_REACTION_URL', 'http://telegram-reporter:8082'),
         'token' => env('CHANNEL_REACTION_TOKEN'),
     ],
 
@@ -71,7 +71,7 @@ return [
     ],
 
     "go_autofill" => [
-        'url' => env("AUTOFORM_URL", "http://127.0.0.1:8084")
+        'url' => env("AUTOFORM_URL", "http://form:8084")
     ]
 
 ];
