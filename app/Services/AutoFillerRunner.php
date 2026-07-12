@@ -11,7 +11,7 @@ class AutoFillerRunner
 
     public function __construct()
     {
-        $this->goBaseUrl = config('services.go_autofill.url', 'http://localhost:8080');
+        $this->goBaseUrl = config('services.go_autofill.url', 'http://form:8084');
     }
 
     /**

@@ -173,7 +173,6 @@ class FeatureLimitService
 
     private function hasPlusOnlyAccess(User $user, string $feature): bool
     {
-        return $this->subscriptionService->isPlus($user)
-            && $this->subscriptionService->hasFeatureAccess($user, $feature);
+        return $this->subscriptionService->hasFeatureAccess($user, $feature);
     }
 }

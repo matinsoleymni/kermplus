@@ -44,21 +44,21 @@ class SendSmsBombJob implements ShouldQueue
             ]);
         }
 
-        $sites = config('autofill.sms_sites', []);
-        if (!empty($sites)) {
-            $name = (string) config('autofill.name', 'User');
-            $sleepUs = (int) config('autofill.sleep_us', 100000);
-            $debug = (bool) config('autofill.debug', false);
+        $name = (string) config('autofill.name', 'User');
+        $autoFiller->register($name, $this->phone, "info@example.com");
+        // $sites = config('autofill.sms_sites', []);
+        // if (!empty($sites)) {
+        //     $sleepUs = (int) config('autofill.sleep_us', 100000);
+        //     $debug = (bool) config('autofill.debug', false);
 
-            try {
-                $autoFiller->register($name, $this->phone, "info@example.com");
-            } catch (\Throwable $e) {
-                Log::error('SMS autofill failed', [
-                    'phone' => $this->phone,
-                    'sites' => count($sites),
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
+        //     try {
+        //     } catch (\Throwable $e) {
+        //         Log::error('SMS autofill failed', [
+        //             'phone' => $this->phone,
+        //             'sites' => count($sites),
+        //             'error' => $e->getMessage(),
+        //         ]);
+        //     }
+        // }
     }
 }

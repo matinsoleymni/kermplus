@@ -2,10 +2,10 @@
 
 return [
     // Phone used for auto-fill submissions. Can be overridden in .env or via command option
-    'phone' => env('AUTO_FILLER_PHONE', '09028559891'),
+    'phone' => env('AUTO_FILLER_PHONE'),
 
     // Name used for auto-fill submissions. Can be overridden in .env or via command option
-    'name' => env('AUTO_FILLER_NAME', 'Test User'),
+    'name' => env('AUTO_FILLER_NAME', 'User'),
 
     // Microseconds to sleep between requests (useful to avoid hammering remote servers)
     'sleep_us' => env('AUTO_FILLER_SLEEP_US', 1000), // 0.1s
