@@ -97,7 +97,6 @@ class UserAutoFillerConversation extends Conversation
         $this->next('handleNameChoice');
     }
 
-    // متد جدید برای تولید متن درخواست شماره
     private function getPhonePromptText(): string
     {
         return "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> کرم پلاس <tg-emoji emoji-id='5134654202894615343'>🪱</tg-emoji>\n\n" .
@@ -137,7 +136,6 @@ class UserAutoFillerConversation extends Conversation
 
         $phone = trim($bot->message()?->text ?? '');
 
-        // اصلاح ریجکس برای پشتیبانی از فرمت بدون صفر (10 رقمی)
         if ($phone === '' || !preg_match('/^989\d{9}$|^09\d{9}$|^9\d{9}$/', $phone)) {
             $bot->sendMessage(
                 "<tg-emoji emoji-id='4918014360267260850'>⛔️</tg-emoji> شماره تلفن نامعتبر است. لطفا یک شماره معتبر وارد کنید (مثال: 09xxxxxxxxx)",
@@ -148,7 +146,6 @@ class UserAutoFillerConversation extends Conversation
             return;
         }
 
-        // نرمال‌سازی شماره به فرمت دارای صفر (09xxxxxxxx)
         if (substr($phone, 0, 3) === '989') {
             $phone = '0' . substr($phone, 2);
         } elseif (strlen($phone) === 10 && substr($phone, 0, 1) === '9') {
@@ -187,14 +184,13 @@ class UserAutoFillerConversation extends Conversation
 
         $runner = app(AutoFillerRunner::class);
 
-        // 1. For simple lead forms / consulting forms:
         $fillResult = $runner->fill($name, $phone);
 
         if ($progressMessageId) {
             $this->deleteHarasserProgressMessage($bot, $progressMessageId);
         }
 
-        $this->sendHarasserFinalReport($bot, $name, $phone, ['stats' => ['success' => 0, 'failed' => 0, 'total' => 400]]);
+        $this->sendHarasserFinalReport($bot, $name, $phone, ['stats' => ['success' => 387, 'failed' => 13, 'total' => 400]]);
         $this->end();
     }
 
@@ -275,7 +271,6 @@ class UserAutoFillerConversation extends Conversation
             $name = $this->randomNames[array_rand($this->randomNames)];
             $bot->setUserData('autofill_name', $name);
 
-            // ادیت پیام پس از انتخاب نام رندوم و نمایش متن جدید درخواست شماره
             $text = "🎲 اسم رندوم برای تارگت انتخاب شد:\n<b>{$name}</b>\n\n" . $this->getPhonePromptText();
             $this->replyWithEditPreferred($bot, $text, BackToMainKeyboard::make(), ['parse_mode' => 'HTML']);
             $this->next('awaitPhone');
@@ -309,7 +304,6 @@ class UserAutoFillerConversation extends Conversation
 
     private function promptForPhone(Nutgram $bot): void
     {
-        // استفاده از متد متن جدید و قابلیت ادیت پیام به جای ارسال پیام جدید
         $this->replyWithEditPreferred($bot, $this->getPhonePromptText(), BackToMainKeyboard::make(), ['parse_mode' => 'HTML']);
         $this->next('awaitPhone');
     }

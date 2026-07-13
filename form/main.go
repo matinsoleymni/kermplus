@@ -14,11 +14,6 @@ import (
 	"form/services"
 )
 
-// ==========================================
-// مدل‌های داده (Data Models)
-// ==========================================
-
-// TaskStatus وضعیت کارهای پس‌زمینه را نگه می‌دارد
 type TaskStatus struct {
 	ID        string                `json:"task_id"`
 	Type      string                `json:"type"`   // fill, register, quick_fill
@@ -27,7 +22,6 @@ type TaskStatus struct {
 	CreatedAt time.Time             `json:"created_at"`
 }
 
-// درخواست‌های ورودی API
 type FillRequest struct {
 	PhoneNumber string `json:"phone_number" binding:"required"`
 	FullName    string `json:"full_name" binding:"required"`
@@ -39,10 +33,6 @@ type RegisterRequest struct {
 	Email       string `json:"email" binding:"required"`
 }
 
-// ==========================================
-// متغیرهای سراسری (Global State)
-// ==========================================
-
 var (
 	globalFiller *services.AutoFormFiller
 	tasks        = make(map[string]*TaskStatus)
@@ -51,7 +41,6 @@ var (
 
 func main() {
 	var err error
-	// ۱. راه‌اندازی مرورگر به صورت سراسری (Singleton) برای جلوگیری از مصرف بی‌رویه RAM
 	globalFiller, err = services.NewAutoFormFiller(
 		services.WithDebug(true),
 	)
@@ -60,11 +49,9 @@ func main() {
 	}
 	defer globalFiller.Close()
 
-	// ۲. تنظیمات Gin Web Framework
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
 
-	// ۳. تعریف مسیرها (Endpoints)
 	r.POST("/api/fill", handleBatchFill)
 	r.POST("/api/register", handleBatchRegister)
 	r.GET("/api/tasks/:id", handleGetTaskStatus)
@@ -75,11 +62,6 @@ func main() {
 	}
 }
 
-// ==========================================
-// هندلرهای API (Controllers)
-// ==========================================
-
-// اندپوینت پر کردن فرم‌های متفرقه
 func handleBatchFill(c *gin.Context) {
 	var req FillRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -96,7 +78,6 @@ func handleBatchFill(c *gin.Context) {
 	taskID := uuid.New().String()
 	createTask(taskID, "fill")
 
-	// اجرای عملیات در پس‌زمینه (Goroutine)
 	go func(id, phone, name string, sites []string) {
 		result := globalFiller.BatchSubmit(sites, phone, name)
 		updateTaskResult(id, result)
@@ -108,7 +89,6 @@ func handleBatchFill(c *gin.Context) {
 	})
 }
 
-// اندپوینت ثبت‌نام
 func handleBatchRegister(c *gin.Context) {
 	var req RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -125,7 +105,6 @@ func handleBatchRegister(c *gin.Context) {
 	taskID := uuid.New().String()
 	createTask(taskID, "register")
 
-	// اجرای عملیات در پس‌زمینه (Goroutine)
 	go func(id, phone, name, email string, sites []string) {
 		result := globalFiller.BatchRegister(sites, phone, name, email)
 		updateTaskResult(id, result)
@@ -137,7 +116,6 @@ func handleBatchRegister(c *gin.Context) {
 	})
 }
 
-// اندپوینت دریافت وضعیت و خروجی کارها
 func handleGetTaskStatus(c *gin.Context) {
 	taskID := c.Param("id")
 
@@ -152,10 +130,6 @@ func handleGetTaskStatus(c *gin.Context) {
 
 	c.JSON(http.StatusOK, task)
 }
-
-// ==========================================
-// توابع کمکی مدیریت Task
-// ==========================================
 
 func createTask(id, taskType string) {
 	tasksMu.Lock()
@@ -175,7 +149,6 @@ func updateTaskResult(id string, result *services.BatchResult) {
 		task.Status = "completed"
 		task.Result = result
 
-		// شبیه‌سازی لاگ‌های ترمینال برای ادمین سرور
 		fmt.Printf("\n✅ Task [%s] Completed -> Success: %d | Failed: %d | Duration: %s\n",
 			task.Type, result.Success, result.Failed, result.Duration)
 		if len(result.Errors) > 0 {

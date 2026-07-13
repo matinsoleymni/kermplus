@@ -417,13 +417,11 @@ type FormConfig struct {
     Fields map[string]string `json:"fields"`
 }
 
-// Config holds all form configurations
 type Config struct {
     HTTPTimeout int                    `json:"http_timeout"`
     Forms       map[string]*FormConfig `json:"forms"`
 }
 
-// DefaultConfig returns default configuration
 func DefaultConfig() *Config {
     return &Config{
         HTTPTimeout: 60,
@@ -443,7 +441,6 @@ var PredefinedConfigs = map[string]map[string]string{
     },
 }
 
-// GetFieldConfig returns field config for a host
 func GetFieldConfig(host string) map[string]string {
     if config, ok := PredefinedConfigs[host]; ok {
         return config

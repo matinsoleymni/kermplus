@@ -259,7 +259,6 @@ class SmsBomberMenuConversation extends Conversation
             'count' => $totalMessages,
         ]);
 
-        // اگر از مجانی استفاده کرد، آن را علامت‌گذاری کن
         if (!$service->getActiveSubscription($local)) {
             $local->markFreeSmsAsUsed();
         }

@@ -1,0 +1,66 @@
+services:
+  app:
+    build:
+      context: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_URL: ${APP_URL:-http://localhost:8000}
+    ports:
+      - "8000:8000"
+    volumes:
+      - app_storage:/var/www/html/storage
+      - app_database:/var/www/html/database
+    networks:
+      - app-network
+
+  queue:
+    build:
+      context: .
+    entrypoint: ["worker-entrypoint.sh"]
+    command: ["php", "artisan", "queue:work", "--tries=3", "--timeout=90"]
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_URL: ${APP_URL:-http://localhost:8000}
+    volumes:
+      - app_storage:/var/www/html/storage
+      - app_database:/var/www/html/database
+    depends_on:
+      - app
+    networks:
+      - app-network
+
+  scheduler:
+    build:
+      context: .
+    entrypoint: ["worker-entrypoint.sh"]
+    command: ["sh", "-c", "while true; do php artisan schedule:run --no-interaction; sleep 60; done"]
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_URL: ${APP_URL:-http://localhost:8000}
+    volumes:
+      - app_storage:/var/www/html/storage
+      - app_database:/var/www/html/database
+    depends_on:
+      - app
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  app_storage:
+  app_database:

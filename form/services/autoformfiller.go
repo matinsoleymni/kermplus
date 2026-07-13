@@ -70,7 +70,7 @@ func NewAutoFormFiller(opts ...Option) (*AutoFormFiller, error) {
 	af := &AutoFormFiller{
 		logs:     make([]string, 0),
 		timeout:  60 * time.Second,
-		headless: true, 
+		headless: true,
 	}
 
 	for _, opt := range opts {
@@ -116,17 +116,12 @@ func (af *AutoFormFiller) SubmitForm(targetURL, phoneNumber string, targetName .
 	if err != nil {
 		return af.result(false, fmt.Sprintf("خطا در ایجاد صفحه: %v", err))
 	}
-	// دقت کنید: defer page.MustClose() کامنت شده تا صفحه برای وارد کردن OTP باز بماند!
-	// در سیستم اصلی باید مدیریت بسته شدن تب‌ها را زمانی انجام دهید که کار کاربر نهایی تمام شده است.
-	// defer page.MustClose()
 
-	// اجازه می‌دهیم صفحه لود شود
 	page.MustWaitLoad()
 	_ = page.WaitStable(2 * time.Second)
 
 	workingFrame := page
 
-	// مدیریت فرم‌های داخل iframe
 	iframes, err := page.Elements("iframe")
 	if err == nil {
 		for _, iframeEl := range iframes {
@@ -152,9 +147,6 @@ func (af *AutoFormFiller) SubmitForm(targetURL, phoneNumber string, targetName .
 		}
 	}
 
-	// =========================================================================
-	// گام اول: کلیک روی دکمه‌های دروازه‌ای
-	// =========================================================================
 	af.log("--- بررسی وجود دکمه‌های دروازه‌ای هدر (ورود / عضویت) ---")
 	jsGatewayClicker := `function() {
 		let targets = document.querySelectorAll('button, a, div, span, [role="button"]');
@@ -196,11 +188,9 @@ func (af *AutoFormFiller) SubmitForm(targetURL, phoneNumber string, targetName .
 				af.log("🎯 دکمه دروازه‌ای هدر پیدا شد، انجام کلیک فیزیکی...")
 				_ = btn.ScrollIntoView()
 
-				// منتظر می‌مانیم تا شبکه آزاد شود
 				wait := page.MustWaitRequestIdle()
 				err = btn.Click(proto.InputMouseButtonLeft, 1)
 				if err == nil {
-					// قفل می‌شویم تا درخواست شبکه (مثل باز شدن مودال یا تغییر مسیر) تمام شود
 					wait()
 					_ = workingFrame.WaitStable(1 * time.Second)
 				}
@@ -208,19 +198,13 @@ func (af *AutoFormFiller) SubmitForm(targetURL, phoneNumber string, targetName .
 		}
 	}
 
-	// =========================================================================
-	// گام دوم: چرخه هوشمند پردازش، تزریق فیلدها و ارسال فرم
-	// =========================================================================
 	af.log("--- شروع پردازش هوشمند سراسری صفحه و مودال‌ها ---")
 	guessedData := make(map[string]string)
 
 	for step := 1; step <= 3; step++ {
 		af.log("مرحله پردازش: %d", step)
-
-		// بررسی لودینگ‌ها تا قبل از پر کردن فیلدها، سایت در حال پردازش نباشد
 		_ = workingFrame.WaitStable(1 * time.Second)
 
-		// تشخیص صفحه OTP قبل از هر اقدام اضافی
 		if htmlContent, err := workingFrame.HTML(); err == nil {
 			if af.isOTPScreen(htmlContent) {
 				af.log("✅ صفحه دریافت کد تایید (OTP) تشخیص داده شد. فرم با موفقیت ارسال شده است.")
@@ -350,11 +334,9 @@ func (af *AutoFormFiller) SubmitForm(targetURL, phoneNumber string, targetName .
 					af.log("🎯 دکمه اقدام فرم پیدا شد، کلیک فیزیکی و انتظار برای دریافت پاسخ سرور...")
 					_ = btn.ScrollIntoView()
 
-					// منتظر پاسخ API (مثل ارسال اس ام اس) می‌ماند
 					wait := page.MustWaitRequestIdle()
 					err = btn.Click(proto.InputMouseButtonLeft, 1)
 					if err == nil {
-						// این خط باعث می‌شود ربات تا اتمام لودینگ/AJAX صبر کند!
 						wait()
 						clicked = true
 						filledAny = true
@@ -364,7 +346,6 @@ func (af *AutoFormFiller) SubmitForm(targetURL, phoneNumber string, targetName .
 		}
 
 		if clicked {
-			// بعد از سابمیت، 15 ثانیه هوشمندانه منتظر رسیدن به صفحه OTP می‌مانیم
 			if af.waitForOTP(workingFrame, 15*time.Second) {
 				af.log("✅ صفحه دریافت کد تایید (OTP) با موفقیت باز شد.")
 				return &Result{
@@ -400,20 +381,16 @@ func (af *AutoFormFiller) SubmitForm(targetURL, phoneNumber string, targetName .
 	}
 }
 
-// waitForOTP: تابع جدید برای انتظار هوشمند جهت دریافت کد پیامک
 func (af *AutoFormFiller) waitForOTP(page *rod.Page, timeout time.Duration) bool {
 	af.log("⏳ در حال انتظار تا حداکثر %s برای باز شدن صفحه OTP (کد تایید)...", timeout.String())
 
-	// یک نمونه صفحه با محدودیت زمانی برای فرار از گیر کردن‌های طولانی
 	timeoutPage := page.Timeout(timeout)
 
 	for {
-		// نیم ثانیه مکس در هر چرخه
 		time.Sleep(500 * time.Millisecond)
 
 		html, err := timeoutPage.HTML()
 		if err != nil {
-			// در صورت اتمام تایم‌اوت یا خطا خارج می‌شود
 			return false
 		}
 
