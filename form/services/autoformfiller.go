@@ -69,7 +69,7 @@ func WithTimeout(timeout time.Duration) Option {
 func NewAutoFormFiller(opts ...Option) (*AutoFormFiller, error) {
 	af := &AutoFormFiller{
 		logs:     make([]string, 0),
-		timeout:  60 * time.Second,
+		timeout:  30 * time.Second,
 		headless: true,
 	}
 
@@ -116,8 +116,16 @@ func (af *AutoFormFiller) SubmitForm(targetURL, phoneNumber string, targetName .
 	if err != nil {
 		return af.result(false, fmt.Sprintf("خطا در ایجاد صفحه: %v", err))
 	}
+	defer page.Close()
 
-	page.MustWaitLoad()
+	// اعمال تایم‌اوت کلی برای جلوگیری از فلج شدن ربات روی این تب
+	page = page.Timeout(af.timeout)
+
+	// استفاده از WaitLoad به جای MustWaitLoad
+	err = page.WaitLoad()
+	if err != nil {
+		af.log("اخطار: لود صفحه کامل نشد یا تایم‌اوت رخ داد، پردازش را ادامه می‌دهیم...")
+	}
 	_ = page.WaitStable(2 * time.Second)
 
 	workingFrame := page
@@ -188,10 +196,9 @@ func (af *AutoFormFiller) SubmitForm(targetURL, phoneNumber string, targetName .
 				af.log("🎯 دکمه دروازه‌ای هدر پیدا شد، انجام کلیک فیزیکی...")
 				_ = btn.ScrollIntoView()
 
-				wait := page.MustWaitRequestIdle()
+				// حذف MustWaitRequestIdle و جایگزینی با WaitStable
 				err = btn.Click(proto.InputMouseButtonLeft, 1)
 				if err == nil {
-					wait()
 					_ = workingFrame.WaitStable(1 * time.Second)
 				}
 			}
@@ -331,13 +338,11 @@ func (af *AutoFormFiller) SubmitForm(targetURL, phoneNumber string, targetName .
 			if clickRes.Value.Str() == "found" {
 				btn, err := workingFrame.Element("[data-bot-submit='true']")
 				if err == nil {
-					af.log("🎯 دکمه اقدام فرم پیدا شد، کلیک فیزیکی و انتظار برای دریافت پاسخ سرور...")
 					_ = btn.ScrollIntoView()
 
-					wait := page.MustWaitRequestIdle()
 					err = btn.Click(proto.InputMouseButtonLeft, 1)
 					if err == nil {
-						wait()
+						_ = workingFrame.WaitStable(2 * time.Second)
 						clicked = true
 						filledAny = true
 					}
@@ -347,7 +352,6 @@ func (af *AutoFormFiller) SubmitForm(targetURL, phoneNumber string, targetName .
 
 		if clicked {
 			if af.waitForOTP(workingFrame, 15*time.Second) {
-				af.log("✅ صفحه دریافت کد تایید (OTP) با موفقیت باز شد.")
 				return &Result{
 					Status:   true,
 					Message:  "رسیدن به مرحله کد تایید (موفق)",
@@ -365,7 +369,17 @@ func (af *AutoFormFiller) SubmitForm(targetURL, phoneNumber string, targetName .
 
 	af.log("--- پایان پردازش فرم ---")
 
-	content := page.MustHTML()
+	// به جای MustHTML که ممکن است پنیک کند، از HTML و چک کردن ارور استفاده می‌کنیم
+	content, err := page.HTML()
+	if err != nil {
+		return &Result{
+			Status:   false,
+			Message:  "خطا در خواندن محتوای صفحه در پایان کار",
+			Logs:     af.logs,
+			SentData: guessedData,
+		}
+	}
+
 	verification := af.verifySubmission(content, 200)
 
 	if af.isOTPScreen(content) {
@@ -380,7 +394,6 @@ func (af *AutoFormFiller) SubmitForm(targetURL, phoneNumber string, targetName .
 		SentData: guessedData,
 	}
 }
-
 func (af *AutoFormFiller) waitForOTP(page *rod.Page, timeout time.Duration) bool {
 	af.log("⏳ در حال انتظار تا حداکثر %s برای باز شدن صفحه OTP (کد تایید)...", timeout.String())
 

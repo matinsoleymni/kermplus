@@ -42,7 +42,7 @@ var (
 func main() {
 	var err error
 	globalFiller, err = services.NewAutoFormFiller(
-		services.WithDebug(true),
+		services.WithDebug(false),
 	)
 	if err != nil {
 		log.Fatalf("❌ خطا در راه‌اندازی مرورگر سرور: %v", err)
