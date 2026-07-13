@@ -15,7 +15,7 @@ class KermRiziKeyboard
                 InlineKeyboardButton::make('ریپورتر', callback_data: 'reporter_menu', style: 'danger', icon_custom_emoji_id: '5334882760735598374')
             )
             ->addRow(
-                InlineKeyboardButton::make('مزاحم ساز', callback_data: 'user_autofiller', style: 'danger', icon_custom_emoji_id: '5354971413700680895')
+                InlineKeyboardButton::make('مزاحم ساز', callback_data: 'check_countdown', style: 'danger', icon_custom_emoji_id: '5354971413700680895')
             )
             ->addRow(
                 InlineKeyboardButton::make('📵 ریستر موبایل 📵', callback_data: 'check_countdown', style: 'danger'),

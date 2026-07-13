@@ -21,7 +21,7 @@ class BomberMenuKeyboard
                 InlineKeyboardButton::make('بمبر ترکیبی پلاس', callback_data: 'not_implemented', style: 'danger', icon_custom_emoji_id: '5269535069550162819')
             )
             ->addRow(
-                InlineKeyboardButton::make('ایمیل بمبر پلاس', callback_data: 'not_implemented', style: 'danger', icon_custom_emoji_id: '5456174900622412791')
+                InlineKeyboardButton::make('ایمیل بمبر پلاس', callback_data: 'check_countdown', style: 'danger', icon_custom_emoji_id: '5456174900622412791')
             )
             ->addRow(
                 InlineKeyboardButton::make('بمبر چیه؟', url: 'https://t.me/kermpluslearn/6', style: 'danger', icon_custom_emoji_id: '5134377151734219769')

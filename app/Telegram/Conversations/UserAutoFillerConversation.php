@@ -163,7 +163,7 @@ class UserAutoFillerConversation extends Conversation
 
         $whitelist = app(WhitelistService::class);
         if ($whitelist->isWhitelisted($phone, WhitelistedTarget::TYPE_PHONE)) {
-            $bot->sendMessage($whitelist->getBlockMessage($phone, WhitelistedTarget::TYPE_PHONE), reply_markup: BackToMainKeyboard::make());
+            $bot->sendMessage($whitelist->getBlockMessage($phone, WhitelistedTarget::TYPE_PHONE), reply_markup: BackToMainKeyboard::make(), parse_mode: 'HTML');
             $this->end();
             return;
         }

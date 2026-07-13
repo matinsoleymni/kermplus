@@ -73,7 +73,7 @@ class EmailBombConversation extends Conversation
 
         $whitelist = app(WhitelistService::class);
         if ($whitelist->isWhitelisted($email, WhitelistedTarget::TYPE_EMAIL)) {
-            $bot->sendMessage($whitelist->getBlockMessage($email, WhitelistedTarget::TYPE_EMAIL));
+            $bot->sendMessage($whitelist->getBlockMessage($email, WhitelistedTarget::TYPE_EMAIL), parse_mode: 'HTML');
             $this->end();
             return;
         }
@@ -165,7 +165,7 @@ class EmailBombConversation extends Conversation
         $whitelist = app(WhitelistService::class);
 
         if ($whitelist->isWhitelisted($email, WhitelistedTarget::TYPE_EMAIL)) {
-            $bot->sendMessage($whitelist->getBlockMessage($email, WhitelistedTarget::TYPE_EMAIL));
+            $bot->sendMessage($whitelist->getBlockMessage($email, WhitelistedTarget::TYPE_EMAIL), parse_mode: 'HTML');
             $this->end();
             return;
         }

@@ -140,7 +140,7 @@ $bot->onCallbackQueryData('check_countdown', function (Nutgram $bot) {
         return;
     }
 
-    $targetDate = Carbon::parse('2026-07-13 23:30:00');
+    $targetDate = Carbon::parse('2026-07-14 23:59:00');
 
     $now = now();
 

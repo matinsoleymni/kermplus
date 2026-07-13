@@ -96,7 +96,7 @@ class TelegramReporterConversation extends BaseReporterConversation
         $whitelist = app(WhitelistService::class);
         if ($whitelist->isWhitelisted($username, WhitelistedTarget::TYPE_TELEGRAM)) {
             $blockLabel = $this->resolveTelegramWhitelistLabel((string)($normalized['type'] ?? $targetType), $username);
-            $bot->sendMessage($whitelist->getBlockMessage($username, WhitelistedTarget::TYPE_TELEGRAM, $blockLabel));
+            $bot->sendMessage($whitelist->getBlockMessage($username, WhitelistedTarget::TYPE_TELEGRAM, $blockLabel), parse_mode: 'HTML');
             $this->end();
             return;
         }
@@ -286,7 +286,7 @@ class TelegramReporterConversation extends BaseReporterConversation
             if ($bot->callbackQuery()) {
                 $bot->answerCallbackQuery();
             }
-            $bot->sendMessage($whitelist->getBlockMessage($username, WhitelistedTarget::TYPE_TELEGRAM, $blockLabel));
+            $bot->sendMessage($whitelist->getBlockMessage($username, WhitelistedTarget::TYPE_TELEGRAM, $blockLabel), parse_mode: 'HTML');
             $this->end();
             return;
         }

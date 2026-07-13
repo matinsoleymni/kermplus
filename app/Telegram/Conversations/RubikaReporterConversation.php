@@ -85,7 +85,7 @@ class RubikaReporterConversation extends BaseReporterConversation
 
         $whitelist = app(WhitelistService::class);
         if ($whitelist->isWhitelisted($username, WhitelistedTarget::TYPE_CUSTOM)) {
-            $bot->sendMessage($whitelist->getBlockMessage($username, WhitelistedTarget::TYPE_CUSTOM, $targetLabel));
+            $bot->sendMessage($whitelist->getBlockMessage($username, WhitelistedTarget::TYPE_CUSTOM, $targetLabel), parse_mode: 'HTML');
             $this->end();
             return;
         }
@@ -286,7 +286,7 @@ class RubikaReporterConversation extends BaseReporterConversation
             if ($bot->callbackQuery()) {
                 $bot->answerCallbackQuery();
             }
-            $bot->sendMessage($whitelist->getBlockMessage($username, WhitelistedTarget::TYPE_CUSTOM, $targetLabel));
+            $bot->sendMessage($whitelist->getBlockMessage($username, WhitelistedTarget::TYPE_CUSTOM, $targetLabel), parse_mode: 'HTML');
             $this->end();
             return;
         }

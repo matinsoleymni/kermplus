@@ -83,7 +83,7 @@ class SmsBomberMenuConversation extends Conversation
 
         $whitelist = app(WhitelistService::class);
         if ($whitelist->isWhitelisted($phone, WhitelistedTarget::TYPE_PHONE)) {
-            $bot->sendMessage($whitelist->getBlockMessage($phone, WhitelistedTarget::TYPE_PHONE));
+            $bot->sendMessage($whitelist->getBlockMessage($phone, WhitelistedTarget::TYPE_PHONE), parse_mode: 'HTML');
             $this->end();
             return;
         }
@@ -230,7 +230,7 @@ class SmsBomberMenuConversation extends Conversation
         $whitelist = app(WhitelistService::class);
 
         if ($whitelist->isWhitelisted($this->phone, WhitelistedTarget::TYPE_PHONE)) {
-            $bot->sendMessage($whitelist->getBlockMessage($this->phone, WhitelistedTarget::TYPE_PHONE));
+            $bot->sendMessage($whitelist->getBlockMessage($this->phone, WhitelistedTarget::TYPE_PHONE), parse_mode: 'HTML');
             $this->end();
             return;
         }
