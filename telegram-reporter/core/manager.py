@@ -79,7 +79,8 @@ class AgentManager:
         self.lock.set()
 
         try:
-            print(f">>>>> DEBUG: Found {len(all_db_sessions)} sessions in database! <<<<<")
+            session_count = await self.app.database.Session.all().count()
+            print(f">>>>> DEBUG: Found {session_count} sessions in database! <<<<<")
             tasks = [
                 asyncio.create_task(
                     self._launch(
