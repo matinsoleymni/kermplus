@@ -25,7 +25,7 @@ class FeatureLimitService
             ->where('user_id', $user->id)
             ->where('type', self::TYPE_REPORTER);
 
-        return true;
+        // return true;
 
         if ($this->hasReporterAccess($user)) {
             if (!$user->isAdmin()) {
@@ -99,6 +99,11 @@ class FeatureLimitService
             ->where('type', self::TYPE_NEGATIVE_REACTION)
             ->whereDate('created_at', Carbon::now()->toDateString())
             ->sum('count');
+
+        if (!$this->hasPlusOnlyAccess($user, SubscriptionService::FEATURE_WHITELIST)) {
+            return "<tg-emoji emoji-id=\"6224077119996040131\">❗️</tg-emoji><tg-emoji emoji-id=\"4929619512224909015\">🪱</tg-emoji> این بخش نیازمند ارتقای نسخه رباتمونه <tg-emoji emoji-id=\"5370967353674701492\">😚</tg-emoji>\n\nبرای ارتقای نسخه ربات به \"نسخه پلاس<tg-emoji emoji-id=\"5433758796289685818\">👑</tg-emoji>\" و یا به \"نسخه پرو<tg-emoji emoji-id=\"6244241334320762892\">💎</tg-emoji>\" از طریق دکمه های زیر اقدام کنید :";
+        }
+
 
         if (($usedToday + $count) > 5) {
             return '⛔️ حداکثر ۵ ری‌اکشن منفی در روز می‌توانید ثبت کنید.';
