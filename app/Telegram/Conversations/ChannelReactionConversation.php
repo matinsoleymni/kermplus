@@ -187,9 +187,8 @@ https://t.me/channel/123
 
         $usedReaction = $emoji ?: ($mixNegative ? 'میکس ری اکشن منفی' : '—');
 
-        // ۱. تنظیمات شبیه‌ساز لودینگ هوشمند و رندوم
-        $targetTime = random_int(20, 22); // زمان کل بین 40 تا 45 ثانیه
-        $totalSteps = random_int(6, 1); // تعداد ویرایش پیام در تلگرام
+        $targetTime = random_int(20, 22);
+        $totalSteps = random_int(1, 6);
         $chatId = $bot->chatId();
 
         $initialEta = gmdate('i:s', $targetTime);
