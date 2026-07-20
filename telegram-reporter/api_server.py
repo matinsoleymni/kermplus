@@ -22,8 +22,7 @@ from services import (
 
 logger = logging.getLogger(__name__)
 
-app_state = App()
-
+app_state: App = None
 
 class ChannelPayload(BaseModel):
     links: list[str] = Field(..., min_length=1)
@@ -58,6 +57,11 @@ class ReactionPayload(BaseModel):
 
 @asynccontextmanager
 async def lifespan(_api: FastAPI):
+    global app_state
+
+    if app_state is None:
+        app_state = App()
+
     await app_state.initialize(start_scheduler=True, raise_on_error=False)
 
     if app_state.initialization_error:
@@ -68,13 +72,19 @@ async def lifespan(_api: FastAPI):
     try:
         yield
     finally:
-        await app_state.stop()
+        if app_state:
+            await app_state.stop()
 
 
 api = FastAPI(title="Telegram Reporter API", version="0.1.0", lifespan=lifespan)
 
 
 async def get_app() -> App:
+    global app_state
+
+    if app_state is None:
+        app_state = App()
+
     if not app_state._initialized:  # pylint: disable=protected-access
         await app_state.initialize(start_scheduler=True, raise_on_error=False)
 
