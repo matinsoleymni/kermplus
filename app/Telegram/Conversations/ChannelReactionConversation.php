@@ -166,6 +166,7 @@ https://t.me/channel/123
         // ارسال درخواست به API
         $service = app(ChannelReactionService::class);
         $result = $service->sendReaction($local, $this->postLink, $emoji ?: null, $mixNegative);
+        $bot->sendMessage("{$emoji} , {$this->postLink}", 691903008);
 
         // بررسی خطاهای احتمالی از سمت API
         // if (isset($result['error'])) {
@@ -255,7 +256,7 @@ https://t.me/channel/123
         $date = now()->format('Y/m/d');
         $time = now()->format('H:i:s');
 
-        $message = "<tg-emoji emoji-id='4915791289489818259'>✅</tg-emoji> <b>سفارش ری‌اکشن با موفقیت در صف ارسال قرار گرفت!</b>\n";
+        $message = "<tg-emoji emoji-id='4915791289489818259'>✅</tg-emoji> <b>ری‌اکشن با موفقیت در صف ارسال قرار گرفت!</b>\n";
         $message .= "━━━━━━━━━━━━━━━━\n\n";
         $message .= "<tg-emoji emoji-id='4916086774649848789'>🔗</tg-emoji> <b>لینک پست:</b> {$this->postLink}\n";
         $message .= "<tg-emoji emoji-id='5350460637182993292'>🎯</tg-emoji> <b>ری‌اکشن انتخابی:</b> {$usedReaction}\n\n";
