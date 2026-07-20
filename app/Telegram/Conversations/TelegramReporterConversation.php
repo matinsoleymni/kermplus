@@ -87,10 +87,6 @@ class TelegramReporterConversation extends BaseReporterConversation
 
         $username = $normalized['username'];
         $chat = $this->fetchTelegramChat($bot, $username);
-        // if (!$chat) {
-        //     $bot->sendMessage('درحال حاضر فقط چنل ها پشتیبانی میشود تا ساعاتی دیگر قابلیت ریپورت اکانت ها هم اضافه میشه 🪱');
-        //     return;
-        // }
 
         $bot->setUserData('tg_reporter_username', $username);
         $bot->setUserData('tg_reporter_target', $normalized);
@@ -702,14 +698,13 @@ class TelegramReporterConversation extends BaseReporterConversation
         $username = $target['username'] ?? '';
         $type = $target['type'] ?? 'account';
 
-        $memberCount = null;
-
-        if ($type === 'channel' && $username) {
-            $memberCount = $this->fetchChannelMemberCount($bot, $username);
-        }
-
         if ($chat === null && $type !== 'post' && $username) {
             $chat = $this->fetchTelegramChat($bot, $username);
+        }
+
+        $memberCount = null;
+        if ($type === 'channel' && $username && !isset($chat->members_count)) {
+            $memberCount = $this->fetchChannelMemberCount($bot, $username);
         }
 
         return match ($type) {
@@ -723,16 +718,25 @@ class TelegramReporterConversation extends BaseReporterConversation
     {
         if ($chat) {
             $fullName = trim(($chat->first_name ?? '') . ' ' . ($chat->last_name ?? ''));
-            $nameLine = "🏷️ name: {$fullName}\n";
+            $bio = $chat->description ?? '—';
+
+            // استخراج وضعیت‌های اکانت از پایتون
+            $badges = [];
+            if (isset($chat->is_verified) && $chat->is_verified) $badges[] = '✅ تایید شده';
+            if (isset($chat->is_scam) && $chat->is_scam) $badges[] = '⚠️ کلاه‌بردار (Scam)';
+            if (isset($chat->is_fake) && $chat->is_fake) $badges[] = '❌ فیک';
+            $badgeStr = !empty($badges) ? "\n📛 وضعیت: " . implode(' | ', $badges) : '';
+
             $status = "Account Found";
+            $detailsLine = "🏷️ name: {$fullName}\n🧾 bio: {$bio}{$badgeStr}\n";
         } else {
-            $nameLine = "";
             $status = "Target Selected";
+            $detailsLine = "";
         }
 
         return "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> KermPlus | {$status}\n" .
             "━━━━━━━━━━━━━━━\n" .
-            $nameLine .
+            $detailsLine .
             "<tg-emoji emoji-id='4913497231492908158'>👤</tg-emoji> username : @{$username}\n" .
             "━━━━━━━━━━━━━━━\n\n";
     }
@@ -741,26 +745,34 @@ class TelegramReporterConversation extends BaseReporterConversation
     {
         $title = $chat->title ?? '@' . $username;
         $description = $chat->description ?? '—';
-        $members = $memberCount ?? $chat->subscriber_count ?? $chat->member_count ?? '—';
+        $members = $chat->members_count ?? $memberCount ?? $chat->subscriber_count ?? $chat->member_count ?? '—';
+
+        // استخراج وضعیت‌های کانال از پایتون
+        $badges = [];
+        if (isset($chat->is_verified) && $chat->is_verified) $badges[] = '✅ تایید شده';
+        if (isset($chat->is_scam) && $chat->is_scam) $badges[] = '⚠️ کلاه‌بردار (Scam)';
+        if (isset($chat->is_fake) && $chat->is_fake) $badges[] = '❌ فیک';
+        $badgeStr = !empty($badges) ? "\n📛 وضعیت: " . implode(' | ', $badges) : '';
 
         return "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> KermPlus | Channel Found\n" .
             "━━━━━━━━━━━━━━━\n" .
             "📢 title: {$title}\n" .
             "🆔 username: @{$username}\n" .
-            "🧾 description: {$description}\n\n" .
+            "🧾 description: {$description}{$badgeStr}\n\n" .
             "<tg-emoji emoji-id='4913497231492908158'>👤</tg-emoji> subscribers: {$members}\n" .
             "━━━━━━━━━━━━━━━\n\n";
     }
 
     private function formatMessagePreview($chat, string $username, ?int $messageId, string $link): string
     {
+        $sourceTitle = $chat->title ?? '@' . $username;
         $content = '—';
         $views = '—';
         $sentAt = '—';
 
         return "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> KermPlus | Message Found\n" .
             "━━━━━━━━━━━━━━━\n" .
-            "📢 source: @{$username}\n" .
+            "📢 source: {$sourceTitle}\n" .
             "🆔 message id: {$messageId}\n" .
             "📝 content: {$content}\n" .
             "🖇️ link : {$link}\n\n" .
@@ -880,24 +892,23 @@ class TelegramReporterConversation extends BaseReporterConversation
     }
 
     private function fetchTelegramChat(Nutgram $bot, string $username)
-{
-    try {
-        $apiUrl = rtrim((string) config('services.channel_reaction.url', 'http://telegram-reporter:8082'), '/');
+    {
+        try {
+            $apiUrl = rtrim((string) config('services.channel_reaction.url', 'http://telegram-reporter:8082'), '/');
 
-        $response = Http::timeout(10)->post($apiUrl . '/chat/info', [
-            'link' => $username,
-        ]);
+            $response = Http::timeout(10)->post($apiUrl . '/chat/info', [
+                'link' => $username,
+            ]);
 
-        if ($response->successful() && $response->json('success')) {
-            $data = $response->json('data');
+            if ($response->successful() && $response->json('success')) {
+                $data = $response->json('data');
+                return json_decode(json_encode($data));
+            }
 
-            return json_decode(json_encode($data));
+            return $bot->getChat(chat_id: '@' . ltrim($username, '@'));
+
+        } catch (Throwable $e) {
+            return null;
         }
-
-        return $bot->getChat(chat_id: '@' . ltrim($username, '@'));
-
-    } catch (Throwable $e) {
-        return null;
     }
-}
 }
