@@ -79,7 +79,7 @@ class AgentManager:
         self.lock.set()
 
         try:
-
+            print(f">>>>> DEBUG: Found {len(all_db_sessions)} sessions in database! <<<<<")
             tasks = [
                 asyncio.create_task(
                     self._launch(
@@ -97,7 +97,6 @@ class AgentManager:
             if not tasks:
                 return None
 
-            # تغییر کلیدی دوم: جلوگیری از توقف کل سیستم بخاطر یک تسک خراب
             await asyncio.gather(
                 *tasks, return_exceptions=True
             )
