@@ -13,6 +13,8 @@ use SergiX44\Nutgram\Conversations\Conversation;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
+use App\Services\FeatureLimitService;
+use App\Telegram\Keyboards\PlusRequiredKeyboard;
 
 class ChannelReactionConversation extends Conversation
 {
@@ -43,6 +45,15 @@ class ChannelReactionConversation extends Conversation
 
         if ($local->isSuspended()) {
             $bot->sendMessage('⛔️ حساب شما موقتا معلق شده است.');
+            $this->end();
+            return;
+        }
+
+        $limiter = app(FeatureLimitService::class);
+        $limit = $limiter->checkNegativeReactionLimit($local);
+        if($limit){
+            $k = PlusRequiredKeyboard::make(true);
+            $bot->sendMessage($limit, reply_markup: $k);
             $this->end();
             return;
         }
