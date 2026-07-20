@@ -17,7 +17,7 @@ import (
 type TaskStatus struct {
 	ID        string                `json:"task_id"`
 	Type      string                `json:"type"`   // fill, register, quick_fill
-	Status    string                `json:"status"` // processing, completed, failed
+	Status    string                `json:"status"` // queued, processing, completed, failed
 	Result    *services.BatchResult `json:"result,omitempty"`
 	CreatedAt time.Time             `json:"created_at"`
 }
@@ -37,6 +37,9 @@ var (
 	globalFiller *services.AutoFormFiller
 	tasks        = make(map[string]*TaskStatus)
 	tasksMu      sync.RWMutex
+
+	// 1. تعریف یک صف برای جاب‌ها (با ظرفیت مثلا 1000 تسک در صف)
+	jobQueue = make(chan func(), 1000)
 )
 
 func main() {
@@ -49,6 +52,9 @@ func main() {
 	}
 	defer globalFiller.Close()
 
+	// 2. استارت کردن Worker Pool (فقط 2 تسک همزمان)
+	startWorkerPool(2)
+
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
 
@@ -60,6 +66,19 @@ func main() {
 	if err := r.Run(":8084"); err != nil {
 		log.Fatalf("❌ خطا در اجرای سرور: %v", err)
 	}
+}
+
+// 3. تابع مدیریت Worker ها
+func startWorkerPool(maxWorkers int) {
+	for i := 1; i <= maxWorkers; i++ {
+		go func(workerID int) {
+			for job := range jobQueue {
+				// هر زمان که جابی در صف قرار بگیرد، یکی از این worker ها آن را اجرا میکند
+				job()
+			}
+		}(i)
+	}
+	fmt.Printf("👷 Worker Pool started with %d workers\n", maxWorkers)
 }
 
 func handleBatchFill(c *gin.Context) {
@@ -76,15 +95,19 @@ func handleBatchFill(c *gin.Context) {
 	}
 
 	taskID := uuid.New().String()
-	createTask(taskID, "fill")
+	// وضعیت اولیه حالا queued است
+	createTask(taskID, "fill", "queued")
 
-	go func(id, phone, name string, sites []string) {
-		result := globalFiller.BatchSubmit(sites, phone, name)
-		updateTaskResult(id, result)
-	}(taskID, req.PhoneNumber, req.FullName, fillSites)
+	// 4. ارسال تسک به صف به جای اجرای مستقیم با go func
+	jobQueue <- func() {
+		// وقتی نوبت به این تسک رسید، وضعیتش به processing تغییر میکند
+		updateTaskStatus(taskID, "processing")
+		result := globalFiller.BatchSubmit(fillSites, req.PhoneNumber, req.FullName)
+		updateTaskResult(taskID, result)
+	}
 
 	c.JSON(http.StatusAccepted, gin.H{
-		"message": "عملیات Fill آغاز شد",
+		"message": "عملیات Fill در صف قرار گرفت",
 		"task_id": taskID,
 	})
 }
@@ -103,15 +126,17 @@ func handleBatchRegister(c *gin.Context) {
 	}
 
 	taskID := uuid.New().String()
-	createTask(taskID, "register")
+	createTask(taskID, "register", "queued")
 
-	go func(id, phone, name, email string, sites []string) {
-		result := globalFiller.BatchRegister(sites, phone, name, email)
-		updateTaskResult(id, result)
-	}(taskID, req.PhoneNumber, req.FullName, req.Email, registerSites)
+	// 4. ارسال تسک به صف
+	jobQueue <- func() {
+		updateTaskStatus(taskID, "processing")
+		result := globalFiller.BatchRegister(registerSites, req.PhoneNumber, req.FullName, req.Email)
+		updateTaskResult(taskID, result)
+	}
 
 	c.JSON(http.StatusAccepted, gin.H{
-		"message": "عملیات Register آغاز شد",
+		"message": "عملیات Register در صف قرار گرفت",
 		"task_id": taskID,
 	})
 }
@@ -131,14 +156,23 @@ func handleGetTaskStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, task)
 }
 
-func createTask(id, taskType string) {
+func createTask(id, taskType, initialStatus string) {
 	tasksMu.Lock()
 	defer tasksMu.Unlock()
 	tasks[id] = &TaskStatus{
 		ID:        id,
 		Type:      taskType,
-		Status:    "processing",
+		Status:    initialStatus,
 		CreatedAt: time.Now(),
+	}
+}
+
+// تابع جدید برای آپدیت کردن وضعیت تسک (مثلا از queued به processing)
+func updateTaskStatus(id, status string) {
+	tasksMu.Lock()
+	defer tasksMu.Unlock()
+	if task, exists := tasks[id]; exists {
+		task.Status = status
 	}
 }
 

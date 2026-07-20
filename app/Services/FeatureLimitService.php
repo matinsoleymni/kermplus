@@ -25,34 +25,34 @@ class FeatureLimitService
             ->where('user_id', $user->id)
             ->where('type', self::TYPE_REPORTER);
 
-        // return true;
+        return true;
 
-        // if ($this->hasReporterAccess($user)) {
-        //     if (!$user->isAdmin()) {
-        //         $last = (clone $query)->latest()->first();
-        //         if ($last && $last->created_at->gt($now->copy()->subHours(8))) {
-        //             return 'هر 8 ساعت فقط یک درخواست ریپورت میتونی ثبت کنی عزیزم 🥺♥️';
-        //         }
-        //     }
+        if ($this->hasReporterAccess($user)) {
+            if (!$user->isAdmin()) {
+                $last = (clone $query)->latest()->first();
+                if ($last && $last->created_at->gt($now->copy()->subHours(8))) {
+                    return 'هر 8 ساعت فقط یک درخواست ریپورت میتونی ثبت کنی عزیزم 🥺♥️';
+                }
+            }
 
-        //     if($user->isAdmin()) {
+            if($user->isAdmin()) {
 
-        //     }else {
-        //         $todayCount = (clone $query)
-        //             ->whereDate('created_at', $now->toDateString())
-        //             ->count();
-        //         if ($todayCount >= 3) {
-        //             return '⛔️ محدودیت روزانه ریپورتر (۳ درخواست) پر شده است.';
-        //         }
-        //     }
-        // } else {
-        //     $monthCount = (clone $query)
-        //         ->where('created_at', '>=', $now->copy()->startOfMonth())
-        //         ->count();
-        //     if ($monthCount >= 0) {
-        //         return '⛔️ کاربران عادی ماهی یکبار می‌توانند ریپورت ثبت کنند.';
-        //     }
-        // }
+            }else {
+                $todayCount = (clone $query)
+                    ->whereDate('created_at', $now->toDateString())
+                    ->count();
+                if ($todayCount >= 3) {
+                    return '⛔️ محدودیت روزانه ریپورتر (۳ درخواست) پر شده است.';
+                }
+            }
+        } else {
+            $monthCount = (clone $query)
+                ->where('created_at', '>=', $now->copy()->startOfMonth())
+                ->count();
+            if ($monthCount >= 0) {
+                return '⛔️ کاربران عادی ماهی یکبار می‌توانند ریپورت ثبت کنند.';
+            }
+        }
 
         return null;
     }

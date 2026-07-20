@@ -70,7 +70,7 @@ func NewAutoFormFiller(opts ...Option) (*AutoFormFiller, error) {
 	af := &AutoFormFiller{
 		logs:     make([]string, 0),
 		timeout:  30 * time.Second,
-		headless: true,
+		headless: false,
 	}
 
 	for _, opt := range opts {

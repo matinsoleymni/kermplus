@@ -29,7 +29,7 @@ class KermRiziKeyboard
                 InlineKeyboardButton::make('کرم ریزی رو موبایل', callback_data: 'mobile_kerm_menu', style: 'danger', icon_custom_emoji_id: '5407025283456835913')
             )
             ->addRow(
-                InlineKeyboardButton::make('ری اکشنر منفی', callback_data: 'check_countdown', style: 'danger', icon_custom_emoji_id: '5305388752162539722')
+                InlineKeyboardButton::make('ری اکشنر منفی', callback_data: 'channel_reaction', style: 'danger', icon_custom_emoji_id: '5305388752162539722')
             )
             ->addRow(
                 InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'danger', icon_custom_emoji_id: '5352759161945867747')
