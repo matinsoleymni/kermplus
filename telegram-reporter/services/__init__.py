@@ -4,6 +4,7 @@ from .channels import add_channels, remove_channels
 from .reports import report_account, report_message, send_reactions
 from .sessions import import_sessions
 from .status import get_status
+from .chatinfo import get_chat_info
 
 __all__ = [
     "add_channels",
@@ -13,4 +14,5 @@ __all__ = [
     "send_reactions",
     "import_sessions",
     "get_status",
+    "get_chat_info"
 ]

@@ -18,6 +18,7 @@ from services import (
     report_account,
     report_message,
     send_reactions,
+    get_chat_info
 )
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,8 @@ class ReactionPayload(BaseModel):
     emoji: str | None = None
     mix_negative: bool = False
 
+class ChatInfoPayload(BaseModel):
+    link: str = Field(..., description="Telegram username, link, or ID")
 
 @asynccontextmanager
 async def lifespan(_api: FastAPI):
@@ -186,6 +189,20 @@ async def send_reaction_route(
         }
     )
 
+@api.post("/chat/info")
+async def chat_info_route(
+    payload: ChatInfoPayload,
+    app: Annotated[App, Depends(get_app)] = None,
+):
+    result = await get_chat_info(app, payload.link)
+
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=400,
+            detail=result
+        )
+
+    return JSONResponse(result)
 
 @api.get("/status")
 async def status_route(
