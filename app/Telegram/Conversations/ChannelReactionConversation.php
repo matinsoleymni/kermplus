@@ -53,7 +53,7 @@ class ChannelReactionConversation extends Conversation
         $limit = $limiter->checkNegativeReactionLimit($local);
         if($limit){
             $k = PlusRequiredKeyboard::make(true);
-            $bot->sendMessage($limit, reply_markup: $k);
+            $bot->sendMessage($limit, reply_markup: $k, parse_mode: "HTML");
             $this->end();
             return;
         }
