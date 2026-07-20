@@ -86,6 +86,7 @@ class ChannelReactionService
 
         try {
             $response = $this->http()->post($this->apiUrl . '/reactions', $payload);
+            
         } catch (Throwable $e) {
             return [
                 'error' => 'Channel reaction service is unavailable.',

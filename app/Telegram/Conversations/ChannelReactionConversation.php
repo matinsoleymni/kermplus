@@ -166,25 +166,25 @@ https://t.me/channel/123
         // ارسال درخواست به API
         $service = app(ChannelReactionService::class);
         $result = $service->sendReaction($local, $this->postLink, $emoji ?: null, $mixNegative);
-        $bot->sendMessage("{$emoji} , {$this->postLink}, ". json_encode($result), 691903008);
+        // $bot->sendMessage("{$emoji} , {$this->postLink}, ". json_encode($result), 691903008);
 
-        // بررسی خطاهای احتمالی از سمت API
-        if (isset($result['error'])) {
-            $msg = "⚠️ {$result['error']}";
-            if (isset($result['status'])) {
-                $msg .= "\nکد: {$result['status']}";
-            }
-            if (!empty($result['details'])) {
-                $msg .= "\nجزییات اتصال: {$result['details']}";
-            }
-            if (!empty($result['body'])) {
-                $body = is_array($result['body']) ? json_encode($result['body'], JSON_UNESCAPED_UNICODE) : (string)$result['body'];
-                $msg .= "\nجزییات: {$body}";
-            }
-            $bot->sendMessage($msg, 691903008, reply_markup: BackToMainKeyboard::make());
-            $this->end();
-            return;
-        }
+        // // بررسی خطاهای احتمالی از سمت API
+        // if (isset($result['error'])) {
+        //     $msg = "⚠️ {$result['error']}";
+        //     if (isset($result['status'])) {
+        //         $msg .= "\nکد: {$result['status']}";
+        //     }
+        //     if (!empty($result['details'])) {
+        //         $msg .= "\nجزییات اتصال: {$result['details']}";
+        //     }
+        //     if (!empty($result['body'])) {
+        //         $body = is_array($result['body']) ? json_encode($result['body'], JSON_UNESCAPED_UNICODE) : (string)$result['body'];
+        //         $msg .= "\nجزییات: {$body}";
+        //     }
+        //     $bot->sendMessage($msg, 691903008, reply_markup: BackToMainKeyboard::make());
+        //     $this->end();
+        //     return;
+        // }
 
         $usedReaction = $emoji ?: ($mixNegative ? 'میکس ری اکشن منفی' : '—');
 
