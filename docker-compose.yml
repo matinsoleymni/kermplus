@@ -124,6 +124,8 @@ services:
     volumes:
       - telegram_sessions:/data
       - telegram_tmp:/tmp/telegram-reporter
+      - /root/kermplus/telegram-reporter/sessions.db:/data/sessions.db
+      - /root/kermplus/telegram-reporter/sessions.db:/sessions.db
     ports:
       - "8082:8082"
     depends_on:
