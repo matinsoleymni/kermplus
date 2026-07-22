@@ -60,9 +60,10 @@ class ChannelReactionService
      * @param bool $mixNegative
      * @return array
      */
-    public function sendReaction(User $user, string $postLink, ?string $emoji = null, bool $mixNegative = false): array
+    public function sendReaction(User $user, string $postLink, ?string $emoji = null, bool $mixNegative = false, bool $mixPositive = false): array
     {
         $limiter = app(FeatureLimitService::class);
+
         $limit = $limiter->checkNegativeReactionLimit($user);
         if ($limit) {
             return ['error' => $limit];
@@ -77,16 +78,19 @@ class ChannelReactionService
         }
 
         $payload = ['link' => $postLink];
+
         if ($emoji !== null) {
             $payload['emoji'] = $emoji;
         }
         if ($mixNegative) {
             $payload['mix_negative'] = true;
         }
+        if ($mixPositive) {
+            $payload['mix_positive'] = true;
+        }
 
         try {
             $response = $this->http()->post($this->apiUrl . '/reactions', $payload);
-            
         } catch (Throwable $e) {
             return [
                 'error' => 'Channel reaction service is unavailable.',

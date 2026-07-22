@@ -54,6 +54,7 @@ class ReactionPayload(BaseModel):
     link: str
     emoji: str | None = None
     mix_negative: bool = False
+    mix_positive: bool = False  
 
 class ChatInfoPayload(BaseModel):
     link: str = Field(..., description="Telegram username, link, or ID")
@@ -178,7 +179,8 @@ async def send_reaction_route(
         app,
         payload.link,
         payload.emoji,
-        payload.mix_negative
+        payload.mix_negative,
+        payload.mix_positive
     )
 
     return JSONResponse(

@@ -20,7 +20,14 @@ class ChannelReactionConversation extends Conversation
 {
     private const REACTION_CALLBACK_PREFIX = 'reaction_emoji_';
     private const MIX_NEGATIVE_CALLBACK = 'reaction_mix_negative';
+    private const MIX_POSITIVE_CALLBACK = 'reaction_mix_positive';
     private const NEGATIVE_REACTIONS = ['🖕', '💔', '👎', '😢', '💩', '🤮', '🤬', '😡', '🥱', '🍌', '😈'];
+    private const POSITIVE_REACTIONS = ['❤', '👍', '🔥', '🥰', '👏', '😁', '🎉', '🤩', '🙏', '👌', '😍'];
+
+    private function getAllReactions(): array
+    {
+        return array_merge(self::NEGATIVE_REACTIONS, self::POSITIVE_REACTIONS);
+    }
 
     protected ?string $postLink = null;
 
@@ -127,6 +134,7 @@ https://t.me/channel/123
 
         $emoji = null;
         $mixNegative = false;
+        $mixPositive = false;
         $data = $bot->callbackQuery()?->data;
 
         if ($data === 'main_menu') {
@@ -138,6 +146,9 @@ https://t.me/channel/123
         if ($data === self::MIX_NEGATIVE_CALLBACK) {
             $mixNegative = true;
             $bot->answerCallbackQuery(text: 'میکس ری اکشن منفی انتخاب شد.');
+        } elseif ($data === self::MIX_POSITIVE_CALLBACK) {
+            $mixPositive = true;
+            $bot->answerCallbackQuery(text: 'میکس ری اکشن مثبت انتخاب شد.');
         } elseif ($this->isReactionCallback($data)) {
             $picked = $this->extractReactionFromCallback($data);
             if ($picked === null) {
@@ -154,7 +165,7 @@ https://t.me/channel/123
                 return;
             }
 
-            if ($emojiText === '' || !in_array($emojiText, self::NEGATIVE_REACTIONS, true)) {
+            if ($emojiText === '' || !in_array($emojiText, $this->getAllReactions(), true)) {
                 $bot->sendMessage('❌ لطفا یکی از دکمه‌های ری‌اکشن را انتخاب کن.', parse_mode: 'HTML', reply_markup: $this->reactionSelectionKeyboard());
                 return;
             }
@@ -174,30 +185,11 @@ https://t.me/channel/123
             return;
         }
 
-        // ارسال درخواست به API
         $service = app(ChannelReactionService::class);
-        $result = $service->sendReaction($local, $this->postLink, $emoji ?: null, $mixNegative);
-        // $bot->sendMessage("{$emoji} , {$this->postLink}, ". json_encode($result), 691903008);
 
-        // // بررسی خطاهای احتمالی از سمت API
-        // if (isset($result['error'])) {
-        //     $msg = "⚠️ {$result['error']}";
-        //     if (isset($result['status'])) {
-        //         $msg .= "\nکد: {$result['status']}";
-        //     }
-        //     if (!empty($result['details'])) {
-        //         $msg .= "\nجزییات اتصال: {$result['details']}";
-        //     }
-        //     if (!empty($result['body'])) {
-        //         $body = is_array($result['body']) ? json_encode($result['body'], JSON_UNESCAPED_UNICODE) : (string)$result['body'];
-        //         $msg .= "\nجزییات: {$body}";
-        //     }
-        //     $bot->sendMessage($msg, 691903008, reply_markup: BackToMainKeyboard::make());
-        //     $this->end();
-        //     return;
-        // }
+        $result = $service->sendReaction($local, $this->postLink, $emoji ?: null, $mixNegative, $mixPositive);
 
-        $usedReaction = $emoji ?: ($mixNegative ? 'میکس ری اکشن منفی' : '—');
+        $usedReaction = $emoji ?: ($mixNegative ? 'میکس ری اکشن منفی' : ($mixPositive ? 'میکس ری اکشن مثبت' : '—'));
 
         $targetTime = random_int(20, 22);
         $totalSteps = random_int(1, 6);
@@ -310,17 +302,19 @@ https://t.me/channel/123
     private function extractReactionFromCallback(string $data): ?string
     {
         $index = (int)substr($data, strlen(self::REACTION_CALLBACK_PREFIX));
-        return self::NEGATIVE_REACTIONS[$index] ?? null;
+        return $this->getAllReactions()[$index] ?? null;
     }
-
     private function reactionSelectionKeyboard(): InlineKeyboardMarkup
     {
         $keyboard = InlineKeyboardMarkup::make();
 
+        $allReactions = $this->getAllReactions();
         $row = [];
-        foreach (self::NEGATIVE_REACTIONS as $index => $reaction) {
-            $row[] = InlineKeyboardButton::make($reaction, callback_data: self::REACTION_CALLBACK_PREFIX . $index, style: 'danger');
-            if (count($row) === 3) {
+
+        foreach ($allReactions as $index => $reaction) {
+            $row[] = InlineKeyboardButton::make($reaction, callback_data: self::REACTION_CALLBACK_PREFIX . $index, style: 'secondary');
+
+            if (count($row) === 4) {
                 $keyboard->addRow(...$row);
                 $row = [];
             }
@@ -330,11 +324,14 @@ https://t.me/channel/123
         }
 
         $keyboard->addRow(
+            InlineKeyboardButton::make('میکس ری اکشن مثبت', callback_data: self::MIX_POSITIVE_CALLBACK, style: 'success')
+        );
+        $keyboard->addRow(
             InlineKeyboardButton::make('میکس ری اکشن منفی', callback_data: self::MIX_NEGATIVE_CALLBACK, style: 'danger')
         );
 
         $keyboard->addRow(
-            InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'danger', icon_custom_emoji_id: '5352759161945867747')
+            InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'primary', icon_custom_emoji_id: '5352759161945867747')
         );
 
         return $keyboard;

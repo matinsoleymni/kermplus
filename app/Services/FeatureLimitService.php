@@ -46,12 +46,7 @@ class FeatureLimitService
                 }
             }
         } else {
-            $monthCount = (clone $query)
-                ->where('created_at', '>=', $now->copy()->startOfMonth())
-                ->count();
-            if ($monthCount >= 0) {
-                return '⛔️ کاربران عادی ماهی یکبار می‌توانند ریپورت ثبت کنند.';
-            }
+            return "برای ریپورتر نیاز به اشتراک پرو یا پلاس داری";
         }
 
         return null;
