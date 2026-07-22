@@ -312,7 +312,7 @@ https://t.me/channel/123
         $row = [];
 
         foreach ($allReactions as $index => $reaction) {
-            $row[] = InlineKeyboardButton::make($reaction, callback_data: self::REACTION_CALLBACK_PREFIX . $index, style: 'secondary');
+            $row[] = InlineKeyboardButton::make($reaction, callback_data: self::REACTION_CALLBACK_PREFIX . $index);
 
             if (count($row) === 4) {
                 $keyboard->addRow(...$row);
