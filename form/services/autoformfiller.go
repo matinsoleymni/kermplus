@@ -631,7 +631,7 @@ func (af *AutoFormFiller) guessValue(pageURL, name, context, fieldType, tagName,
 	}
 	if af.containsAny(context, configs.EmailKeywords) || fieldType == "email" {
 		if email == "" {
-			email = "user@example.com"
+			email = "abc@gmail.com"
 		}
 		return &GuessResult{Value: email, Reason: "Email"}
 	}
@@ -645,7 +645,7 @@ func (af *AutoFormFiller) guessValue(pageURL, name, context, fieldType, tagName,
 		if len(configs.PersianLastNames) > 0 {
 			return &GuessResult{Value: configs.PersianLastNames[0], Reason: "Family"}
 		}
-		return &GuessResult{Value: "تست", Reason: "Family"}
+		return &GuessResult{Value: name, Reason: "Family"}
 	}
 	if af.containsAny(context, configs.MessageKeywords) || fieldType == "textarea" {
 		subjectKeywords := []string{"subject", "onvan", "موضوع"}
@@ -668,7 +668,7 @@ func (af *AutoFormFiller) guessValue(pageURL, name, context, fieldType, tagName,
 	// Fallback برای فرم‌های عمومی: مقداردهی اجباری به فیلدهای متنی ناشناخته
 	if fieldType == "text" || fieldType == "textarea" || tagName == "textarea" {
 		logFn("فیلد ناشناخته تشخیص داده شد: %s، استفاده از مقدار پیش‌فرض Fallback", name)
-		return &GuessResult{Value: "تست بررسی فرم", Reason: "Fallback_Text"}
+		return &GuessResult{Value: "لطفا تماس بگیرید", Reason: "Fallback_Text"}
 	}
 
 	return nil
