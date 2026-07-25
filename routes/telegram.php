@@ -146,7 +146,7 @@ $bot->onCallbackQueryData('check_countdown', function (Nutgram $bot) {
 
     if ($now->greaterThanOrEqualTo($targetDate)) {
         // $bot->editMessageText("✅ سیستم اکنون در دسترس است!");
-        $bot->answerCallbackQuery("درحال دیپلوی...", show_alert: true);
+        $bot->answerCallbackQuery(text: "درحال دیپلوی...", show_alert: true);
         return;
     }
 
