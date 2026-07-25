@@ -3,6 +3,7 @@ package services
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"form/configs"
@@ -47,7 +48,6 @@ type AutoFormFiller struct {
 	fixedEmail string
 	debug      bool
 	headless   bool
-	logs       []string
 	mode       Mode
 	timeout    time.Duration
 }
@@ -68,7 +68,6 @@ func WithTimeout(timeout time.Duration) Option {
 
 func NewAutoFormFiller(opts ...Option) (*AutoFormFiller, error) {
 	af := &AutoFormFiller{
-		logs:     make([]string, 0),
 		timeout:  30 * time.Second,
 		headless: false,
 	}
@@ -101,35 +100,53 @@ func (af *AutoFormFiller) SetMode(mode Mode) *AutoFormFiller {
 	return af
 }
 
+// متد اصلی رابط عمومی که به صورت Thread-Safe داده‌ها را به doSubmit می‌فرستد
 func (af *AutoFormFiller) SubmitForm(targetURL, phoneNumber string, targetName ...string) *Result {
-	af.fixedPhone = phoneNumber
-	af.logs = make([]string, 0)
-
+	name := af.fixedName
 	if len(targetName) > 0 && targetName[0] != "" {
-		af.fixedName = targetName[0]
+		name = targetName[0]
+	}
+	return af.doSubmit(targetURL, phoneNumber, name, af.fixedEmail, af.mode)
+}
+
+func (af *AutoFormFiller) Register(targetURL, phoneNumber, name, email string) *Result {
+	return af.doSubmit(targetURL, phoneNumber, name, email, ModeRegister)
+}
+
+// هسته مرکزی پردازش فرم که کاملا مستقل و بدون تداخل با سایر تب‌ها عمل می‌کند
+func (af *AutoFormFiller) doSubmit(targetURL, phone, name, email string, currentMode Mode) *Result {
+	var localLogs []string
+	var logMu sync.Mutex
+	logFn := func(format string, args ...interface{}) {
+		if af.debug {
+			msg := fmt.Sprintf(format, args...)
+			logMu.Lock()
+			localLogs = append(localLogs, msg)
+			logMu.Unlock()
+			fmt.Println(msg)
+		}
 	}
 
-	af.log("==========================================")
-	af.log("URL: %s", targetURL)
+	logFn("==========================================")
+	logFn("URL: %s", targetURL)
 
 	page, err := af.browser.Page(proto.TargetCreateTarget{URL: targetURL})
 	if err != nil {
-		return af.result(false, fmt.Sprintf("خطا در ایجاد صفحه: %v", err))
+		msg := fmt.Sprintf("خطا در ایجاد صفحه: %v", err)
+		logFn(msg)
+		return &Result{Status: false, Message: msg, Logs: localLogs}
 	}
 	defer page.Close()
 
-	// اعمال تایم‌اوت کلی برای جلوگیری از فلج شدن ربات روی این تب
 	page = page.Timeout(af.timeout)
 
-	// استفاده از WaitLoad به جای MustWaitLoad
 	err = page.WaitLoad()
 	if err != nil {
-		af.log("اخطار: لود صفحه کامل نشد یا تایم‌اوت رخ داد، پردازش را ادامه می‌دهیم...")
+		logFn("اخطار: لود صفحه کامل نشد یا تایم‌اوت رخ داد، پردازش را ادامه می‌دهیم...")
 	}
 	_ = page.WaitStable(2 * time.Second)
 
 	workingFrame := page
-
 	iframes, err := page.Elements("iframe")
 	if err == nil {
 		for _, iframeEl := range iframes {
@@ -144,7 +161,7 @@ func (af *AutoFormFiller) SubmitForm(targetURL, phoneNumber string, targetName .
 			fURL := strings.ToLower(info.URL)
 			for _, kw := range configs.IFrameKeywords {
 				if strings.Contains(fURL, kw) {
-					af.log("تشخیص iframe فرم‌ساز: %s", info.URL)
+					logFn("تشخیص iframe فرم‌ساز: %s", info.URL)
 					workingFrame = f
 					break
 				}
@@ -155,70 +172,72 @@ func (af *AutoFormFiller) SubmitForm(targetURL, phoneNumber string, targetName .
 		}
 	}
 
-	af.log("--- بررسی وجود دکمه‌های دروازه‌ای هدر (ورود / عضویت) ---")
-	jsGatewayClicker := `function() {
-		let targets = document.querySelectorAll('button, a, div, span, [role="button"]');
-		let gatewayKeywords = [
-			/ورود\s*[\/|]\s*عضویت/,
-			/ثبت\s*نام/,
-			/^ورود$/,
-			/^عضویت$/,
-			/sign\s*up/i,
-			/register/i,
-			/login/i,
-            /ورود یا ثبت نام/,
-		];
+	// بررسی دکمه‌های دروازه‌ای فقط در حالت Register مجاز است
+	if currentMode == ModeRegister {
+		logFn("--- بررسی وجود دکمه‌های دروازه‌ای هدر (ورود / عضویت) ---")
+		jsGatewayClicker := `function() {
+			let targets = document.querySelectorAll('button, a, div, span, [role="button"]');
+			let gatewayKeywords = [
+				/ورود\s*[\/|]\s*عضویت/,
+				/ثبت\s*نام/,
+				/^ورود$/,
+				/^عضویت$/,
+				/sign\s*up/i,
+				/register/i,
+				/login/i,
+				/ورود یا ثبت نام/,
+			];
 
-		for (let el of targets) {
-			let text = el.innerText ? el.innerText.trim().toLowerCase() : '';
-			if (!text || text.length > 20) continue;
+			for (let el of targets) {
+				let text = el.innerText ? el.innerText.trim().toLowerCase() : '';
+				if (!text || text.length > 20) continue;
 
-			for (let kw of gatewayKeywords) {
-				if (kw.test(text)) {
-					let style = window.getComputedStyle(el);
-					if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
-						continue;
+				for (let kw of gatewayKeywords) {
+					if (kw.test(text)) {
+						let style = window.getComputedStyle(el);
+						if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+							continue;
+						}
+						el.scrollIntoView({ block: 'center' });
+						el.setAttribute('data-bot-gateway', 'true');
+						return "found";
 					}
-					el.scrollIntoView({ block: 'center' });
-					// به جای کلیک با JS، دکمه را نشانه‌گذاری می‌کنیم تا با Rod کلیک طبیعی کنیم
-					el.setAttribute('data-bot-gateway', 'true');
-					return "found";
 				}
 			}
-		}
-		return "";
-	}`
+			return "";
+		}`
 
-	if gatewayRes, err := workingFrame.Eval(jsGatewayClicker); err == nil && gatewayRes != nil {
-		if gatewayRes.Value.Str() == "found" {
-			btn, err := workingFrame.Element("[data-bot-gateway='true']")
-			if err == nil {
-				af.log("🎯 دکمه دروازه‌ای هدر پیدا شد، انجام کلیک فیزیکی...")
-				_ = btn.ScrollIntoView()
-
-				// حذف MustWaitRequestIdle و جایگزینی با WaitStable
-				err = btn.Click(proto.InputMouseButtonLeft, 1)
+		if gatewayRes, err := workingFrame.Eval(jsGatewayClicker); err == nil && gatewayRes != nil {
+			if gatewayRes.Value.Str() == "found" {
+				btn, err := workingFrame.Element("[data-bot-gateway='true']")
 				if err == nil {
-					_ = workingFrame.WaitStable(1 * time.Second)
+					logFn("🎯 دکمه دروازه‌ای هدر پیدا شد، انجام کلیک فیزیکی...")
+					_ = btn.ScrollIntoView()
+					err = btn.Click(proto.InputMouseButtonLeft, 1)
+					if err == nil {
+						_ = workingFrame.WaitStable(1 * time.Second)
+					}
 				}
 			}
 		}
+	} else {
+		logFn("--- حالت FillForm: عبور از دکمه‌های هدر و پردازش مستقیم فرم صفحه ---")
 	}
 
-	af.log("--- شروع پردازش هوشمند سراسری صفحه و مودال‌ها ---")
+	logFn("--- شروع پردازش هوشمند سراسری صفحه و مودال‌ها ---")
 	guessedData := make(map[string]string)
 
 	for step := 1; step <= 3; step++ {
-		af.log("مرحله پردازش: %d", step)
+		logFn("مرحله پردازش: %d", step)
 		_ = workingFrame.WaitStable(1 * time.Second)
 
 		if htmlContent, err := workingFrame.HTML(); err == nil {
 			if af.isOTPScreen(htmlContent) {
-				af.log("✅ صفحه دریافت کد تایید (OTP) تشخیص داده شد. فرم با موفقیت ارسال شده است.")
+				logFn("✅ صفحه دریافت کد تایید (OTP) تشخیص داده شد. فرم با موفقیت ارسال شده است.")
 				return &Result{
 					Status:   true,
 					Message:  "رسیدن به مرحله کد تایید (موفق)",
-					Logs:     af.logs,
+					Logs:     localLogs,
 					SentData: guessedData,
 				}
 			}
@@ -239,7 +258,7 @@ func (af *AutoFormFiller) SubmitForm(targetURL, phoneNumber string, targetName .
 
 		inputs, err := workingFrame.ElementsByJS(rod.Eval(jsDeepScan))
 		if err != nil {
-			af.log("خطا در واکشی عمیق اینپوت‌ها: %v", err)
+			logFn("خطا در واکشی عمیق اینپوت‌ها: %v", err)
 		}
 
 		filledAny := false
@@ -259,12 +278,12 @@ func (af *AutoFormFiller) SubmitForm(targetURL, phoneNumber string, targetName .
 				continue
 			}
 
-			name := getJSString(input, `() => this.name || this.id || this.placeholder || ""`)
-			if name == "" {
-				name = fmt.Sprintf("global_step%d_field_%d", step, i)
+			inputName := getJSString(input, `() => this.name || this.id || this.placeholder || ""`)
+			if inputName == "" {
+				inputName = fmt.Sprintf("global_step%d_field_%d", step, i)
 			}
 
-			if _, exists := guessedData[name]; exists {
+			if _, exists := guessedData[inputName]; exists {
 				continue
 			}
 
@@ -278,23 +297,23 @@ func (af *AutoFormFiller) SubmitForm(targetURL, phoneNumber string, targetName .
 			}`)
 
 			placeholder := getJSString(input, `() => this.placeholder || ""`)
-			searchStr := strings.ToLower(fmt.Sprintf("%s %s %s", name, contextStr, placeholder))
+			searchStr := strings.ToLower(fmt.Sprintf("%s %s %s", inputName, contextStr, placeholder))
 
-			guess := af.guessValue(targetURL, name, searchStr, inputType, tagName)
+			guess := af.guessValue(targetURL, inputName, searchStr, inputType, tagName, phone, name, email, currentMode, logFn)
 			if guess != nil {
-				guessedData[name] = guess.Value
-				af.log("   >>> فیلد [%s] شناسایی و با موفقیت پر شد.", name)
+				guessedData[inputName] = guess.Value
+				logFn("   >>> فیلد [%s] شناسایی و با موفقیت پر شد.", inputName)
 				af.fillField(input, inputType, tagName, guess.Value)
 				filledAny = true
 			}
 		}
 
 		if !filledAny && step > 1 {
-			af.log("میدان جدیدی پر نشد. پایان چرخه فرم.")
+			logFn("میدان جدیدی پر نشد. پایان چرخه فرم.")
 			break
 		}
 
-		af.log("تلاش برای پیدا کردن دکمه سابمیت فرم...")
+		logFn("تلاش برای پیدا کردن دکمه سابمیت فرم...")
 
 		jsFormSubmitter := `function() {
 			let btn = document.querySelector('button[type="submit"], input[type="submit"]');
@@ -303,7 +322,7 @@ func (af *AutoFormFiller) SubmitForm(targetURL, phoneNumber string, targetName .
 				if (style.display !== 'none' && style.visibility !== 'hidden') {
 					btn.scrollIntoView({ block: 'center' });
 					btn.setAttribute('data-bot-submit', 'true');
-					return "found";
+					return "button_found";
 				}
 			}
 
@@ -325,21 +344,28 @@ func (af *AutoFormFiller) SubmitForm(targetURL, phoneNumber string, targetName .
 						if (style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0') {
 							el.scrollIntoView({ block: 'center' });
 							el.setAttribute('data-bot-submit', 'true');
-							return "found";
+							return "button_found";
 						}
 					}
 				}
+			}
+
+			let form = document.querySelector('form');
+			if (form) {
+				form.setAttribute('data-bot-form', 'true');
+				return "form_found";
 			}
 			return "";
 		}`
 
 		clicked := false
 		if clickRes, err := workingFrame.Eval(jsFormSubmitter); err == nil && clickRes != nil {
-			if clickRes.Value.Str() == "found" {
+			resType := clickRes.Value.Str()
+
+			if resType == "button_found" {
 				btn, err := workingFrame.Element("[data-bot-submit='true']")
 				if err == nil {
 					_ = btn.ScrollIntoView()
-
 					err = btn.Click(proto.InputMouseButtonLeft, 1)
 					if err == nil {
 						_ = workingFrame.WaitStable(2 * time.Second)
@@ -347,35 +373,42 @@ func (af *AutoFormFiller) SubmitForm(targetURL, phoneNumber string, targetName .
 						filledAny = true
 					}
 				}
+			} else if resType == "form_found" {
+				logFn("دکمه مشخصی یافت نشد، تلاش برای ارسال مستقیم فرم (Submit Event)...")
+				_, err := workingFrame.Eval(`() => { let f = document.querySelector("[data-bot-form='true']"); if(f) f.submit(); }`)
+				if err == nil {
+					_ = workingFrame.WaitStable(2 * time.Second)
+					clicked = true
+					filledAny = true
+				}
 			}
 		}
 
 		if clicked {
-			if af.waitForOTP(workingFrame, 15*time.Second) {
+			if af.waitForOTP(workingFrame, 15*time.Second, logFn) {
 				return &Result{
 					Status:   true,
 					Message:  "رسیدن به مرحله کد تایید (موفق)",
-					Logs:     af.logs,
+					Logs:     localLogs,
 					SentData: guessedData,
 				}
 			}
 		} else {
-			af.log("هیچ دکمه سابمیتی برای خود فرم در این مرحله پیدا نشد.")
+			logFn("هیچ دکمه سابمیتی برای خود فرم در این مرحله پیدا نشد.")
 			if !filledAny {
 				break
 			}
 		}
 	}
 
-	af.log("--- پایان پردازش فرم ---")
+	logFn("--- پایان پردازش فرم ---")
 
-	// به جای MustHTML که ممکن است پنیک کند، از HTML و چک کردن ارور استفاده می‌کنیم
 	content, err := page.HTML()
 	if err != nil {
 		return &Result{
 			Status:   false,
 			Message:  "خطا در خواندن محتوای صفحه در پایان کار",
-			Logs:     af.logs,
+			Logs:     localLogs,
 			SentData: guessedData,
 		}
 	}
@@ -390,23 +423,20 @@ func (af *AutoFormFiller) SubmitForm(targetURL, phoneNumber string, targetName .
 	return &Result{
 		Status:   verification.Status,
 		Message:  verification.Message,
-		Logs:     af.logs,
+		Logs:     localLogs,
 		SentData: guessedData,
 	}
 }
-func (af *AutoFormFiller) waitForOTP(page *rod.Page, timeout time.Duration) bool {
-	af.log("⏳ در حال انتظار تا حداکثر %s برای باز شدن صفحه OTP (کد تایید)...", timeout.String())
 
+func (af *AutoFormFiller) waitForOTP(page *rod.Page, timeout time.Duration, logFn func(string, ...interface{})) bool {
+	logFn("⏳ در حال انتظار تا حداکثر %s برای باز شدن صفحه OTP (کد تایید)...", timeout.String())
 	timeoutPage := page.Timeout(timeout)
-
 	for {
 		time.Sleep(500 * time.Millisecond)
-
 		html, err := timeoutPage.HTML()
 		if err != nil {
 			return false
 		}
-
 		if af.isOTPScreen(html) {
 			return true
 		}
@@ -417,7 +447,6 @@ func (af *AutoFormFiller) fillField(el *rod.Element, fieldType, tagName, value s
 	if el == nil {
 		return
 	}
-
 	_ = el.ScrollIntoView()
 	el.MustFocus()
 
@@ -439,21 +468,37 @@ func (af *AutoFormFiller) fillField(el *rod.Element, fieldType, tagName, value s
 		}`)
 	} else if fieldType == "checkbox" || fieldType == "radio" {
 		if value == "on" || value == "true" {
-			jsCheckboxFix := `function(element) {
-				if (!element) return;
-				if (element.checked) return;
+			// اسکریپت تهاجمی‌تر برای انتخاب قطعی رادیوها و چک‌باکس‌ها در فرم‌سازها
+			jsRadioCheckboxFix := `function(el) {
+				if (!el) return;
+				if (el.checked) return;
+
+				// روش اول: کلیک بومی دام (بهترین روش برای بیدار کردن React/Vue)
+				el.click();
+
+				// روش دوم: اگر کلیک بومی جواب نداد، مقداردهی مستقیم
+				el.checked = true;
 				let nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "checked")?.set;
 				if (nativeSetter) {
-					nativeSetter.call(element, true);
-				} else {
-					element.checked = true;
+					nativeSetter.call(el, true);
 				}
-				element.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-				element.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
-				element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+				el.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+				el.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+
+				// روش سوم: اگر اینپوت مخفی است، روی لیبلِ دربرگیرنده آن کلیک کن
+				if (el.parentElement && el.parentElement.tagName.toLowerCase() === 'label') {
+					el.parentElement.click();
+				} else if (el.id) {
+					let label = document.querySelector('label[for="' + el.id + '"]');
+					if (label) label.click();
+				}
 			}`
-			_, err := el.Eval(jsCheckboxFix)
+
+			// اجرای اسکریپت جاوااسکریپتی به جای کلیک فیزیکی Rod که ممکن است روی عناصر مخفی کرش کند
+			_, err := el.Eval(jsRadioCheckboxFix)
 			if err != nil {
+				// Fallback در صورت بروز هرگونه مشکل
 				_ = el.Click(proto.InputMouseButtonLeft, 1)
 			}
 		}
@@ -485,64 +530,72 @@ func (af *AutoFormFiller) fillField(el *rod.Element, fieldType, tagName, value s
 	}
 }
 
-func (af *AutoFormFiller) Register(targetURL, phoneNumber, name, email string) *Result {
-	af.SetMode(ModeRegister)
-	af.fixedEmail = email
-	return af.SubmitForm(targetURL, phoneNumber, name)
-}
-
 func (af *AutoFormFiller) BatchSubmit(urls []string, phoneNumber string, targetName ...string) *BatchResult {
 	start := time.Now()
-	result := &BatchResult{Total: len(urls), Results: make([]*Result, 0, len(urls)), Errors: make([]string, 0)}
+	result := &BatchResult{
+        Total:   len(urls),
+        Results: make([]*Result, 0, len(urls)),
+        Errors:  make([]string, 0),
+    }
 
 	for _, u := range urls {
-		func() {
+		// اجرای مستقیم به جای استفاده از go func (پردازش دونه دونه)
+		func(url string) {
 			defer func() {
 				if r := recover(); r != nil {
-					af.log("خطای جدی در سایت %s رخ داد: %v", u, r)
+					af.log("خطای جدی در سایت %s رخ داد: %v", url, r)
 					result.Failed++
-					result.Errors = append(result.Errors, fmt.Sprintf("%s: خطای ناشناخته (Panic: %v)", u, r))
+					result.Errors = append(result.Errors, fmt.Sprintf("%s: خطای ناشناخته (Panic: %v)", url, r))
 				}
 			}()
 
-			r := af.SubmitForm(u, phoneNumber, targetName...)
+			r := af.SubmitForm(url, phoneNumber, targetName...)
+
 			result.Results = append(result.Results, r)
 			if r.Status {
 				result.Success++
 			} else {
 				result.Failed++
-				result.Errors = append(result.Errors, fmt.Sprintf("%s: %s", u, r.Message))
+				result.Errors = append(result.Errors, fmt.Sprintf("%s: %s", url, r.Message))
 			}
-		}()
+		}(u)
 	}
+
 	result.Duration = time.Since(start).String()
 	return result
 }
 
 func (af *AutoFormFiller) BatchRegister(urls []string, phoneNumber, name, email string) *BatchResult {
 	start := time.Now()
-	result := &BatchResult{Total: len(urls), Results: make([]*Result, 0, len(urls)), Errors: make([]string, 0)}
+	result := &BatchResult{
+        Total:   len(urls),
+        Results: make([]*Result, 0, len(urls)),
+        Errors:  make([]string, 0),
+    }
 
 	for _, u := range urls {
-		func() {
+		// اجرای مستقیم به جای استفاده از go func (پردازش دونه دونه)
+		func(url string) {
 			defer func() {
 				if r := recover(); r != nil {
-					af.log("خطای جدی در سایت %s رخ داد: %v", u, r)
+					af.log("خطای جدی در سایت %s رخ داد: %v", url, r)
 					result.Failed++
-					result.Errors = append(result.Errors, fmt.Sprintf("%s: خطای ناشناخته (Panic: %v)", u, r))
+					result.Errors = append(result.Errors, fmt.Sprintf("%s: خطای ناشناخته (Panic: %v)", url, r))
 				}
 			}()
 
-			r := af.Register(u, phoneNumber, name, email)
+			r := af.Register(url, phoneNumber, name, email)
+
 			result.Results = append(result.Results, r)
 			if r.Status {
 				result.Success++
 			} else {
 				result.Failed++
-				result.Errors = append(result.Errors, fmt.Sprintf("%s: %s", u, r.Message))
+				result.Errors = append(result.Errors, fmt.Sprintf("%s: %s", url, r.Message))
 			}
-		}()
+		}(u)
 	}
+
 	result.Duration = time.Since(start).String()
 	return result
 }
@@ -555,7 +608,7 @@ func getJSString(el *rod.Element, js string) string {
 	return res.Value.Str()
 }
 
-func (af *AutoFormFiller) guessValue(pageURL, name, context, fieldType, tagName string) *GuessResult {
+func (af *AutoFormFiller) guessValue(pageURL, name, context, fieldType, tagName, phone, personName, email string, currentMode Mode, logFn func(string, ...interface{})) *GuessResult {
 	if tagName == "select" {
 		return &GuessResult{Value: "__SELECT__", Reason: "Select"}
 	}
@@ -574,33 +627,34 @@ func (af *AutoFormFiller) guessValue(pageURL, name, context, fieldType, tagName 
 		if af.containsAny(context, timeKeywords) {
 			return &GuessResult{Value: "10 الی 12", Reason: "Time"}
 		}
-		return &GuessResult{Value: af.fixedPhone, Reason: "Phone"}
+		return &GuessResult{Value: phone, Reason: "Phone"}
 	}
 	if af.containsAny(context, configs.EmailKeywords) || fieldType == "email" {
-		email := af.fixedEmail
 		if email == "" {
 			email = "user@example.com"
 		}
 		return &GuessResult{Value: email, Reason: "Email"}
 	}
 	if af.containsAny(context, configs.NameKeywords) {
-		name := af.fixedName
-		if name == "" {
-			name = configs.PersianFirstNames[0]
+		if personName == "" && len(configs.PersianFirstNames) > 0 {
+			personName = configs.PersianFirstNames[0]
 		}
-		return &GuessResult{Value: name, Reason: "Name"}
+		return &GuessResult{Value: personName, Reason: "Name"}
 	}
 	if af.containsAny(context, []string{"family", "lname", "فامیلی", "خانوادگی"}) {
-		return &GuessResult{Value: configs.PersianLastNames[0], Reason: "Family"}
+		if len(configs.PersianLastNames) > 0 {
+			return &GuessResult{Value: configs.PersianLastNames[0], Reason: "Family"}
+		}
+		return &GuessResult{Value: "تست", Reason: "Family"}
 	}
 	if af.containsAny(context, configs.MessageKeywords) || fieldType == "textarea" {
 		subjectKeywords := []string{"subject", "onvan", "موضوع"}
 		if af.containsAny(context, subjectKeywords) {
-			return &GuessResult{Value: "درخواست مشاوره", Reason: "Subject"}
+			return &GuessResult{Value: "درخواست بررسی", Reason: "Subject"}
 		}
-		return &GuessResult{Value: "با سلام. درخواست مشاوره دارم. لطفا تماس بگیرید.", Reason: "Message"}
+		return &GuessResult{Value: "با سلام. فرم برای بررسی و ثبت ارسال شده است.", Reason: "Message"}
 	}
-	if af.mode == ModeRegister {
+	if currentMode == ModeRegister {
 		if af.containsAny(context, []string{"password", "pass", "رمز", "کلمه عبور"}) {
 			return &GuessResult{Value: "Test@1234", Reason: "Password"}
 		}
@@ -610,6 +664,13 @@ func (af *AutoFormFiller) guessValue(pageURL, name, context, fieldType, tagName 
 			return &GuessResult{Value: "30", Reason: "Age"}
 		}
 	}
+
+	// Fallback برای فرم‌های عمومی: مقداردهی اجباری به فیلدهای متنی ناشناخته
+	if fieldType == "text" || fieldType == "textarea" || tagName == "textarea" {
+		logFn("فیلد ناشناخته تشخیص داده شد: %s، استفاده از مقدار پیش‌فرض Fallback", name)
+		return &GuessResult{Value: "تست بررسی فرم", Reason: "Fallback_Text"}
+	}
+
 	return nil
 }
 
@@ -642,17 +703,11 @@ func (af *AutoFormFiller) containsAny(haystack string, needles []string) bool {
 	return false
 }
 
+// این متد صرفا برای پرینت خطاهای سطح سیستم (مانند پنیک‌ها) نگه‌داشته شده است
 func (af *AutoFormFiller) log(format string, args ...interface{}) {
 	if af.debug {
-		msg := fmt.Sprintf(format, args...)
-		af.logs = append(af.logs, msg)
-		fmt.Println(msg)
+		fmt.Printf(format+"\n", args...)
 	}
-}
-
-func (af *AutoFormFiller) result(status bool, message string) *Result {
-	af.log(message)
-	return &Result{Status: status, Message: message, Logs: af.logs}
 }
 
 func (af *AutoFormFiller) truncate(s string, length int) string {
