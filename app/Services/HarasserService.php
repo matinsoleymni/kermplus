@@ -35,14 +35,14 @@ class HarasserService
         }
 
         $payload = [
-            'name' => $name,
-            'phone' => $phone,
-            'sites' => array_values($sites),
-            'debug' => $debug,
+            'full_name' => $name,
+            'phone_number' => $phone,
+            // 'sites' => array_values($sites),
+            // 'debug' => $debug,
         ];
 
         try {
-            $response = Http::withHeaders($headers)->post($this->apiUrl . '/autofill', $payload);
+            $response = Http::withHeaders($headers)->post($this->apiUrl . '/fill', $payload);
         } catch (\Throwable $e) {
             return ['error' => 'Harasser request exception: ' . $e->getMessage()];
         }

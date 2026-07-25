@@ -58,9 +58,13 @@ class ChannelReactionConversation extends Conversation
 
         $limiter = app(FeatureLimitService::class);
         $limit = $limiter->checkNegativeReactionLimit($local);
-        if($limit){
-            $k = PlusRequiredKeyboard::make(true);
-            $bot->sendMessage($limit, reply_markup: $k, parse_mode: "HTML");
+
+        if ($limit) {
+            $bot->answerCallbackQuery(
+                text: $limit,
+                show_alert: true
+            );
+
             $this->end();
             return;
         }
@@ -252,7 +256,8 @@ https://t.me/channel/123
             // پاک کردن پیام لودینگ
             try {
                 $bot->deleteMessage(chat_id: $chatId, message_id: $loadingMsg->message_id);
-            } catch (\Throwable $e) {}
+            } catch (\Throwable $e) {
+            }
         }
 
         // ۳. ساخت و ارسال پیام نهایی

@@ -215,9 +215,9 @@ class UserAutoFillerConversation extends Conversation
 
         $message = "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> KermPlus | مزاحم‌ساز تکمیل شد\n" .
             "━━━━━━━━━━━━━━━━\n\n" .
-            "👤 هدف: {$name}\n" .
+            "<tg-emoji emoji-id='5373012449597335010'>👤</tg-emoji> هدف: {$name}\n" .
             "<tg-emoji emoji-id='5407025283456835913'>📱</tg-emoji> شماره: {$phone}\n" .
-            "🌐 سایت‌ها: {$stats['total']}\n" .
+            "<tg-emoji emoji-id='5879585266426973039'>🌐</tg-emoji> سایت‌ها: {$stats['total']}\n" .
             "<tg-emoji emoji-id='6296367896398399651'>✅</tg-emoji> موفق: {$stats['success']}   <tg-emoji emoji-id='5273914604752216432'>❌</tg-emoji> ناموفق: {$stats['failed']}\n\n" .
             "<tg-emoji emoji-id='5431897022456145283'>📆</tg-emoji> {$date}  <tg-emoji emoji-id='4904882772637648609'>⏰</tg-emoji> {$time}\n" .
             "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> @NitroHostBot <tg-emoji emoji-id='4927295007204836791'>🪱</tg-emoji>";

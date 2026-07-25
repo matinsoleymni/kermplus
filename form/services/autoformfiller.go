@@ -69,7 +69,7 @@ func WithTimeout(timeout time.Duration) Option {
 func NewAutoFormFiller(opts ...Option) (*AutoFormFiller, error) {
 	af := &AutoFormFiller{
 		timeout:  30 * time.Second,
-		headless: false,
+		headless: true,
 	}
 
 	for _, opt := range opts {

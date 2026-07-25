@@ -41,7 +41,42 @@ if BOT_PROXY_ENV:
     except json.JSONDecodeError:
         BOT_PROXY = None
 
-AGENT_PROXIES = _load_json_list(os.getenv("TELEGRAM_AGENT_PROXIES", ""), [])  # Example: [{"scheme": "http", "hostname": "...", "port": ...}]
+def load_proxies_from_file(file_path="proxy.txt"):
+    proxies_list = []
+
+    if not os.path.exists(file_path):
+        print(f"Warning: {file_path} not found. Returning empty proxy list.")
+        return proxies_list
+
+    with open(file_path, 'r', encoding='utf-8') as file:
+        for line in file:
+            line = line.strip()
+            if not line:
+                continue
+
+            parts = line.split(':')
+
+            if len(parts) == 4:
+                hostname, port, username, password = parts
+                proxies_list.append({
+                    "scheme": "http",  # Socks
+                    "hostname": hostname,
+                    "port": int(port),
+                    "username": username,
+                    "password": password
+                })
+            elif len(parts) == 2:
+                hostname, port = parts
+                proxies_list.append({
+                    "scheme": "http",
+                    "hostname": hostname,
+                    "port": int(port)
+                })
+
+    return proxies_list
+
+# AGENT_PROXIES = _load_json_list(os.getenv("TELEGRAM_AGENT_PROXIES", ""), [])  # Example: [{"scheme": "http", "hostname": "...", "port": ...}]
+AGENT_PROXIES = load_proxies_from_file("proxy.txt")
 
 OPTIONS = [
     {
