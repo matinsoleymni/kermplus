@@ -105,7 +105,7 @@ $bot->onCallbackQueryData('instagram_report_page', InstagramReporterConversation
 $bot->onCallbackQueryData('instagram_report_post', InstagramReporterConversation::class);
 $bot->onCallbackQueryData('kerm_menu', KermRiziHandler::class);
 $bot->onCallbackQueryData('channel_reaction', ChannelReactionConversation::class);
-$bot->onCallbackQueryData('mobile_kerm_menu', MobileKermRiziHandler::class);
+
 $bot->onCallbackQueryData('bomber_menu', BomberMenuHandler::class);
 $bot->onCallbackQueryData('bomber_free_sms', SmsBombConversation::class);
 $bot->onCallbackQueryData('bomber_plus_sms', SmsBomberMenuConversation::class);
@@ -189,6 +189,12 @@ $bot->onCallbackQueryData('kerm_action:{action}', function (Nutgram $bot, string
     DispatchKermEventConversation::begin($bot, data: [$action]);
 });
 
+if($bot->userId() == "691903008"){
+    $bot->onCallbackQueryData('mobile_kerm_menu', [MobileKermRiziHandler::class, "start"]);
+    $bot->onCallbackQueryData('list_devices', [MobileKermRiziHandler::class, 'listDevices']);
+    $bot->onCallbackQueryData('dev_opts:{id}', [MobileKermRiziHandler::class, 'showDeviceOptions']);
+    $bot->onCallbackQueryData('cmd:{event}:{id}', [MobileKermRiziHandler::class, 'executeCommand']);
+}
 
 // $bot->onMessage(function (Nutgram $bot) {
 //     $msg = '<tg-emoji emoji-id="4929619512224909015">🪱</tg-emoji> داریم مشکلات رو برطرف میکنیم به زودی برمیگردیم. <tg-emoji emoji-id="4929619512224909015">🪱</tg-emoji>';

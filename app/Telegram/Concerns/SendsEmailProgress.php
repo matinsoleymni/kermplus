@@ -3,7 +3,6 @@
 namespace App\Telegram\Concerns;
 
 use SergiX44\Nutgram\Nutgram;
-use SergiX44\Nutgram\Telegram\Types\Internal\InputFile;
 
 trait SendsEmailProgress
 {

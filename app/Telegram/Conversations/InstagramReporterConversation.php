@@ -82,7 +82,27 @@ class InstagramReporterConversation extends BaseReporterConversation
             return;
         }
 
-        $username = ltrim(trim($username), '@');
+        $rawInput = $bot->message()?->text;
+        if (!$rawInput || mb_strlen($rawInput) < 3) {
+            $this->sendOrEditMessage($bot, '⛔️ یوزرنیم نامعتبر است. لطفا حداقل 3 کاراکتر وارد کنید.', $this->targetInputKeyboard());
+            return;
+        }
+
+        $username = trim($rawInput);
+
+         if (preg_match('/(?:https?:\/\/)?(?:www\.)?instagram\.com\/([a-zA-Z0-9_.]+)/i', $username, $matches)) {
+            $username = $matches[1];
+        } else {
+            $username = ltrim($username, '@');
+        }
+
+        $username = explode('?', $username)[0];
+        $username = explode('/', $username)[0];
+
+        if (!preg_match('/^[a-zA-Z0-9_.]+$/', $username)) {
+            $this->sendOrEditMessage($bot, '⛔️ یوزرنیم وارد شده معتبر نیست. (فقط حروف انگلیسی، اعداد، نقطه و آندرلاین مجاز است یا لینک پیج را بفرستید)', $this->targetInputKeyboard());
+            return;
+        }
 
         $whitelist = app(WhitelistService::class);
         $instagramTypes = [WhitelistedTarget::TYPE_INSTAGRAM_EMAIL, WhitelistedTarget::TYPE_CUSTOM];

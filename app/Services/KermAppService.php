@@ -23,7 +23,6 @@ class KermAppService
             ->asJson();
     }
 
-    // ثبت نام اونر در سرور اصلی
     public function registerOwner(int $telegramId, ?string $username = null, ?string $name = null): array
     {
         $payload = array_filter([
