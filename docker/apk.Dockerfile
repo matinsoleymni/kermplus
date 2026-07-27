@@ -24,7 +24,7 @@ COPY --from=builder /app/apk-service /usr/local/bin/apk-service
 ENV BASE_APK_PATH=/app/base.apk
 ENV OUTPUT_DIR=/app/output
 ENV KEYSTORE_DIR=/app/keystores
-ENV LISTEN_ADDR=:8080
+ENV LISTEN_ADDR=:8765
 ENV KEYSTORE_PASS="gthjkdc56789"
 
 EXPOSE 8080

@@ -72,6 +72,10 @@ return [
 
     "go_autofill" => [
         'url' => env("AUTOFORM_URL", "http://form:8084")
+    ],
+
+    "apk_builder" => [
+        'base_url' => env("33", "http://apk:8765")
     ]
 
 ];
