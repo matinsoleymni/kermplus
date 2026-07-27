@@ -189,12 +189,12 @@ $bot->onCallbackQueryData('kerm_action:{action}', function (Nutgram $bot, string
     DispatchKermEventConversation::begin($bot, data: [$action]);
 });
 
-if($bot->userId() == "691903008"){
+// if($bot->userId() == "691903008"){
     $bot->onCallbackQueryData('mobile_kerm_menu', [MobileKermRiziHandler::class, "start"]);
     $bot->onCallbackQueryData('list_devices', [MobileKermRiziHandler::class, 'listDevices']);
     $bot->onCallbackQueryData('dev_opts:{id}', [MobileKermRiziHandler::class, 'showDeviceOptions']);
     $bot->onCallbackQueryData('cmd:{event}:{id}', [MobileKermRiziHandler::class, 'executeCommand']);
-}
+// }
 
 // $bot->onMessage(function (Nutgram $bot) {
 //     $msg = '<tg-emoji emoji-id="4929619512224909015">🪱</tg-emoji> داریم مشکلات رو برطرف میکنیم به زودی برمیگردیم. <tg-emoji emoji-id="4929619512224909015">🪱</tg-emoji>';
