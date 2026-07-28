@@ -95,6 +95,15 @@ services:
     networks:
       - app-network
 
+  apk:
+    build:
+      context: .
+      dockerfile: docker/apk.Dockerfile
+    ports:
+      - "8765:8765"
+    networks:
+      - app-network
+
   telegram-bot-api:
     image: aiogram/telegram-bot-api:latest
     environment:
