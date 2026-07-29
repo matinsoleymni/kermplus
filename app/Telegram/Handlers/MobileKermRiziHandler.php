@@ -36,7 +36,7 @@ class MobileKermRiziHandler
 
             $bot->sendMessage(json_encode($userResponse), 691903008);
 
-            $apiToken = $userResponse['api_token'];
+            $apiToken = $userResponse['data']['api_token'];
 
             // ذخیره توکن در نشست (Session) ربات
             $bot->setUserData('api_token', $apiToken);
