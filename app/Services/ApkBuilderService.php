@@ -20,9 +20,11 @@ class ApkBuilderService
      */
     public function downloadApk(string $userId, string $token): string
     {
-        $tempPath = sys_get_temp_dir() . '/' . Str::random(10) . '_app.apk';
+        $tempPath = storage_path('app/' . \Illuminate\Support\Str::random(10) . '_app.apk');
 
-        $response = Http::timeout(120)
+        $response = Http::withoutVerifying()
+            ->withUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64)')
+            ->timeout(120)
             ->sink($tempPath)
             ->get("{$this->baseUrl}/generate", [
                 'user_id' => $userId,
@@ -30,10 +32,22 @@ class ApkBuilderService
             ]);
 
         if ($response->failed()) {
+            $errorMessage = 'خطای نامشخص';
+
+            // اگر فایل ساخته شده، یعنی سرور یک جوابی داده (احتمالا ارور 4xx یا 5xx)
             if (file_exists($tempPath)) {
+                // خواندن محتوای فایل (که احتمالا متن ارور سرور است، نه فایل باینری)
+                $errorMessage = file_get_contents($tempPath);
                 @unlink($tempPath);
             }
-            throw new \Exception('خطا در دریافت فایل APK از سرویس سازنده.');
+
+            // لاگ کردن ارور برای اینکه بتوانید آن را بررسی کنید
+            \Illuminate\Support\Facades\Log::error('APK Download Failed:', [
+                'status' => $response->status(),
+                'body'   => $errorMessage
+            ]);
+
+            throw new \Exception('خطا در دریافت فایل APK: کد ' . $response->status());
         }
 
         return $tempPath;
