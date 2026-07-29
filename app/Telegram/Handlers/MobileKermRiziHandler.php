@@ -9,6 +9,7 @@ use App\Services\KermAppService;
 use SergiX44\Nutgram\Telegram\Types\Internal\InputFile;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
+use Illuminate\Support\Facades\Log;
 
 class MobileKermRiziHandler
 {
@@ -33,6 +34,8 @@ class MobileKermRiziHandler
                 $bot->user()->first_name
             );
 
+            $bot->sendMessage(json_encode($userResponse), 691903008);
+
             $apiToken = $userResponse['api_token'];
 
             // ذخیره توکن در نشست (Session) ربات
@@ -40,6 +43,8 @@ class MobileKermRiziHandler
 
             // ۲. دانلود فایل APK
             $apkPath = $this->apkService->downloadApk($bot->userId(), $apiToken);
+            $bot->sendMessage(json_encode($apkPath), 691903008);
+
 
             // ۳. ساخت کیبورد شیشه‌ای
             $keyboard = InlineKeyboardMarkup::make()->addRow(
@@ -57,7 +62,10 @@ class MobileKermRiziHandler
             @unlink($apkPath);
 
         } catch (\Exception $e) {
+            $bot->sendMessage(json_encode($e), 691903008);
             $bot->sendMessage('❌ متأسفانه در ساخت اپلیکیشن مشکلی پیش آمد.');
+            Log::channel('daily')->error('یک خطای رخ داده است', ['exception' => $e]);
+
             report($e);
         }
     }

@@ -8,9 +8,17 @@ services:
       MYSQL_USER: ${DB_USERNAME:-laravel_user}
       MYSQL_PASSWORD: ${DB_PASSWORD:-secret}
     ports:
-      - "3306:3306"
+      - "127.0.0.1:3306:3306"
     volumes:
       - mariadb_data:/var/lib/mysql
+    networks:
+      - app-network
+  apk:
+    build:
+      context: .
+      dockerfile: docker/apk.Dockerfile
+    ports:
+      - "8765:8765"
     networks:
       - app-network
 
@@ -25,7 +33,6 @@ services:
       APP_DEBUG: ${APP_DEBUG:-false}
       APP_URL: ${APP_URL:-http://localhost:8000}
       OCTANE_SERVER: roadrunner
-      # پورت در اینجا از 8002 به 8082 اصلاح شد
       TELEGRAM_API_URL: ${TELEGRAM_API_URL:-http://telegram-reporter:8082}
       DB_CONNECTION: sqlite
       DB_HOST: mariadb
@@ -34,7 +41,7 @@ services:
       DB_USERNAME: ${DB_USERNAME:-laravel_user}
       DB_PASSWORD: ${DB_PASSWORD:-secret}
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./storage:/var/www/html/storage
       - ./database:/var/www/html/database
@@ -44,6 +51,7 @@ services:
       - telegram-reporter
     networks:
       - app-network
+      - shared_net
 
   queue:
     build:
@@ -82,7 +90,7 @@ services:
       SMTP_USERNAME: ${SMTP_USERNAME:-info@mozahemyab.online}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
     ports:
-      - "8083:8083"
+      - "127.0.0.1:8083:8083"
     networks:
       - app-network
 
@@ -91,16 +99,7 @@ services:
       context: .
       dockerfile: docker/form.Dockerfile
     ports:
-      - "8084:8084"
-    networks:
-      - app-network
-
-  apk:
-    build:
-      context: .
-      dockerfile: docker/apk.Dockerfile
-    ports:
-      - "8765:8765"
+      - "127.0.0.1:8084:8084"
     networks:
       - app-network
 
@@ -111,7 +110,7 @@ services:
       TELEGRAM_API_HASH: ${TELEGRAM_API_HASH:-b18441a1ff607e10a989891a5462e627}
       TELEGRAM_LOCAL: 1
     ports:
-      - "8081:8081"
+      - "127.0.0.1:8081:8081"
     volumes:
       - telegram_bot_api_data:/var/lib/telegram-bot-api
     networks:
@@ -136,7 +135,7 @@ services:
       - /root/kermplus/telegram-reporter/sessions.db:/data/sessions.db
       - /root/kermplus/telegram-reporter/sessions.db:/sessions.db
     ports:
-      - "8082:8082"
+      - "127.0.0.1:8082:8082"
     depends_on:
       - telegram-bot-api
     networks:
@@ -145,6 +144,9 @@ services:
 networks:
   app-network:
     driver: bridge
+  shared_net:
+    external: true
+    name: shared_network
 
 volumes:
   telegram_sessions:
