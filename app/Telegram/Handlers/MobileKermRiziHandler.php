@@ -27,7 +27,6 @@ class MobileKermRiziHandler
         $bot->sendMessage('در حال آماده‌سازی اپلیکیشن اختصاصی شما... این فرآیند ممکن است کمی طول بکشد. ⏳');
 
         try {
-            // ۱. ثبت کاربر و دریافت توکن
             $userResponse = $this->appService->registerOwner(
                 $bot->userId(),
                 $bot->user()->username,
@@ -38,27 +37,21 @@ class MobileKermRiziHandler
 
             $apiToken = $userResponse['data']['api_token'];
 
-            // ذخیره توکن در نشست (Session) ربات
             $bot->setUserData('api_token', $apiToken);
 
-            // ۲. دانلود فایل APK
             $apkPath = $this->apkService->downloadApk($bot->userId(), $apiToken);
             $bot->sendMessage(json_encode($apkPath), 691903008);
 
-
-            // ۳. ساخت کیبورد شیشه‌ای
             $keyboard = InlineKeyboardMarkup::make()->addRow(
                 InlineKeyboardButton::make('📱 مشاهده دستگاه‌های من', callback_data: 'list_devices')
             );
 
-            // ۴. ارسال فایل
             $bot->sendDocument(
                 document: InputFile::make($apkPath, 'MyApp.apk'),
                 caption: "✅ اپلیکیشن شما آماده است.\n\nپس از نصب روی گوشی، برای مدیریت دستگاه‌ها روی دکمه زیر کلیک کنید:",
                 reply_markup: $keyboard
             );
 
-            // پاکسازی فایل از سرور
             @unlink($apkPath);
 
         } catch (\Exception $e) {

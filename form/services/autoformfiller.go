@@ -2,734 +2,479 @@ package services
 
 import (
 	"fmt"
+	"math/rand"
+	"regexp"
 	"strings"
-	"sync"
 	"time"
 
-	"form/configs"
-
-	"github.com/go-rod/rod"
-	"github.com/go-rod/rod/lib/launcher"
-	"github.com/go-rod/rod/lib/proto"
+	"github.com/mxschmitt/playwright-go"
 )
 
-type Mode int
-
-const (
-	ModeFillForm Mode = iota
-	ModeRegister
-)
-
-type GuessResult struct {
-	Value  string
-	Reason string
-}
-
-type Result struct {
-	Status   bool              `json:"status"`
-	Message  string            `json:"message"`
-	Logs     []string          `json:"logs,omitempty"`
-	SentData map[string]string `json:"sent_data,omitempty"`
+type ProcessResult struct {
+	URL        string   `json:"url"`
+	Success    bool     `json:"success"`
+	Message    string   `json:"message"`
+	Errors     []string `json:"errors,omitempty"`
+	HTTPStatus int      `json:"http_status"`
 }
 
 type BatchResult struct {
-	Total    int       `json:"total"`
-	Success  int       `json:"success"`
-	Failed   int       `json:"failed"`
-	Results  []*Result `json:"results,omitempty"`
-	Duration string    `json:"duration"`
-	Errors   []string  `json:"errors,omitempty"`
+	Total    int             `json:"total"`
+	Success  int             `json:"success"`
+	Failed   int             `json:"failed"`
+	Duration string          `json:"duration"`
+	Results  []ProcessResult `json:"results"`
+	Errors   []string        `json:"errors,omitempty"`
 }
 
 type AutoFormFiller struct {
-	browser    *rod.Browser
-	fixedPhone string
-	fixedName  string
-	fixedEmail string
-	debug      bool
-	headless   bool
-	mode       Mode
-	timeout    time.Duration
+	pw    *playwright.Playwright
+	debug bool
 }
 
 type Option func(*AutoFormFiller)
 
-func WithDebug(enabled bool) Option {
-	return func(af *AutoFormFiller) { af.debug = enabled }
-}
-
-func WithHeadless(enabled bool) Option {
-	return func(af *AutoFormFiller) { af.headless = enabled }
-}
-
-func WithTimeout(timeout time.Duration) Option {
-	return func(af *AutoFormFiller) { af.timeout = timeout }
+func WithDebug(debug bool) Option {
+	return func(a *AutoFormFiller) {
+		a.debug = debug
+	}
 }
 
 func NewAutoFormFiller(opts ...Option) (*AutoFormFiller, error) {
-	af := &AutoFormFiller{
-		timeout:  30 * time.Second,
-		headless: true,
+	pw, err := playwright.Run()
+	if err != nil {
+		return nil, fmt.Errorf("خطا در راه‌اندازی Playwright Engine: %w", err)
+	}
+
+	filler := &AutoFormFiller{
+		pw:    pw,
+		debug: false,
 	}
 
 	for _, opt := range opts {
-		opt(af)
+		opt(filler)
 	}
 
-	u, err := launcher.New().
-		Headless(af.headless).
-		Set("disable-blink-features", "AutomationControlled").
-		Launch()
+	return filler, nil
+}
+
+func (a *AutoFormFiller) Close() {
+	if a.pw != nil {
+		a.pw.Stop()
+	}
+}
+
+// -------------------------------------------------------------
+// متدهای اصلی صدا زده شده توسط main.go
+// -------------------------------------------------------------
+
+func (a *AutoFormFiller) BatchSubmit(sites []string, phoneNumber, fullName string) *BatchResult {
+	return a.runBatch(sites, phoneNumber, fullName, "", false)
+}
+
+func (a *AutoFormFiller) BatchRegister(sites []string, phoneNumber, fullName, email string) *BatchResult {
+	return a.runBatch(sites, phoneNumber, fullName, email, true)
+}
+
+// -------------------------------------------------------------
+// منطق اصلی اتوماسیون
+// -------------------------------------------------------------
+
+func (a *AutoFormFiller) runBatch(sites []string, phoneNumber, fullName, email string, shouldSubmit bool) *BatchResult {
+	startTime := time.Now()
+	result := &BatchResult{
+		Total:   len(sites),
+		Results: make([]ProcessResult, 0, len(sites)),
+		Errors:  make([]string, 0),
+	}
+
+	headless := !a.debug
+
+	browser, err := a.pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
+		Headless: playwright.Bool(headless),
+		Args:     []string{"--disable-blink-features=AutomationControlled"},
+	})
 	if err != nil {
-		return nil, fmt.Errorf("could not launch browser: %v", err)
+		result.Errors = append(result.Errors, fmt.Sprintf("خطا در اجرای مرورگر: %v", err))
+		result.Duration = time.Since(startTime).String()
+		return result
 	}
+	defer browser.Close()
 
-	browser := rod.New().ControlURL(u).MustConnect()
-	browser.IgnoreCertErrors(true)
-	af.browser = browser
-
-	return af, nil
-}
-
-func (af *AutoFormFiller) Close() error {
-	return af.browser.Close()
-}
-
-func (af *AutoFormFiller) SetMode(mode Mode) *AutoFormFiller {
-	af.mode = mode
-	return af
-}
-
-// متد اصلی رابط عمومی که به صورت Thread-Safe داده‌ها را به doSubmit می‌فرستد
-func (af *AutoFormFiller) SubmitForm(targetURL, phoneNumber string, targetName ...string) *Result {
-	name := af.fixedName
-	if len(targetName) > 0 && targetName[0] != "" {
-		name = targetName[0]
-	}
-	return af.doSubmit(targetURL, phoneNumber, name, af.fixedEmail, af.mode)
-}
-
-func (af *AutoFormFiller) Register(targetURL, phoneNumber, name, email string) *Result {
-	return af.doSubmit(targetURL, phoneNumber, name, email, ModeRegister)
-}
-
-// هسته مرکزی پردازش فرم که کاملا مستقل و بدون تداخل با سایر تب‌ها عمل می‌کند
-func (af *AutoFormFiller) doSubmit(targetURL, phone, name, email string, currentMode Mode) *Result {
-	var localLogs []string
-	var logMu sync.Mutex
-	logFn := func(format string, args ...interface{}) {
-		if af.debug {
-			msg := fmt.Sprintf(format, args...)
-			logMu.Lock()
-			localLogs = append(localLogs, msg)
-			logMu.Unlock()
-			fmt.Println(msg)
-		}
-	}
-
-	logFn("==========================================")
-	logFn("URL: %s", targetURL)
-
-	page, err := af.browser.Page(proto.TargetCreateTarget{URL: targetURL})
+	context, err := browser.NewContext(playwright.BrowserNewContextOptions{
+		Viewport: &playwright.Size{Width: 1280, Height: 720},
+	})
 	if err != nil {
-		msg := fmt.Sprintf("خطا در ایجاد صفحه: %v", err)
-		logFn(msg)
-		return &Result{Status: false, Message: msg, Logs: localLogs}
+		result.Errors = append(result.Errors, fmt.Sprintf("خطا در ایجاد Context مرورگر: %v", err))
+		result.Duration = time.Since(startTime).String()
+		return result
 	}
-	defer page.Close()
+	defer context.Close()
 
-	page = page.Timeout(af.timeout)
+	firstName, lastName := splitFullName(fullName)
 
-	err = page.WaitLoad()
-	if err != nil {
-		logFn("اخطار: لود صفحه کامل نشد یا تایم‌اوت رخ داد، پردازش را ادامه می‌دهیم...")
-	}
-	_ = page.WaitStable(2 * time.Second)
-
-	workingFrame := page
-	iframes, err := page.Elements("iframe")
-	if err == nil {
-		for _, iframeEl := range iframes {
-			f, err := iframeEl.Frame()
-			if err != nil {
-				continue
-			}
-			info, err := f.Info()
-			if err != nil {
-				continue
-			}
-			fURL := strings.ToLower(info.URL)
-			for _, kw := range configs.IFrameKeywords {
-				if strings.Contains(fURL, kw) {
-					logFn("تشخیص iframe فرم‌ساز: %s", info.URL)
-					workingFrame = f
-					break
-				}
-			}
-			if workingFrame != page {
-				break
-			}
-		}
-	}
-
-	// بررسی دکمه‌های دروازه‌ای فقط در حالت Register مجاز است
-	if currentMode == ModeRegister {
-		logFn("--- بررسی وجود دکمه‌های دروازه‌ای هدر (ورود / عضویت) ---")
-		jsGatewayClicker := `function() {
-			let targets = document.querySelectorAll('button, a, div, span, [role="button"]');
-			let gatewayKeywords = [
-				/ورود\s*[\/|]\s*عضویت/,
-				/ثبت\s*نام/,
-				/^ورود$/,
-				/^عضویت$/,
-				/sign\s*up/i,
-				/register/i,
-				/login/i,
-				/ورود یا ثبت نام/,
-			];
-
-			for (let el of targets) {
-				let text = el.innerText ? el.innerText.trim().toLowerCase() : '';
-				if (!text || text.length > 20) continue;
-
-				for (let kw of gatewayKeywords) {
-					if (kw.test(text)) {
-						let style = window.getComputedStyle(el);
-						if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
-							continue;
-						}
-						el.scrollIntoView({ block: 'center' });
-						el.setAttribute('data-bot-gateway', 'true');
-						return "found";
-					}
-				}
-			}
-			return "";
-		}`
-
-		if gatewayRes, err := workingFrame.Eval(jsGatewayClicker); err == nil && gatewayRes != nil {
-			if gatewayRes.Value.Str() == "found" {
-				btn, err := workingFrame.Element("[data-bot-gateway='true']")
-				if err == nil {
-					logFn("🎯 دکمه دروازه‌ای هدر پیدا شد، انجام کلیک فیزیکی...")
-					_ = btn.ScrollIntoView()
-					err = btn.Click(proto.InputMouseButtonLeft, 1)
-					if err == nil {
-						_ = workingFrame.WaitStable(1 * time.Second)
-					}
-				}
-			}
-		}
-	} else {
-		logFn("--- حالت FillForm: عبور از دکمه‌های هدر و پردازش مستقیم فرم صفحه ---")
-	}
-
-	logFn("--- شروع پردازش هوشمند سراسری صفحه و مودال‌ها ---")
-	guessedData := make(map[string]string)
-
-	for step := 1; step <= 3; step++ {
-		logFn("مرحله پردازش: %d", step)
-		_ = workingFrame.WaitStable(1 * time.Second)
-
-		if htmlContent, err := workingFrame.HTML(); err == nil {
-			if af.isOTPScreen(htmlContent) {
-				logFn("✅ صفحه دریافت کد تایید (OTP) تشخیص داده شد. فرم با موفقیت ارسال شده است.")
-				return &Result{
-					Status:   true,
-					Message:  "رسیدن به مرحله کد تایید (موفق)",
-					Logs:     localLogs,
-					SentData: guessedData,
-				}
-			}
-		}
-
-		jsDeepScan := `() => {
-			let all = [];
-			function walk(node) {
-				if (node.shadowRoot) walk(node.shadowRoot);
-				let els = node.querySelectorAll ? node.querySelectorAll('input:not([type="hidden"]), textarea, select') : [];
-				els.forEach(e => all.push(e));
-				let children = node.children || [];
-				for (let i = 0; i < children.length; i++) walk(children[i]);
-			}
-			walk(document.body);
-			return all;
-		}`
-
-		inputs, err := workingFrame.ElementsByJS(rod.Eval(jsDeepScan))
+	for _, targetURL := range sites {
+		page, err := context.NewPage()
 		if err != nil {
-			logFn("خطا در واکشی عمیق اینپوت‌ها: %v", err)
+			res := ProcessResult{URL: targetURL, Success: false, Message: "خطا در ایجاد صفحه جدید"}
+			result.Results = append(result.Results, res)
+			result.Failed++
+			result.Errors = append(result.Errors, fmt.Sprintf("[%s]: %s", targetURL, res.Message))
+			continue
 		}
 
-		filledAny := false
-		for i, input := range inputs {
-			if visible, _ := input.Visible(); !visible {
-				continue
-			}
+		res := a.processSingleURL(page, targetURL, phoneNumber, firstName, lastName, email, shouldSubmit)
+		page.Close()
 
-			inputType := getJSString(input, `() => this.type || ""`)
-			tagName := getJSString(input, `() => this.tagName.toLowerCase()`)
-			if inputType == "" {
-				inputType = tagName
-			}
-
-			skipTypes := []string{"submit", "button", "image", "reset", "file", "hidden"}
-			if af.containsAny(inputType, skipTypes) {
-				continue
-			}
-
-			inputName := getJSString(input, `() => this.name || this.id || this.placeholder || ""`)
-			if inputName == "" {
-				inputName = fmt.Sprintf("global_step%d_field_%d", step, i)
-			}
-
-			if _, exists := guessedData[inputName]; exists {
-				continue
-			}
-
-			contextStr := getJSString(input, `(el) => {
-				let text = "";
-				if (el.id) { let l = document.querySelector('label[for="'+el.id+'"]'); if(l) text += l.innerText + " "; }
-				let p = el.closest('.gfield') || el.closest('.form-group') || el.closest('label') || el.closest('p') || el.parentElement;
-				if (p) text += p.innerText + " ";
-				if (el.placeholder) text += el.placeholder + " ";
-				return text;
-			}`)
-
-			placeholder := getJSString(input, `() => this.placeholder || ""`)
-			searchStr := strings.ToLower(fmt.Sprintf("%s %s %s", inputName, contextStr, placeholder))
-
-			guess := af.guessValue(targetURL, inputName, searchStr, inputType, tagName, phone, name, email, currentMode, logFn)
-			if guess != nil {
-				guessedData[inputName] = guess.Value
-				logFn("   >>> فیلد [%s] شناسایی و با موفقیت پر شد.", inputName)
-				af.fillField(input, inputType, tagName, guess.Value)
-				filledAny = true
-			}
-		}
-
-		if !filledAny && step > 1 {
-			logFn("میدان جدیدی پر نشد. پایان چرخه فرم.")
-			break
-		}
-
-		logFn("تلاش برای پیدا کردن دکمه سابمیت فرم...")
-
-		jsFormSubmitter := `function() {
-			let btn = document.querySelector('button[type="submit"], input[type="submit"]');
-			if (btn) {
-				let style = window.getComputedStyle(btn);
-				if (style.display !== 'none' && style.visibility !== 'hidden') {
-					btn.scrollIntoView({ block: 'center' });
-					btn.setAttribute('data-bot-submit', 'true');
-					return "button_found";
-				}
-			}
-
-			let targets = document.querySelectorAll('button, .btn, [role="button"], div, span, a');
-			let actionKeywords = [/ادامه/, /ارسال/, /تایید/, /ورود/, /ثبت/,/بعد/,/ارسال کد/,/ادامه/, /submit/, /next/, /continue/, /verify/, /ارسال کد یکبار مصرف/, /ارسال پیامک/, /ارسال کد یک بار مصرف/, /ارسال کد تایید/, /رمز یکبار مصرف/, /دریافت کد/];
-
-			for (let el of targets) {
-				let text = el.innerText ? el.innerText.trim().toLowerCase() : '';
-				if (!text || text.length > 25) continue;
-
-				let isInsideHeader = el.closest('header') || el.closest('nav') || el.closest('.header') || el.closest('.menu');
-				if (isInsideHeader) {
-					continue;
-				}
-
-				for (let kw of actionKeywords) {
-					if (kw.test(text)) {
-						let style = window.getComputedStyle(el);
-						if (style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0') {
-							el.scrollIntoView({ block: 'center' });
-							el.setAttribute('data-bot-submit', 'true');
-							return "button_found";
-						}
-					}
-				}
-			}
-
-			let form = document.querySelector('form');
-			if (form) {
-				form.setAttribute('data-bot-form', 'true');
-				return "form_found";
-			}
-			return "";
-		}`
-
-		clicked := false
-		if clickRes, err := workingFrame.Eval(jsFormSubmitter); err == nil && clickRes != nil {
-			resType := clickRes.Value.Str()
-
-			if resType == "button_found" {
-				btn, err := workingFrame.Element("[data-bot-submit='true']")
-				if err == nil {
-					_ = btn.ScrollIntoView()
-					err = btn.Click(proto.InputMouseButtonLeft, 1)
-					if err == nil {
-						_ = workingFrame.WaitStable(2 * time.Second)
-						clicked = true
-						filledAny = true
-					}
-				}
-			} else if resType == "form_found" {
-				logFn("دکمه مشخصی یافت نشد، تلاش برای ارسال مستقیم فرم (Submit Event)...")
-				_, err := workingFrame.Eval(`() => { let f = document.querySelector("[data-bot-form='true']"); if(f) f.submit(); }`)
-				if err == nil {
-					_ = workingFrame.WaitStable(2 * time.Second)
-					clicked = true
-					filledAny = true
-				}
-			}
-		}
-
-		if clicked {
-			if af.waitForOTP(workingFrame, 15*time.Second, logFn) {
-				return &Result{
-					Status:   true,
-					Message:  "رسیدن به مرحله کد تایید (موفق)",
-					Logs:     localLogs,
-					SentData: guessedData,
-				}
-			}
+		result.Results = append(result.Results, res)
+		if res.Success {
+			result.Success++
 		} else {
-			logFn("هیچ دکمه سابمیتی برای خود فرم در این مرحله پیدا نشد.")
-			if !filledAny {
-				break
+			result.Failed++
+			result.Errors = append(result.Errors, fmt.Sprintf("[%s]: %s", targetURL, res.Message))
+		}
+	}
+
+	result.Duration = time.Since(startTime).String()
+	return result
+}
+
+func (a *AutoFormFiller) processSingleURL(page playwright.Page, targetURL string, phone, firstName, lastName, email string, shouldSubmit bool) ProcessResult {
+	_, err := page.Goto(targetURL, playwright.PageGotoOptions{
+		Timeout:   playwright.Float(45000),
+		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
+	})
+	if err != nil {
+		return ProcessResult{URL: targetURL, Success: false, Message: fmt.Sprintf("خطا در بارگذاری صفحه: %v", err)}
+	}
+
+	page.WaitForTimeout(2500)
+	a.dismissAnnoyingModals(page)
+
+	// 1. ورود هوشمند به فرم
+	a.handleGatewayButtons(page)
+
+	initialURL := page.URL()
+
+	// 2. پر کردن هوشمند فیلدها
+	a.fillInput(page, "input[type=\"tel\"], input[placeholder*=\"شماره\" i], input[placeholder*=\"موبایل\" i], input[name*=\"phone\" i], input[name*=\"mobile\" i]", phone)
+	a.fillInput(page, "input[type=\"email\"], input[placeholder*=\"ایمیل\" i], input[name*=\"email\" i]", email)
+	a.fillInput(page, "input[name*=\"first\" i], input[name=\"name\"], input[placeholder*=\"نام\" i]:not([placeholder*=\"خانوادگی\" i])", firstName)
+	a.fillInput(page, "input[name*=\"last\" i], input[name*=\"family\" i], input[placeholder*=\"خانوادگی\" i], input[placeholder*=\"فامیلی\" i]", lastName)
+
+	// پسوردها
+	passwords := page.Locator("input[type=\"password\"]")
+	pCount, _ := passwords.Count()
+	for i := 0; i < pCount; i++ {
+		if vis, _ := passwords.Nth(i).IsVisible(); vis {
+			a.typeHumanLike(passwords.Nth(i), "Test@123456!AbC")
+		}
+	}
+
+	// 3. انتخاب رندوم Selectها
+	a.handleSelectDropdowns(page)
+
+	// 4. تیک زدن قوانین
+	a.handleTermsAndConditions(page)
+
+	if !shouldSubmit {
+		return ProcessResult{
+			URL:     targetURL,
+			Success: true,
+			Message: "فیلدها، دراپ‌داون‌ها و قوانین با موفقیت پر شدند (بدون کلیک دکمه ارسال).",
+		}
+	}
+
+	// --- عملیات ثبت‌نام ---
+	var formNetworkStatus int
+	page.OnResponse(func(res playwright.Response) {
+		req := res.Request()
+		method := req.Method()
+		if method == "POST" || method == "PUT" {
+			postData, _ := req.PostData()
+			if strings.Contains(postData, phone) || (email != "" && strings.Contains(postData, email)) {
+				formNetworkStatus = res.Status()
 			}
 		}
-	}
+	})
 
-	logFn("--- پایان پردازش فرم ---")
+	submitBtn := page.Locator("button, input[type=\"submit\"], [role=\"button\"]").
+		Filter(playwright.LocatorFilterOptions{
+			HasText: regexp.MustCompile("(?i)ثبت\\s*نام|ورود|عضویت|ارسال|ادامه|تایید|ثبت|submit|register|login|continue"),
+		}).First()
 
-	content, err := page.HTML()
-	if err != nil {
-		return &Result{
-			Status:   false,
-			Message:  "خطا در خواندن محتوای صفحه در پایان کار",
-			Logs:     localLogs,
-			SentData: guessedData,
+	clicked := false
+	if vis, _ := submitBtn.IsVisible(); vis {
+		a.safeClick(page, submitBtn)
+		clicked = true
+	} else {
+		form := page.Locator("form").First()
+		if fVis, _ := form.IsVisible(); fVis {
+			form.Evaluate("f => f.submit()", nil) // اصلاح شد
+			clicked = true
 		}
 	}
 
-	verification := af.verifySubmission(content, 200)
-
-	if af.isOTPScreen(content) {
-		verification.Status = true
-		verification.Message = "رسیدن به مرحله کد تایید (موفق)"
+	if !clicked {
+		return ProcessResult{URL: targetURL, Success: false, Message: "هیچ دکمه‌ای برای ارسال فرم یافت نشد."}
 	}
 
-	return &Result{
-		Status:   verification.Status,
-		Message:  verification.Message,
-		Logs:     localLogs,
-		SentData: guessedData,
+	page.WaitForTimeout(4000)
+
+	// 5. بررسی ورود به مرحله OTP (کد پیامکی)
+	otpLocator := page.Locator("input[autocomplete=\"one-time-code\"], input[placeholder*=\"کد\" i], input[name*=\"code\" i], input[name*=\"otp\" i], .otp__input")
+	otpCount, _ := otpLocator.Count()
+
+	if otpCount > 0 {
+		return ProcessResult{
+			URL:        targetURL,
+			Success:    true,
+			Message:    "موفقیت‌آمیز - فرم ارسال شد و صفحه وارد مرحله ورود کد پیامک گردید.",
+			HTTPStatus: formNetworkStatus,
+		}
+	}
+
+	visualErrors := a.checkVisualErrors(page)
+	if len(visualErrors) > 0 {
+		return ProcessResult{
+			URL:        targetURL,
+			Success:    false,
+			Message:    "ارسال ناموفق (خطای اعتبارسنجی فرم)",
+			Errors:     visualErrors,
+			HTTPStatus: formNetworkStatus,
+		}
+	}
+
+	if formNetworkStatus >= 400 {
+		return ProcessResult{
+			URL:        targetURL,
+			Success:    false,
+			Message:    fmt.Sprintf("سرور پاسخ خطای %d داد.", formNetworkStatus),
+			HTTPStatus: formNetworkStatus,
+		}
+	}
+
+	if page.URL() == initialURL && formNetworkStatus == 0 {
+		return ProcessResult{
+			URL:        targetURL,
+			Success:    false,
+			Message:    "دکمه کلیک شد اما هیچ واکنشی در شبکه یا صفحه رخ نداد.",
+			HTTPStatus: 0,
+		}
+	}
+
+	return ProcessResult{
+		URL:        targetURL,
+		Success:    true,
+		Message:    "موفقیت‌آمیز (تایید شد)",
+		HTTPStatus: formNetworkStatus,
 	}
 }
 
-func (af *AutoFormFiller) waitForOTP(page *rod.Page, timeout time.Duration, logFn func(string, ...interface{})) bool {
-	logFn("⏳ در حال انتظار تا حداکثر %s برای باز شدن صفحه OTP (کد تایید)...", timeout.String())
-	timeoutPage := page.Timeout(timeout)
-	for {
-		time.Sleep(500 * time.Millisecond)
-		html, err := timeoutPage.HTML()
-		if err != nil {
-			return false
-		}
-		if af.isOTPScreen(html) {
-			return true
-		}
-	}
-}
+// -------------------------------------------------------------
+// توابع اتوماسیون هوشمند (اصلاح‌شده)
+// -------------------------------------------------------------
 
-func (af *AutoFormFiller) fillField(el *rod.Element, fieldType, tagName, value string) {
-	if el == nil {
+func (a *AutoFormFiller) fillInput(page playwright.Page, selector string, text string) {
+	if text == "" {
 		return
 	}
-	_ = el.ScrollIntoView()
-	el.MustFocus()
+	input := page.Locator(selector).First()
+	if vis, _ := input.IsVisible(); vis {
+		a.typeHumanLike(input, text)
+	}
+}
 
-	if tagName == "select" {
-		el.MustEval(`function(element) {
-			if (!element) return;
-			let options = element.querySelectorAll('option');
-			for(let i=1; i<options.length; i++) {
-				if(options[i].value && options[i].value !== '') {
-					element.value = options[i].value;
-					element.dispatchEvent(new Event('change', {bubbles: true}));
-					return;
-				}
+func (a *AutoFormFiller) typeHumanLike(locator playwright.Locator, text string) {
+	locator.Focus()
+	locator.Clear()
+	locator.PressSequentially(text, playwright.LocatorPressSequentiallyOptions{Delay: playwright.Float(40)})
+
+	locator.Evaluate(`el => {
+		el.dispatchEvent(new Event('input', { bubbles: true }));
+		el.dispatchEvent(new Event('change', { bubbles: true }));
+	}`, nil) // اصلاح شد
+	locator.Press("Tab")
+}
+
+func (a *AutoFormFiller) handleGatewayButtons(page playwright.Page) bool {
+	inputs, _ := page.Locator("input:not([type=\"hidden\"]):not([type=\"checkbox\"])").Count()
+	if inputs >= 2 {
+		return true
+	}
+
+	hrefSelectors := []string{
+		"a[href*=\"login\"]", "a[href*=\"register\"]", "a[href*=\"signup\"]",
+		"a[href*=\"auth\"]", "a[href*=\"profile\"]", "a[href*=\"account\"]",
+		"a[href*=\"consult\"]", "a[href*=\"user\"]",
+	}
+
+	for _, sel := range hrefSelectors {
+		el := page.Locator(sel).First()
+		if vis, _ := el.IsVisible(); vis {
+			a.safeClick(page, el)
+			page.WaitForTimeout(3000)
+			return true
+		}
+	}
+
+	gatewayRegex := regexp.MustCompile("(?i)ورود|ثبت\\s*‌?نام|عضویت|لاگین|حساب|پروفایل|مشاوره|رایگان|شروع\\s*‌?کنید|درخواست|ارتباط|login|register|sign\\s*‌?up|sign\\s*‌?in|account|profile|auth")
+	candidates := page.Locator("header button, header a, nav button, nav a, button, a, [role=\"button\"], [class*=\"btn\"], [class*=\"login\"], [class*=\"register\"], [class*=\"auth\"], [class*=\"cta\"]")
+	count, _ := candidates.Count()
+
+	for i := 0; i < count; i++ {
+		el := candidates.Nth(i)
+		if vis, _ := el.IsVisible(); vis {
+			innerText, _ := el.InnerText()
+			ariaLabel, _ := el.GetAttribute("aria-label")
+			text := strings.TrimSpace(innerText)
+			if text == "" {
+				text = strings.TrimSpace(ariaLabel)
 			}
-			if(options.length > 0) {
-				element.value = options[0].value;
-				element.dispatchEvent(new Event('change', {bubbles: true}));
+			text = regexp.MustCompile(`\s+`).ReplaceAllString(text, " ")
+
+			if len(text) > 0 && len(text) < 40 && gatewayRegex.MatchString(text) {
+				a.safeClick(page, el)
+				page.WaitForTimeout(3000)
+				return true
 			}
-		}`)
-	} else if fieldType == "checkbox" || fieldType == "radio" {
-		if value == "on" || value == "true" {
-			// اسکریپت تهاجمی‌تر برای انتخاب قطعی رادیوها و چک‌باکس‌ها در فرم‌سازها
-			jsRadioCheckboxFix := `function(el) {
-				if (!el) return;
-				if (el.checked) return;
+		}
+	}
 
-				// روش اول: کلیک بومی دام (بهترین روش برای بیدار کردن React/Vue)
-				el.click();
+	return false
+}
 
-				// روش دوم: اگر کلیک بومی جواب نداد، مقداردهی مستقیم
-				el.checked = true;
-				let nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "checked")?.set;
-				if (nativeSetter) {
-					nativeSetter.call(el, true);
-				}
+func (a *AutoFormFiller) safeClick(page playwright.Page, locator playwright.Locator) {
+	locator.ScrollIntoViewIfNeeded(playwright.LocatorScrollIntoViewIfNeededOptions{Timeout: playwright.Float(2000)})
+	err := locator.Click(playwright.LocatorClickOptions{Force: playwright.Bool(true), Timeout: playwright.Float(3000)})
+	if err != nil {
+		locator.Evaluate(`node => {
+			if (node instanceof HTMLElement) {
+				node.click();
+			} else if (node.parentElement) {
+				node.parentElement.click();
+			}
+		}`, nil) // اصلاح شد
+	}
+}
 
-				el.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-				el.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+func (a *AutoFormFiller) handleSelectDropdowns(page playwright.Page) {
+	selects := page.Locator("select")
+	count, _ := selects.Count()
+	for i := 0; i < count; i++ {
+		sel := selects.Nth(i)
+		if vis, _ := sel.IsVisible(); vis {
+			options, err := sel.Locator("option:not([disabled])").All()
+			if err == nil && len(options) > 1 {
+				randIdx := rand.Intn(len(options)-1) + 1
+				sel.SelectOption(playwright.SelectOptionValues{
+					Indexes: &[]int{randIdx}, // اصلاح شد
+				})
+			}
+		}
+	}
 
-				// روش سوم: اگر اینپوت مخفی است، روی لیبلِ دربرگیرنده آن کلیک کن
-				if (el.parentElement && el.parentElement.tagName.toLowerCase() === 'label') {
-					el.parentElement.click();
-				} else if (el.id) {
-					let label = document.querySelector('label[for="' + el.id + '"]');
-					if (label) label.click();
-				}
-			}`
+	customs := page.Locator("[role=\"combobox\"], .select__control, [class*=\"select-input\"]")
+	cCount, _ := customs.Count()
+	for i := 0; i < cCount; i++ {
+		c := customs.Nth(i)
+		if vis, _ := c.IsVisible(); vis {
+			c.Click(playwright.LocatorClickOptions{Force: playwright.Bool(true)})
+			page.WaitForTimeout(600)
+			opts := page.Locator("[role=\"option\"], .select__option, li[class*=\"option\"]")
+			if optCount, _ := opts.Count(); optCount > 0 {
+				opts.First().Click(playwright.LocatorClickOptions{Force: playwright.Bool(true)})
+			}
+		}
+	}
+}
 
-			// اجرای اسکریپت جاوااسکریپتی به جای کلیک فیزیکی Rod که ممکن است روی عناصر مخفی کرش کند
-			_, err := el.Eval(jsRadioCheckboxFix)
+func (a *AutoFormFiller) handleTermsAndConditions(page playwright.Page) {
+	checkboxes := page.Locator("input[type=\"checkbox\"], [role=\"checkbox\"]")
+	count, _ := checkboxes.Count()
+	if count > 0 {
+		for i := 0; i < count; i++ {
+			cb := checkboxes.Nth(i)
+			err := cb.Check(playwright.LocatorCheckOptions{Force: playwright.Bool(true)})
 			if err != nil {
-				// Fallback در صورت بروز هرگونه مشکل
-				_ = el.Click(proto.InputMouseButtonLeft, 1)
+				cb.Evaluate(`el => {
+					el.checked = true;
+					el.dispatchEvent(new Event('change', { bubbles: true }));
+					el.dispatchEvent(new Event('click', { bubbles: true }));
+				}`, nil) // اصلاح شد
 			}
 		}
 	} else {
-		err := el.Click(proto.InputMouseButtonLeft, 1)
-		if err == nil {
-			_ = el.SelectAllText()
-			_ = el.Input("")
-			_ = el.Input(value)
+		labels := page.Locator("label").Filter(playwright.LocatorFilterOptions{
+			HasText: regexp.MustCompile("(?i)قوانین|مقررات|شرایط"),
+		})
+		if lCount, _ := labels.Count(); lCount > 0 {
+			labels.First().Evaluate(`el => {
+				const clickTarget = el.querySelector('input, span, div') || el;
+				clickTarget.click();
+			}`, nil) // اصلاح شد
 		}
-
-		jsWakeUpReact := `function(el, val) {
-			if (!el) return;
-			let nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
-			let nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set;
-			if (el.tagName.toLowerCase() === 'input' && nativeInputValueSetter) {
-				nativeInputValueSetter.call(el, val);
-			} else if (el.tagName.toLowerCase() === 'textarea' && nativeTextAreaValueSetter) {
-				nativeTextAreaValueSetter.call(el, val);
-			} else {
-				el.value = val;
-			}
-			el.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-			el.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
-			el.dispatchEvent(new Event('blur', { bubbles: true, cancelable: true }));
-			el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, cancelable: true, key: 'Enter' }));
-		}`
-		_, _ = el.Eval(jsWakeUpReact, value)
 	}
 }
 
-func (af *AutoFormFiller) BatchSubmit(urls []string, phoneNumber string, targetName ...string) *BatchResult {
-	start := time.Now()
-	result := &BatchResult{
-        Total:   len(urls),
-        Results: make([]*Result, 0, len(urls)),
-        Errors:  make([]string, 0),
-    }
-
-	for _, u := range urls {
-		// اجرای مستقیم به جای استفاده از go func (پردازش دونه دونه)
-		func(url string) {
-			defer func() {
-				if r := recover(); r != nil {
-					af.log("خطای جدی در سایت %s رخ داد: %v", url, r)
-					result.Failed++
-					result.Errors = append(result.Errors, fmt.Sprintf("%s: خطای ناشناخته (Panic: %v)", url, r))
-				}
-			}()
-
-			r := af.SubmitForm(url, phoneNumber, targetName...)
-
-			result.Results = append(result.Results, r)
-			if r.Status {
-				result.Success++
-			} else {
-				result.Failed++
-				result.Errors = append(result.Errors, fmt.Sprintf("%s: %s", url, r.Message))
-			}
-		}(u)
-	}
-
-	result.Duration = time.Since(start).String()
-	return result
-}
-
-func (af *AutoFormFiller) BatchRegister(urls []string, phoneNumber, name, email string) *BatchResult {
-	start := time.Now()
-	result := &BatchResult{
-        Total:   len(urls),
-        Results: make([]*Result, 0, len(urls)),
-        Errors:  make([]string, 0),
-    }
-
-	for _, u := range urls {
-		// اجرای مستقیم به جای استفاده از go func (پردازش دونه دونه)
-		func(url string) {
-			defer func() {
-				if r := recover(); r != nil {
-					af.log("خطای جدی در سایت %s رخ داد: %v", url, r)
-					result.Failed++
-					result.Errors = append(result.Errors, fmt.Sprintf("%s: خطای ناشناخته (Panic: %v)", url, r))
-				}
-			}()
-
-			r := af.Register(url, phoneNumber, name, email)
-
-			result.Results = append(result.Results, r)
-			if r.Status {
-				result.Success++
-			} else {
-				result.Failed++
-				result.Errors = append(result.Errors, fmt.Sprintf("%s: %s", url, r.Message))
-			}
-		}(u)
-	}
-
-	result.Duration = time.Since(start).String()
-	return result
-}
-
-func getJSString(el *rod.Element, js string) string {
-	res, err := el.Eval(js)
-	if err != nil || res == nil {
-		return ""
-	}
-	return res.Value.Str()
-}
-
-func (af *AutoFormFiller) guessValue(pageURL, name, context, fieldType, tagName, phone, personName, email string, currentMode Mode, logFn func(string, ...interface{})) *GuessResult {
-	if tagName == "select" {
-		return &GuessResult{Value: "__SELECT__", Reason: "Select"}
-	}
-	if fieldType == "radio" {
-		return &GuessResult{Value: "on", Reason: "Radio"}
-	}
-	if fieldType == "checkbox" {
-		ruleKeywords := []string{"rule", "term", "qavanin", "شرایط", "قوانین"}
-		if af.containsAny(context, ruleKeywords) {
-			return &GuessResult{Value: "on", Reason: "Rules"}
+func (a *AutoFormFiller) dismissAnnoyingModals(page playwright.Page) {
+	modals := page.GetByRole(*playwright.AriaRoleButton, playwright.PageGetByRoleOptions{ // اصلاح شد (*playwright.AriaRoleButton)
+		Name: regexp.MustCompile("(?i)بستن|متوجه شدم|قبول|close|accept|dismiss|لغو"),
+	})
+	count, _ := modals.Count()
+	for i := 0; i < count; i++ {
+		if vis, _ := modals.Nth(i).IsVisible(); vis {
+			modals.Nth(i).Click(playwright.LocatorClickOptions{Timeout: playwright.Float(1000), Force: playwright.Bool(true)})
 		}
+	}
+}
+
+func (a *AutoFormFiller) checkVisualErrors(page playwright.Page) []string {
+	res, err := page.Evaluate(`() => {
+		const errs = [];
+		const inputs = document.querySelectorAll('input:not([type="hidden"]), textarea');
+		inputs.forEach((el) => {
+			const input = el;
+			const style = window.getComputedStyle(input);
+			const isRed = style.borderColor.includes('rgb(255') || style.color.includes('rgb(255');
+			const hasErrorClass = input.className.match(/error|invalid|danger/i);
+			if (isRed || hasErrorClass || !input.validity.valid) {
+				const name = input.placeholder || input.name || input.id || "فیلد نامشخص";
+				errs.push("[" + name + "]: خطای اعتبارسنجی فیلد");
+			}
+		});
+
+		const alerts = document.querySelectorAll('.toast, .notification, [role="alert"], .Swal2-html-container, [class*="toast"], [class*="error"]:not(h1):not(h2):not(title)');
+		alerts.forEach(alert => {
+			const text = alert.textContent?.trim();
+			if (text && text.length < 150 && !text.includes('تایید') && !text.includes('موفق') && !text.includes('الوپیک')) {
+				errs.push("پیام سیستم: " + text);
+			}
+		});
+		return [...new Set(errs)];
+	}`, nil) // اصلاح شد
+
+	if err != nil {
 		return nil
 	}
-	if af.containsAny(context, configs.PhoneKeywords) || fieldType == "tel" {
-		timeKeywords := []string{"time", "date", "زمان", "ساعت", "محدوده", "کی"}
-		if af.containsAny(context, timeKeywords) {
-			return &GuessResult{Value: "10 الی 12", Reason: "Time"}
-		}
-		return &GuessResult{Value: phone, Reason: "Phone"}
-	}
-	if af.containsAny(context, configs.EmailKeywords) || fieldType == "email" {
-		if email == "" {
-			email = "abc@gmail.com"
-		}
-		return &GuessResult{Value: email, Reason: "Email"}
-	}
-	if af.containsAny(context, configs.NameKeywords) {
-		if personName == "" && len(configs.PersianFirstNames) > 0 {
-			personName = configs.PersianFirstNames[0]
-		}
-		return &GuessResult{Value: personName, Reason: "Name"}
-	}
-	if af.containsAny(context, []string{"family", "lname", "فامیلی", "خانوادگی"}) {
-		if len(configs.PersianLastNames) > 0 {
-			return &GuessResult{Value: configs.PersianLastNames[0], Reason: "Family"}
-		}
-		return &GuessResult{Value: name, Reason: "Family"}
-	}
-	if af.containsAny(context, configs.MessageKeywords) || fieldType == "textarea" {
-		subjectKeywords := []string{"subject", "onvan", "موضوع"}
-		if af.containsAny(context, subjectKeywords) {
-			return &GuessResult{Value: "درخواست بررسی", Reason: "Subject"}
-		}
-		return &GuessResult{Value: "با سلام. فرم برای بررسی و ثبت ارسال شده است.", Reason: "Message"}
-	}
-	if currentMode == ModeRegister {
-		if af.containsAny(context, []string{"password", "pass", "رمز", "کلمه عبور"}) {
-			return &GuessResult{Value: "Test@1234", Reason: "Password"}
-		}
-	}
-	if fieldType == "text" {
-		if af.containsAny(context, []string{"age", "old", "year", "سن", "سال"}) {
-			return &GuessResult{Value: "30", Reason: "Age"}
-		}
-	}
 
-	// Fallback برای فرم‌های عمومی: مقداردهی اجباری به فیلدهای متنی ناشناخته
-	if fieldType == "text" || fieldType == "textarea" || tagName == "textarea" {
-		logFn("فیلد ناشناخته تشخیص داده شد: %s، استفاده از مقدار پیش‌فرض Fallback", name)
-		return &GuessResult{Value: "لطفا تماس بگیرید", Reason: "Fallback_Text"}
+	var errs []string
+	if list, ok := res.([]interface{}); ok {
+		for _, item := range list {
+			if str, ok := item.(string); ok {
+				errs = append(errs, str)
+			}
+		}
 	}
-
-	return nil
+	return errs
 }
 
-func (af *AutoFormFiller) verifySubmission(html string, statusCode int) *VerifyResult {
-	lowerHTML := strings.ToLower(html)
-	for _, indicator := range configs.ErrorKeywords {
-		if strings.Contains(lowerHTML, indicator) {
-			return &VerifyResult{Status: false, Message: "ارسال شد اما خطای اعتبارسنجی دارد."}
-		}
+func splitFullName(fullName string) (string, string) {
+	parts := strings.SplitN(strings.TrimSpace(fullName), " ", 2)
+	firstName := parts[0]
+	lastName := firstName
+	if len(parts) > 1 && strings.TrimSpace(parts[1]) != "" {
+		lastName = strings.TrimSpace(parts[1])
 	}
-	for _, keyword := range configs.SuccessKeywords {
-		if strings.Contains(lowerHTML, keyword) {
-			return &VerifyResult{Status: true, Message: "موفقیت آمیز."}
-		}
-	}
-	return &VerifyResult{Status: true, Message: "فرم ارسال شد (تایید نشده اما ارور نداشت)."}
-}
-
-type VerifyResult struct {
-	Status  bool
-	Message string
-}
-
-func (af *AutoFormFiller) containsAny(haystack string, needles []string) bool {
-	for _, needle := range needles {
-		if strings.Contains(haystack, needle) {
-			return true
-		}
-	}
-	return false
-}
-
-// این متد صرفا برای پرینت خطاهای سطح سیستم (مانند پنیک‌ها) نگه‌داشته شده است
-func (af *AutoFormFiller) log(format string, args ...interface{}) {
-	if af.debug {
-		fmt.Printf(format+"\n", args...)
-	}
-}
-
-func (af *AutoFormFiller) truncate(s string, length int) string {
-	runes := []rune(s)
-	if len(runes) > length {
-		return string(runes[:length])
-	}
-	return s
-}
-
-func (af *AutoFormFiller) isOTPScreen(html string) bool {
-	lowerHTML := strings.ToLower(html)
-	otpKeywords := []string{
-		"کد تایید", "کد پیامک شده", "کد ارسال شده", "رمز یکبار مصرف",
-		"کد اعتبارسنجی", "کد فعالسازی", "کد فعال سازی", "verification code",
-		"enter code", "کد ۵ رقمی", "کد 4 رقمی", "کد ۶ رقمی", "ارسال مجدد",
-	}
-
-	for _, kw := range otpKeywords {
-		if strings.Contains(lowerHTML, kw) {
-			return true
-		}
-	}
-	return false
+	return firstName, lastName
 }
