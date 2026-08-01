@@ -1,4 +1,4 @@
-FROM golang:1.23-bookworm AS builder
+FROM golang:1.26-bookworm AS builder
 
 WORKDIR /app
 
@@ -9,7 +9,7 @@ COPY form/ ./
 
 RUN CGO_ENABLED=0 GOOS=linux go build -o /bin/form-server main.go
 
-RUN go run github.com/mxschmitt/playwright-go/cmd/playwright@latest install --with-deps chromium
+RUN go run github.com/mxschmitt/playwright-go/cmd/playwright install --with-deps chromium
 
 FROM debian:bookworm-slim
 WORKDIR /app
@@ -55,7 +55,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=builder /bin/form-server /usr/local/bin/form-server
 
-COPY --from=builder /root/.cache/ms-playwright /root/.cache/ms-playwright
+COPY --from=builder /root/.cache /root/.cache
 
 EXPOSE 8084
 CMD ["form-server"]

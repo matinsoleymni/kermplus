@@ -38,7 +38,6 @@ var (
 	tasks        = make(map[string]*TaskStatus)
 	tasksMu      sync.RWMutex
 
-	// 1. تعریف یک صف برای جاب‌ها (با ظرفیت مثلا 1000 تسک در صف)
 	jobQueue = make(chan func(), 1000)
 )
 
@@ -52,7 +51,6 @@ func main() {
 	}
 	defer globalFiller.Close()
 
-	// 2. استارت کردن Worker Pool (فقط 2 تسک همزمان)
 	startWorkerPool(2)
 
 	gin.SetMode(gin.ReleaseMode)
