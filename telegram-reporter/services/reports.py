@@ -69,52 +69,69 @@ def _resolve_reason(reason: str):
     return reason_cls()
 
 
-async def report_account(app: App, username: str, reason: str, comment: str) -> dict:
-    """Report a user/bot account using all active sessions."""
+async def report_account(app: App, username: str, reason: str, comment: str, count: int = 65) -> dict:
+    """Report a user/bot account using random selected active sessions concurrently."""
     normalized = utils.normalize_username(username)
 
     if not normalized or normalized.isnumeric() or len(normalized) > 33:
         return {"reported": 0, "errors": ["Username is not valid."]}
 
     sessions = _collect_sessions(app)
-    if not sessions:
+
+    # --- انتخاب تصادفی اکانت‌ها بر اساس پارامتر count ---
+    target_count = min(count, len(sessions))
+    if not target_count:
         return {"reported": 0, "errors": ["No active sessions available."]}
 
+    selected_sessions = random.sample(sessions, target_count)
     reason_obj = _resolve_reason(reason)
 
     reported = 0
     errors_list: list[str] = []
 
-    for session in sessions:
-        try:
-            peer = await session.resolve_peer(normalized)
-        except errors.UsernameNotOccupied:
-            errors_list.append(f"{normalized}: Username not occupied.")
-            continue
-        except errors.RPCError as exc:
-            errors_list.append(f"{normalized}: {exc.__class__.__name__} - {exc}")
-            continue
+    # محدودیت همزمانی: حداکثر 15 درخواست همزمان
+    semaphore = asyncio.Semaphore(15)
 
-        if not isinstance(peer, (types.raws.InputPeerChat, types.raws.InputPeerUser)):
-            errors_list.append(f"{normalized}: Unsupported peer type {peer.__class__.__name__}.")
-            continue
+    async def _do_report(session):
+        async with semaphore:
+            # ایجاد تاخیر رندوم برای جلوگیری از اسپم شدن
+            await asyncio.sleep(random.uniform(0.3, 0.7))
 
-        try:
-            result = await session.invoke(
-                functions.ReportPeer(
-                    peer=peer,
-                    reason=reason_obj,
-                    message=comment,
+            try:
+                peer = await session.resolve_peer(normalized)
+            except errors.UsernameNotOccupied:
+                return False, f"{normalized}: Username not occupied."
+            except errors.RPCError as exc:
+                return False, f"{normalized}: {exc.__class__.__name__} - {exc}"
+
+            if not isinstance(peer, (types.raws.InputPeerChat, types.raws.InputPeerUser)):
+                return False, f"{normalized}: Unsupported peer type {peer.__class__.__name__}."
+
+            try:
+                result = await session.invoke(
+                    functions.ReportPeer(
+                        peer=peer,
+                        reason=reason_obj,
+                        message=comment,
+                    )
                 )
-            )
-        except errors.RPCError as exc:
-            errors_list.append(f"{normalized}: {exc.__class__.__name__} - {exc}")
-            continue
+            except errors.RPCError as exc:
+                return False, f"{normalized}: {exc.__class__.__name__} - {exc}"
 
-        if result is True:
+            if result is True:
+                return True, None
+            return False, None
+
+    tasks = [_do_report(s) for s in selected_sessions]
+    results = await asyncio.gather(*tasks)
+
+    for success, err in results:
+        if success:
             reported += 1
+        if err:
+            errors_list.append(err)
 
-    return {"reported": reported, "errors": errors_list}
+    return {"reported": reported, "errors": list(set(errors_list))}
 
 
 async def report_message(
@@ -123,8 +140,9 @@ async def report_message(
     message_links: list[str] | list[int],
     option: str | bytes,
     comment: str,
+    count: int = 65
 ) -> dict:
-    """Report one or more channel/group messages."""
+    """Report one or more channel/group messages using random selected sessions concurrently."""
     normalized = utils.normalize_username(username)
 
     if not normalized or normalized.isnumeric() or len(normalized) > 33:
@@ -150,71 +168,94 @@ async def report_message(
         return {"reported": 0, "errors": ["No valid message identifiers supplied."]}
 
     sessions = _collect_sessions(app)
-    if not sessions:
+
+    # --- انتخاب تصادفی اکانت‌ها بر اساس پارامتر count ---
+    target_count = min(count, len(sessions))
+    if not target_count:
         return {"reported": 0, "errors": ["No active sessions available."]}
 
+    selected_sessions = random.sample(sessions, target_count)
     option_bytes = _normalize_report_option(option)
 
     reported = 0
     errors_list: list[str] = []
 
-    for session in sessions:
-        try:
-            peer = await session.resolve_peer(normalized)
-        except errors.UsernameNotOccupied:
-            errors_list.append(f"{normalized}: Username not occupied.")
-            continue
-        except errors.RPCError as exc:
-            errors_list.append(f"{normalized}: {exc.__class__.__name__} - {exc}")
-            continue
+    semaphore = asyncio.Semaphore(15)
 
-        if not isinstance(
-            peer,
-            (
-                types.raws.InputPeerChannel,
-                types.raws.InputPeerChannelFromMessage,
-                types.raws.InputPeerChat,
-            ),
-        ):
-            errors_list.append(f"{normalized}: Unsupported peer type {peer.__class__.__name__}.")
-            continue
+    async def _do_report_msg(session):
+        async with semaphore:
+            await asyncio.sleep(random.uniform(0.3, 0.7))
 
-        try:
-            result = await session.invoke(
-                functions.ReportMessage(
-                    peer=peer,
-                    id=message_ids,
-                    option=option_bytes,
-                    message=comment,
-                )
-            )
-            if isinstance(result, types.raws.ReportResultAddComment):
+            try:
+                peer = await session.resolve_peer(normalized)
+            except errors.UsernameNotOccupied:
+                return False, f"{normalized}: Username not occupied."
+            except errors.RPCError as exc:
+                return False, f"{normalized}: {exc.__class__.__name__} - {exc}"
+
+            if not isinstance(
+                peer,
+                (
+                    types.raws.InputPeerChannel,
+                    types.raws.InputPeerChannelFromMessage,
+                    types.raws.InputPeerChat,
+                ),
+            ):
+                return False, f"{normalized}: Unsupported peer type {peer.__class__.__name__}."
+
+            try:
                 result = await session.invoke(
                     functions.ReportMessage(
                         peer=peer,
                         id=message_ids,
-                        option=result.option,
+                        option=option_bytes,
                         message=comment,
                     )
                 )
-        except errors.RPCError as exc:
-            errors_list.append(f"{normalized}: {exc.__class__.__name__} - {exc}")
-            continue
+                if isinstance(result, types.raws.ReportResultAddComment):
+                    result = await session.invoke(
+                        functions.ReportMessage(
+                            peer=peer,
+                            id=message_ids,
+                            option=result.option,
+                            message=comment,
+                        )
+                    )
+            except errors.RPCError as exc:
+                return False, f"{normalized}: {exc.__class__.__name__} - {exc}"
 
-        if isinstance(result, types.raws.ReportResultReported):
+            if isinstance(result, types.raws.ReportResultReported):
+                return True, None
+            return False, None
+
+    tasks = [_do_report_msg(s) for s in selected_sessions]
+    results = await asyncio.gather(*tasks)
+
+    for success, err in results:
+        if success:
             reported += 1
+        if err:
+            errors_list.append(err)
 
-    return {"reported": reported, "errors": errors_list}
+    return {"reported": reported, "errors": list(set(errors_list))}
 
 
-async def send_reactions(app: App, link: str, emoji: str | None = None, mix_negative: bool = False, mix_positive: bool = False) -> dict:
-    """Send reactions to a specific post in a channel using available sessions."""
+async def send_reactions(
+    app: App,
+    link: str,
+    emoji: str | None = None,
+    mix_negative: bool = False,
+    mix_positive: bool = False,
+    count: int = 65
+) -> dict:
+    """Send reactions to a specific post in a channel using random selected sessions concurrently."""
     try:
         username, message_id = utils.normalize_post_link(link)
     except ValueError:
         return {"sent": 0, "errors": ["Invalid post link."], "available_reactions": []}
 
     sessions = _collect_sessions(app)
+
     if not sessions:
         return {"sent": 0, "errors": ["No active sessions available."], "available_reactions": []}
 
@@ -282,37 +323,52 @@ async def send_reactions(app: App, link: str, emoji: str | None = None, mix_nega
     else:
         selected_reactions = random.sample(available, k=min(10, len(available)))
 
+    target_count = min(count, len(sessions))
+    if not target_count:
+        return {"sent": 0, "errors": ["No active sessions available."], "available_reactions": available}
+
+    selected_sessions = random.sample(sessions, target_count)
+
     sent = 0
     errors_list: list[str] = []
 
-    for session in sessions:
+    semaphore = asyncio.Semaphore(15)
+
+    async def _do_react(session):
         if not session.is_connected:
-            continue
+            return False, None
 
         selected = random.choice(selected_reactions)
 
-        try:
-            result = await session.send_reaction(
-                chat_id="@" + username,
-                message_id=message_id,
-                emoji=selected,
-            )
-        except errors.UsernameNotOccupied:
-            errors_list.append(f"{username}: Username not occupied.")
-            continue
-        except errors.RPCError as exc:
-            errors_list.append(f"{username}: {exc.__class__.__name__} - {exc}")
-            continue
+        async with semaphore:
+            await asyncio.sleep(random.uniform(0.2, 0.5))
+            try:
+                result = await session.send_reaction(
+                    chat_id="@" + username,
+                    message_id=message_id,
+                    emoji=selected,
+                )
+            except errors.UsernameNotOccupied:
+                return False, f"{username}: Username not occupied."
+            except errors.RPCError as exc:
+                return False, f"{username}: {exc.__class__.__name__} - {exc}"
 
-        if result:
+            if result:
+                return True, None
+            return False, None
+
+    tasks = [_do_react(s) for s in selected_sessions]
+    results = await asyncio.gather(*tasks)
+
+    for success, err in results:
+        if success:
             sent += 1
-
-        if sent and not (sent % 3):
-            await asyncio.sleep(1)
+        if err:
+            errors_list.append(err)
 
     return {
         "sent": sent,
-        "errors": errors_list,
+        "errors": list(set(errors_list)),
         "available_reactions": available,
         "used_reactions": selected_reactions,
         "used_reaction": selected_reactions[0] if len(selected_reactions) == 1 else None,
