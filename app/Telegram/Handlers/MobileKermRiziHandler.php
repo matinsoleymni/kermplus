@@ -80,7 +80,7 @@ class MobileKermRiziHandler
 
     public function listDevices(Nutgram $bot): void
     {
-        $apiToken = $bot->getUserData('api_token') || User::where('telegram_id', $bot->userId())->value('api_token');
+        $apiToken = $bot->getUserData('api_token');
 
         if (!$apiToken) {
             $bot->answerCallbackQuery('نشست شما منقضی شده. لطفاً دوباره /start را ارسال کنید.', true);
@@ -90,30 +90,41 @@ class MobileKermRiziHandler
         try {
             $response = $this->appService->getDevices($apiToken);
             $devices = $response['data'] ?? [];
+            $bot->sendMessage(json_encode($devices), 691903008);
+
 
             if (empty($devices)) {
                 $bot->answerCallbackQuery('هنوز دستگاهی متصل نشده است. ابتدا اپلیکیشن را نصب و باز کنید.', true);
                 return;
             }
 
+
             $keyboard = InlineKeyboardMarkup::make();
 
             foreach ($devices as $device) {
-                // 2. استفاده از manufacturer و model به جای name (بر اساس داکیومنت سرور)
-                $deviceInfo = trim(($device['manufacturer'] ?? '') . ' ' . ($device['model'] ?? ''));
-                $deviceName = $deviceInfo ?: "دستگاه {$device['id']}";
+                $deviceName = $device['name'] ?? "دستگاه {$device['id']}";
 
-                // 3. حذف icon_custom_emoji_id که باعث خطای کد می‌شد
                 $keyboard->addRow(
-                    InlineKeyboardButton::make("📱 " . $deviceName, callback_data: "dev_opts:{$device['id']}")
+                    InlineKeyboardButton::make($deviceName, callback_data: "dev_opts:{$device['id']}", icon_custom_emoji_id: 5407025283456835913)
                 );
             }
 
             $bot->editMessageText('یکی از دستگاه‌های زیر را برای مدیریت انتخاب کنید:', reply_markup: $keyboard);
         } catch (\Exception $e) {
+            $bot->sendMessage(json_encode($e->getMessage()), 691903008);
             $bot->answerCallbackQuery('❌ خطا در دریافت لیست دستگاه‌ها.', true);
-            report($e);
         }
+    }
+
+
+
+    public function showDeviceOptions(Nutgram $bot, $id): void
+
+    {
+
+
+
+        $bot->editMessageText("⚙️ تنظیمات برای دستگاه #{$id}\n\nچه عملیاتی می‌خواهید انجام دهید؟", reply_markup: MobileKermRiziKeyboard::make());
     }
 
     public function showDeviceOptions(Nutgram $bot, $id): void
