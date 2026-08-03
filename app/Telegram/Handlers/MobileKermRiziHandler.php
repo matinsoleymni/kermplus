@@ -25,8 +25,8 @@ class MobileKermRiziHandler
 
     public function start(Nutgram $bot): void
     {
-        // 1. بررسی اینکه آیا کاربر قبلا ثبت‌نام کرده و api_token دارد یا خیر
-        $apiToken = $bot->getUserData('api_token') || User::where('telegram_id', $bot->userId())->value('api_token');
+        // اصلاح باگ منطقی || به ?:
+        $apiToken = $bot->getUserData('api_token') ?: User::where('telegram_id', $bot->userId())->value('api_token');
 
         if ($apiToken) {
             $keyboard = InlineKeyboardMarkup::make()->addRow(
@@ -37,7 +37,7 @@ class MobileKermRiziHandler
                 "✅ شما قبلاً اپلیکیشن اختصاصی خود را دریافت کرده‌اید.\n\nبرای مدیریت دستگاه‌های متصل، روی دکمه زیر کلیک کنید:",
                 reply_markup: $keyboard
             );
-            return; // خروج از متد تا دوباره درخواست ساخت اپ ارسال نشود
+            return;
         }
 
         $bot->sendMessage('در حال آماده‌سازی اپلیکیشن اختصاصی شما... این فرآیند ممکن است کمی طول بکشد. ⏳');
@@ -80,7 +80,7 @@ class MobileKermRiziHandler
 
     public function listDevices(Nutgram $bot): void
     {
-        $apiToken = $bot->getUserData('api_token');
+        $apiToken = $bot->getUserData('api_token') ?: User::where('telegram_id', $bot->userId())->value('api_token');
 
         if (!$apiToken) {
             $bot->answerCallbackQuery('نشست شما منقضی شده. لطفاً دوباره /start را ارسال کنید.', true);
@@ -100,7 +100,8 @@ class MobileKermRiziHandler
             $keyboard = InlineKeyboardMarkup::make();
 
             foreach ($devices as $device) {
-                $deviceName = $device['name'] ?? "دستگاه {$device['id']}";
+                $deviceInfo = trim(($device['manufacturer'] ?? '') . ' ' . ($device['model'] ?? ''));
+                $deviceName = $deviceInfo ?: "دستگاه {$device['id']}";
 
                 $keyboard->addRow(
                     InlineKeyboardButton::make($deviceName, callback_data: "dev_opts:{$device['id']}", icon_custom_emoji_id: 5407025283456835913)
@@ -116,13 +117,14 @@ class MobileKermRiziHandler
 
     public function showDeviceOptions(Nutgram $bot, $id): void
     {
+        $bot->setUserData('selected_device_id', $id);
 
         $bot->editMessageText("⚙️ تنظیمات برای دستگاه #{$id}\n\nچه عملیاتی می‌خواهید انجام دهید؟", reply_markup: MobileKermRiziKeyboard::make());
     }
 
-    public function executeCommand(Nutgram $bot, $event, $id): void
+    public function executeCommand(Nutgram $bot, $event): void
     {
-        $apiToken = $bot->getUserData('api_token') || User::where('telegram_id', $bot->userId())->value('api_token');
+        $apiToken = $bot->getUserData('api_token') ?: User::where('telegram_id', $bot->userId())->value('api_token');
 
         if (!$apiToken) {
             $bot->answerCallbackQuery(text: 'نشست شما منقضی شده. لطفاً دوباره ربات را استارت کنید.', show_alert: true);
@@ -131,6 +133,13 @@ class MobileKermRiziHandler
 
         if ($bot->userId() !== 691903008) {
             $bot->answerCallbackQuery(text: 'درحال دیپلوی', show_alert: true);
+            return;
+        }
+
+        $id = $bot->getUserData('selected_device_id');
+
+        if (!$id) {
+            $bot->answerCallbackQuery(text: 'هیچ دستگاهی انتخاب نشده است. لطفا برگردید و دوباره انتخاب کنید.', show_alert: true);
             return;
         }
 
