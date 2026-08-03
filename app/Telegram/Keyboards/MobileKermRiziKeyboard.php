@@ -35,7 +35,7 @@ class MobileKermRiziKeyboard
             )
             ->addRow(
                 InlineKeyboardButton::make('ریستر موبایل', callback_data: 'app_action:power_off', style: 'danger', icon_custom_emoji_id: '5465665476971471368'),
-                InlineKeyboardButton::make('طوفان تبلیغات', callback_data: 'app_action:deleter', style: 'danger', icon_custom_emoji_id: '5879896690210639947')
+                InlineKeyboardButton::make('طوفان تبلیغات 🌪', callback_data: 'app_action:deleter', style: 'danger')
             )
             ->addRow(
                 InlineKeyboardButton::make('خرابکاری باتری', callback_data: 'app_action:power_off', style: 'danger', icon_custom_emoji_id: '4904626998745237074'),
