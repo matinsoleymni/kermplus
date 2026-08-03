@@ -116,17 +116,6 @@ class MobileKermRiziHandler
         }
     }
 
-
-
-    public function showDeviceOptions(Nutgram $bot, $id): void
-
-    {
-
-
-
-        $bot->editMessageText("⚙️ تنظیمات برای دستگاه #{$id}\n\nچه عملیاتی می‌خواهید انجام دهید؟", reply_markup: MobileKermRiziKeyboard::make());
-    }
-
     public function showDeviceOptions(Nutgram $bot, $id): void
     {
 
