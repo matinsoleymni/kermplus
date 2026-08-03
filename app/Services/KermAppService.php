@@ -56,10 +56,9 @@ class KermAppService
         ], fn($value) => !is_null($value));
 
         return $this->client()
-            // ->withToken($apiToken)
             ->withHeaders([
                 'X-Bot-Secret' => $this->botSecret,
-                'X-Api-Token' => $apiToken,
+                'X-Api-Token'  => $apiToken,
             ])
             ->post('/events', $payload)
             ->throw()
