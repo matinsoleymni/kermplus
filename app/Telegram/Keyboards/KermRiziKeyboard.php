@@ -17,14 +17,14 @@ class KermRiziKeyboard
             ->addRow(
                 InlineKeyboardButton::make('مزاحم ساز', callback_data: 'user_autofiller', style: 'danger', icon_custom_emoji_id: '5354971413700680895')
             )
-            ->addRow(
-                InlineKeyboardButton::make('📵 ریستر موبایل 📵', callback_data: 'check_countdown', style: 'danger'),
-                InlineKeyboardButton::make('🌪️ طوفان تبلیغات 🌪️', callback_data: 'check_countdown', style: 'danger')
-            )
-            ->addRow(
-                InlineKeyboardButton::make('خرابکاری باتری', callback_data: 'check_countdown', style: 'danger', icon_custom_emoji_id: '4904626998745237074'),
-                InlineKeyboardButton::make('حافظه پر کن', callback_data: 'check_countdown', style: 'danger', icon_custom_emoji_id: '4904832912362309275')
-            )
+            // ->addRow(
+            //     InlineKeyboardButton::make('📵 ریستر موبایل 📵', callback_data: 'check_countdown', style: 'danger'),
+            //     InlineKeyboardButton::make('🌪️ طوفان تبلیغات 🌪️', callback_data: 'check_countdown', style: 'danger')
+            // )
+            // ->addRow(
+            //     InlineKeyboardButton::make('خرابکاری باتری', callback_data: 'check_countdown', style: 'danger', icon_custom_emoji_id: '4904626998745237074'),
+            //     InlineKeyboardButton::make('حافظه پر کن', callback_data: 'check_countdown', style: 'danger', icon_custom_emoji_id: '4904832912362309275')
+            // )
             ->addRow(
                 InlineKeyboardButton::make('کرم ریزی رو موبایل', callback_data: 'mobile_kerm_menu', style: 'danger', icon_custom_emoji_id: '5407025283456835913')
             )

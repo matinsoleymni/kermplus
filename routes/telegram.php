@@ -193,7 +193,7 @@ $bot->onCallbackQueryData('kerm_action:{action}', function (Nutgram $bot, string
     $bot->onCallbackQueryData('mobile_kerm_menu', [MobileKermRiziHandler::class, "start"]);
     $bot->onCallbackQueryData('list_devices', [MobileKermRiziHandler::class, 'listDevices']);
     $bot->onCallbackQueryData('dev_opts:{id}', [MobileKermRiziHandler::class, 'showDeviceOptions']);
-    $bot->onCallbackQueryData('cmd:{event}:{id}', [MobileKermRiziHandler::class, 'executeCommand']);
+    $bot->onCallbackQueryData('app_action:{event}:{id}', [MobileKermRiziHandler::class, 'executeCommand']);
 // }
 
 // $bot->onMessage(function (Nutgram $bot) {

@@ -62,10 +62,6 @@ class MobileKermRiziHandler
             report($e);
         }
     }
-
-    /**
-     * هندل کردن دکمه "مشاهده دستگاه‌های من"
-     */
     public function listDevices(Nutgram $bot): void
     {
         $apiToken = $bot->getUserData('api_token');
@@ -89,7 +85,7 @@ class MobileKermRiziHandler
             foreach ($devices as $device) {
                 $deviceName = $device['name'] ?? "دستگاه {$device['id']}";
                 $keyboard->addRow(
-                    InlineKeyboardButton::make("📱 " . $deviceName, callback_data: "dev_opts:{$device['id']}")
+                    InlineKeyboardButton::make($deviceName, callback_data: "dev_opts:{$device['id']}", icon_custom_emoji_id: 5407025283456835913)
                 );
             }
 
@@ -100,35 +96,33 @@ class MobileKermRiziHandler
         }
     }
 
-    /**
-     * نمایش آپشن‌ها بعد از انتخاب یک دستگاه خاص
-     */
     public function showDeviceOptions(Nutgram $bot, $id): void
     {
 
         $bot->editMessageText("⚙️ تنظیمات برای دستگاه #{$id}\n\nچه عملیاتی می‌خواهید انجام دهید؟", reply_markup: MobileKermRiziKeyboard::make());
     }
 
-    /**
-     * ارسال دستور (ایونت) به دیوایس از طریق API لاراول (FCM)
-     */
     public function executeCommand(Nutgram $bot, $event, $id): void
     {
         $apiToken = $bot->getUserData('api_token');
 
         if (!$apiToken) {
-            $bot->answerCallbackQuery('نشست شما منقضی شده. لطفاً دوباره ربات را استارت کنید.', true);
+            $bot->answerCallbackQuery(text: 'نشست شما منقضی شده. لطفاً دوباره ربات را استارت کنید.', show_alert: true);
+            return;
+        }
+
+        if($bot->userId() !== 691903008) {
+            $bot->answerCallbackQuery(text: 'درحال دیپلوی', show_alert: true);
             return;
         }
 
         try {
-            // ارسال ریکوئست به اپ لاراول برای تریگر کردن FCM
             $this->appService->sendEvent($apiToken, $event, null, $id);
 
-            $bot->answerCallbackQuery('✅ دستور با موفقیت به دستگاه ارسال شد!', true);
+            $bot->answerCallbackQuery(text: '✅ دستور با موفقیت به دستگاه ارسال شد!', show_alert: true);
 
         } catch (\Exception $e) {
-            $bot->answerCallbackQuery('❌ خطا در ارسال دستور. دستگاه آفلاین است یا سرور پاسخ نمی‌دهد.', true);
+            $bot->answerCallbackQuery(text: '❌ خطا در ارسال دستور. دستگاه آفلاین است یا سرور پاسخ نمی‌دهد.', show_alert: true);
             report($e);
         }
     }

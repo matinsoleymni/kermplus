@@ -118,6 +118,7 @@ func handleBatchRegister(c *gin.Context) {
 	}
 
 	registerSites := configs.LoadRegisterSites()
+    fmt.Println(len(registerSites))
 	if len(registerSites) == 0 {
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "هیچ سایتی برای ثبت‌نام در کانفیگ تعریف نشده است"})
 		return

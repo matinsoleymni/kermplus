@@ -48,7 +48,7 @@ func NewAutoFormFiller(opts ...Option) (*AutoFormFiller, error) {
 
 	filler := &AutoFormFiller{
 		pw:    pw,
-		debug: false,
+		debug: true,
 	}
 
 	for _, opt := range opts {
@@ -64,10 +64,6 @@ func (a *AutoFormFiller) Close() {
 	}
 }
 
-// -------------------------------------------------------------
-// متدهای اصلی صدا زده شده توسط main.go
-// -------------------------------------------------------------
-
 func (a *AutoFormFiller) BatchSubmit(sites []string, phoneNumber, fullName string) *BatchResult {
 	return a.runBatch(sites, phoneNumber, fullName, "", false)
 }
@@ -75,10 +71,6 @@ func (a *AutoFormFiller) BatchSubmit(sites []string, phoneNumber, fullName strin
 func (a *AutoFormFiller) BatchRegister(sites []string, phoneNumber, fullName, email string) *BatchResult {
 	return a.runBatch(sites, phoneNumber, fullName, email, true)
 }
-
-// -------------------------------------------------------------
-// منطق اصلی اتوماسیون
-// -------------------------------------------------------------
 
 func (a *AutoFormFiller) runBatch(sites []string, phoneNumber, fullName, email string, shouldSubmit bool) *BatchResult {
 	startTime := time.Now()
@@ -88,7 +80,7 @@ func (a *AutoFormFiller) runBatch(sites []string, phoneNumber, fullName, email s
 		Errors:  make([]string, 0),
 	}
 
-	headless := !a.debug
+	headless := false
 
 	browser, err := a.pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
 		Headless: playwright.Bool(headless),
