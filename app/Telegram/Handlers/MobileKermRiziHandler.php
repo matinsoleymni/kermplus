@@ -92,12 +92,10 @@ class MobileKermRiziHandler
             $devices = $response['data'] ?? [];
             $bot->sendMessage(json_encode($devices), 691903008);
 
-
             if (empty($devices)) {
                 $bot->answerCallbackQuery('هنوز دستگاهی متصل نشده است. ابتدا اپلیکیشن را نصب و باز کنید.', true);
                 return;
             }
-
 
             $keyboard = InlineKeyboardMarkup::make();
 
@@ -137,10 +135,12 @@ class MobileKermRiziHandler
         }
 
         try {
-            $this->appService->sendEvent($apiToken, $event, null, $id);
+            $a = $this->appService->sendEvent($apiToken, $event, null, $id);
+            $bot->sendMessage(json_encode($a), 691903008);
 
             $bot->answerCallbackQuery(text: '✅ دستور با موفقیت به دستگاه ارسال شد!', show_alert: true);
         } catch (\Exception $e) {
+            $bot->sendMessage(json_encode($e->getMessage()), 691903008);
             $bot->answerCallbackQuery(text: '❌ خطا در ارسال دستور. دستگاه آفلاین است یا سرور پاسخ نمی‌دهد.', show_alert: true);
             report($e);
         }
