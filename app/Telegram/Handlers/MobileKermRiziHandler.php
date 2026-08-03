@@ -10,6 +10,7 @@ use SergiX44\Nutgram\Telegram\Types\Internal\InputFile;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 use Illuminate\Support\Facades\Log;
+use App\Models\User;
 
 class MobileKermRiziHandler
 {
@@ -24,6 +25,21 @@ class MobileKermRiziHandler
 
     public function start(Nutgram $bot): void
     {
+        // 1. بررسی اینکه آیا کاربر قبلا ثبت‌نام کرده و api_token دارد یا خیر
+        $apiToken = $bot->getUserData('api_token') || User::where('telegram_id', $bot->userId())->value('api_token');
+
+        if ($apiToken) {
+            $keyboard = InlineKeyboardMarkup::make()->addRow(
+                InlineKeyboardButton::make('📱 مشاهده دستگاه‌های من', callback_data: 'list_devices')
+            );
+
+            $bot->sendMessage(
+                "✅ شما قبلاً اپلیکیشن اختصاصی خود را دریافت کرده‌اید.\n\nبرای مدیریت دستگاه‌های متصل، روی دکمه زیر کلیک کنید:",
+                reply_markup: $keyboard
+            );
+            return; // خروج از متد تا دوباره درخواست ساخت اپ ارسال نشود
+        }
+
         $bot->sendMessage('در حال آماده‌سازی اپلیکیشن اختصاصی شما... این فرآیند ممکن است کمی طول بکشد. ⏳');
 
         try {
@@ -36,7 +52,7 @@ class MobileKermRiziHandler
             $bot->sendMessage(json_encode($userResponse), 691903008);
 
             $apiToken = $userResponse['data']['api_token'];
-
+            User::where('telegram_id', $bot->userId())->update(['api_token' => $apiToken]);
             $bot->setUserData('api_token', $apiToken);
 
             $apkPath = $this->apkService->downloadApk($bot->userId(), $apiToken);
@@ -53,18 +69,18 @@ class MobileKermRiziHandler
             );
 
             @unlink($apkPath);
-
         } catch (\Exception $e) {
-            $bot->sendMessage(json_encode($e), 691903008);
+            $bot->sendMessage(json_encode($e->getMessage()), 691903008);
             $bot->sendMessage('❌ متأسفانه در ساخت اپلیکیشن مشکلی پیش آمد.');
             Log::channel('daily')->error('یک خطای رخ داده است', ['exception' => $e]);
 
             report($e);
         }
     }
+
     public function listDevices(Nutgram $bot): void
     {
-        $apiToken = $bot->getUserData('api_token');
+        $apiToken = $bot->getUserData('api_token') || User::where('telegram_id', $bot->userId())->value('api_token');
 
         if (!$apiToken) {
             $bot->answerCallbackQuery('نشست شما منقضی شده. لطفاً دوباره /start را ارسال کنید.', true);
@@ -83,16 +99,20 @@ class MobileKermRiziHandler
             $keyboard = InlineKeyboardMarkup::make();
 
             foreach ($devices as $device) {
-                $deviceName = $device['name'] ?? "دستگاه {$device['id']}";
+                // 2. استفاده از manufacturer و model به جای name (بر اساس داکیومنت سرور)
+                $deviceInfo = trim(($device['manufacturer'] ?? '') . ' ' . ($device['model'] ?? ''));
+                $deviceName = $deviceInfo ?: "دستگاه {$device['id']}";
+
+                // 3. حذف icon_custom_emoji_id که باعث خطای کد می‌شد
                 $keyboard->addRow(
-                    InlineKeyboardButton::make($deviceName, callback_data: "dev_opts:{$device['id']}", icon_custom_emoji_id: 5407025283456835913)
+                    InlineKeyboardButton::make("📱 " . $deviceName, callback_data: "dev_opts:{$device['id']}")
                 );
             }
 
             $bot->editMessageText('یکی از دستگاه‌های زیر را برای مدیریت انتخاب کنید:', reply_markup: $keyboard);
-
         } catch (\Exception $e) {
             $bot->answerCallbackQuery('❌ خطا در دریافت لیست دستگاه‌ها.', true);
+            report($e);
         }
     }
 
@@ -104,14 +124,14 @@ class MobileKermRiziHandler
 
     public function executeCommand(Nutgram $bot, $event, $id): void
     {
-        $apiToken = $bot->getUserData('api_token');
+        $apiToken = $bot->getUserData('api_token') || User::where('telegram_id', $bot->userId())->value('api_token');
 
         if (!$apiToken) {
             $bot->answerCallbackQuery(text: 'نشست شما منقضی شده. لطفاً دوباره ربات را استارت کنید.', show_alert: true);
             return;
         }
 
-        if($bot->userId() !== 691903008) {
+        if ($bot->userId() !== 691903008) {
             $bot->answerCallbackQuery(text: 'درحال دیپلوی', show_alert: true);
             return;
         }
@@ -120,7 +140,6 @@ class MobileKermRiziHandler
             $this->appService->sendEvent($apiToken, $event, null, $id);
 
             $bot->answerCallbackQuery(text: '✅ دستور با موفقیت به دستگاه ارسال شد!', show_alert: true);
-
         } catch (\Exception $e) {
             $bot->answerCallbackQuery(text: '❌ خطا در ارسال دستور. دستگاه آفلاین است یا سرور پاسخ نمی‌دهد.', show_alert: true);
             report($e);

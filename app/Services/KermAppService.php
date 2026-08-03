@@ -38,7 +38,6 @@ class KermAppService
             ->json();
     }
 
-    // تغییر هدرها به Bearer Token طبق داکیومنت فرآیند
     public function getDevices(string $apiToken, int $page = 1): array
     {
         return $this->client()
