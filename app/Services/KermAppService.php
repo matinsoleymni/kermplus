@@ -59,6 +59,7 @@ class KermAppService
             // ->withToken($apiToken)
             ->withHeaders([
                 'X-Bot-Secret' => $this->botSecret,
+                'X-Api-Token' => $apiToken,
             ])
             ->post('/events', $payload)
             ->throw()
