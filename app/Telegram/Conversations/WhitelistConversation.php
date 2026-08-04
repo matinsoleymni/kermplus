@@ -19,7 +19,6 @@ class WhitelistConversation extends Conversation
     private const ACTION_PICK_EMAIL = 'whitelist_pick_email';
     private const ACTION_PICK_TELEGRAM = 'whitelist_pick_telegram';
     private const ACTION_PICK_INSTAGRAM_EMAIL = 'whitelist_pick_instagram_email';
-    private const ACTION_ALREADY_REGISTERED = 'whitelist_already_registered';
     private const ACTION_SHOW_REGISTERED = 'whitelist_show_registered';
     private const ACTION_BACK_MENU = 'whitelist_back_menu';
     private const ACTION_CONFIRM = 'confirm_whitelist_yes';
@@ -55,23 +54,23 @@ class WhitelistConversation extends Conversation
     {
         $targets = $whitelist->getUserTargets($local)->keyBy('type');
 
-
-        $callbackForType = static function (string $type, string $defaultAction) use ($targets): string {
-            return $targets->has($type) ? self::ACTION_ALREADY_REGISTERED : $defaultAction;
+        // تابعی برای تغییر نام دکمه در صورتی که قبلا ثبت شده باشد (برای نمایش حالت ویرایش)
+        $label = static function (string $type, string $defaultName) use ($targets): string {
+            return $targets->has($type) ? "✏️ ویرایش " . $defaultName : $defaultName;
         };
 
         return InlineKeyboardMarkup::make()
             ->addRow(
-                InlineKeyboardButton::make("شماره", callback_data: $callbackForType(WhitelistedTarget::TYPE_PHONE, self::ACTION_PICK_PHONE), style: 'danger', icon_custom_emoji_id: '5172893417717367746')
+                InlineKeyboardButton::make($label(WhitelistedTarget::TYPE_PHONE, "شماره"), callback_data: self::ACTION_PICK_PHONE, style: 'danger', icon_custom_emoji_id: '5172893417717367746')
             )
             ->addRow(
-                InlineKeyboardButton::make("ایمیل", callback_data: $callbackForType(WhitelistedTarget::TYPE_EMAIL, self::ACTION_PICK_EMAIL), style: 'danger', icon_custom_emoji_id: '5456174900622412791')
+                InlineKeyboardButton::make($label(WhitelistedTarget::TYPE_EMAIL, "ایمیل"), callback_data: self::ACTION_PICK_EMAIL, style: 'danger', icon_custom_emoji_id: '5456174900622412791')
             )
             ->addRow(
-                InlineKeyboardButton::make("تلگرام", callback_data: $callbackForType(WhitelistedTarget::TYPE_TELEGRAM, self::ACTION_PICK_TELEGRAM), style: 'danger', icon_custom_emoji_id: '5364125616801073577')
+                InlineKeyboardButton::make($label(WhitelistedTarget::TYPE_TELEGRAM, "تلگرام"), callback_data: self::ACTION_PICK_TELEGRAM, style: 'danger', icon_custom_emoji_id: '5364125616801073577')
             )
             ->addRow(
-                InlineKeyboardButton::make("اینستاگرام", callback_data: $callbackForType(WhitelistedTarget::TYPE_INSTAGRAM_EMAIL, self::ACTION_PICK_INSTAGRAM_EMAIL), style: 'danger', icon_custom_emoji_id: '5364310996179503764')
+                InlineKeyboardButton::make($label(WhitelistedTarget::TYPE_INSTAGRAM_EMAIL, "اینستاگرام"), callback_data: self::ACTION_PICK_INSTAGRAM_EMAIL, style: 'danger', icon_custom_emoji_id: '5364310996179503764')
             )
             ->addRow(
                 InlineKeyboardButton::make('مشاهده موارد ثبت‌ شده', callback_data: self::ACTION_SHOW_REGISTERED, style: 'danger', icon_custom_emoji_id: '5197269100878907942')
@@ -148,20 +147,9 @@ class WhitelistConversation extends Conversation
             return;
         }
 
-        if ($data === self::ACTION_ALREADY_REGISTERED) {
-            $bot->answerCallbackQuery(text: '⚠️ این مورد قبلا ثبت شده و قابل ویرایش نیست.');
-            return;
-        }
-
         $type = $this->resolveTypeFromAction($data);
         if ($type === null) {
             $bot->answerCallbackQuery(text: '⛔️ گزینه نامعتبر است.');
-            return;
-        }
-
-        if ($whitelist->getUserTarget($local, $type)) {
-            $bot->answerCallbackQuery(text: '⚠️ این مورد قبلا ثبت شده و قابل ویرایش نیست.');
-            $this->showWhitelistMenu($bot, $local, true);
             return;
         }
 
@@ -169,14 +157,18 @@ class WhitelistConversation extends Conversation
         $bot->setUserData('whitelist_selected_type', $type);
         $bot->setUserData('whitelist_pending_value', null);
 
+        $existing = $whitelist->getUserTarget($local, $type);
+        $prefixText = $existing ? "✏️ <b>در حال ویرایش</b>\nمقدار فعلی: <code>{$existing->value}</code>\n\n" : "";
+
         $text = match ($type) {
             WhitelistedTarget::TYPE_PHONE => "<tg-emoji emoji-id='5172893417717367746'>📞</tg-emoji> ثبت شماره\n\n",
             WhitelistedTarget::TYPE_EMAIL => "<tg-emoji emoji-id='5456174900622412791'>📧</tg-emoji> ثبت ایمیل\n\n",
             WhitelistedTarget::TYPE_TELEGRAM => "<tg-emoji emoji-id='5364125616801073577'>✈️</tg-emoji> ثبت تلگرام\n\n",
-            WhitelistedTarget::TYPE_INSTAGRAM_EMAIL => "<tg-emoji emoji-id='5364310996179503764'>📸</tg-emoji> ثبت تلگرام\n\n",
+            WhitelistedTarget::TYPE_INSTAGRAM_EMAIL => "<tg-emoji emoji-id='5364310996179503764'>📸</tg-emoji> ثبت اینستاگرام\n\n",
             default => "🧾 ثبت {$whitelist->getTypeLabel($type)}\n\n",
         };
-        $text .= $this->typeInstruction($type);
+
+        $text = $prefixText . $text . $this->typeInstruction($type);
 
         $disableWebPagePreview = in_array($type, [WhitelistedTarget::TYPE_TELEGRAM, WhitelistedTarget::TYPE_INSTAGRAM_EMAIL], true);
         $this->sendOrEditMessage($bot, $text, $this->inputKeyboard(), $disableWebPagePreview);
@@ -226,12 +218,6 @@ class WhitelistConversation extends Conversation
             return;
         }
 
-        if ($whitelist->getUserTarget($local, $type)) {
-            $bot->sendMessage('⚠️ این مورد قبلا ثبت شده و قابل ویرایش نیست.');
-            $this->showWhitelistMenu($bot, $local, true);
-            return;
-        }
-
         $value = trim((string)($bot->message()?->text ?? ''));
         if (!$whitelist->validateForType($value, $type)) {
             $bot->sendMessage(
@@ -244,15 +230,17 @@ class WhitelistConversation extends Conversation
         }
 
         if ($whitelist->isWhitelisted($value, $type)) {
-            $bot->sendMessage('ℹ️ این مورد از قبل در وایت‌لیست ثبت شده است. مقدار دیگری ارسال کن یا برگرد.');
+            $bot->sendMessage('ℹ️ این مورد از قبل در وایت‌لیست (توسط شما یا کاربر دیگری) ثبت شده است. مقدار دیگری ارسال کن یا برگرد.');
             return;
         }
 
         $displayValue = $whitelist->normalizeForDisplay($value, $type);
         $bot->setUserData('whitelist_pending_value', $displayValue);
 
+        $actionWord = $whitelist->getUserTarget($local, $type) ? 'ویرایش' : 'ذخیره';
+
         $bot->sendMessage(
-            "❓ مطمئنی میخوای {$whitelist->getTypeLabel($type)} زیر ذخیره بشه؟\n\n<code>{$displayValue}</code>",
+            "❓ مطمئنی میخوای {$whitelist->getTypeLabel($type)} زیر {$actionWord} بشه؟\n\n<code>{$displayValue}</code>",
             parse_mode: 'HTML',
             reply_markup: $this->confirmKeyboard()
         );
@@ -336,13 +324,6 @@ class WhitelistConversation extends Conversation
             return;
         }
 
-        if ($whitelist->getUserTarget($local, $type)) {
-            $bot->answerCallbackQuery();
-            $bot->sendMessage('⚠️ این مورد قبلا ثبت شده و قابل ویرایش نیست.');
-            $this->showWhitelistMenu($bot, $local, true);
-            return;
-        }
-
         if ($whitelist->isWhitelisted($value, $type)) {
             $bot->answerCallbackQuery();
             $bot->sendMessage('ℹ️ این مورد از قبل در وایت‌لیست ثبت شده است.');
@@ -351,17 +332,26 @@ class WhitelistConversation extends Conversation
         }
 
         try {
-            $saved = $whitelist->createForUser($local, $type, $value);
+            $existing = $whitelist->getUserTarget($local, $type);
+
+            if ($existing) {
+                // آپدیت مقدار موجود
+                $existing->value = $value;
+                $existing->save();
+                $saved = $existing;
+            } else {
+                // ایجاد رکورد جدید
+                $saved = $whitelist->createForUser($local, $type, $value);
+            }
         } catch (\Throwable) {
             $bot->answerCallbackQuery();
-            $bot->sendMessage('⛔️ ثبت این مقدار ممکن نیست. احتمالا قبلا در لیست سفید ثبت شده است.');
+            $bot->sendMessage('⛔️ ثبت یا ویرایش این مقدار ممکن نیست. احتمالا این مقدار در سیستم ثبت شده است.');
             $this->end();
             return;
         }
         $limiter->recordWhitelistAddition($local, "{$type}:{$saved->value}");
 
-        $bot->answerCallbackQuery(text: '✅ ذخیره شد.');
-        // $bot->sendMessage("✅ {$whitelist->getTypeLabel($type)} با موفقیت ذخیره شد:\n<code>{$saved->value}</code>", parse_mode: 'HTML');
+        $bot->answerCallbackQuery(text: '✅ با موفقیت ثبت شد.');
 
         $bot->setUserData('whitelist_pending_value', null);
         $this->showWhitelistMenu($bot, $local, true);
@@ -376,7 +366,7 @@ class WhitelistConversation extends Conversation
         $msg = "<tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji> کرم پلاس <tg-emoji emoji-id='4929619512224909015'>🪱</tg-emoji>\n\n";
         $msg .= "به بخش لیست سفید<tg-emoji emoji-id='5429392313493242588'>🤍</tg-emoji> خوش اومدی\n\n";
         $msg .= "اینجا میتونی با ثبت اکانت هات و شمارت ، خودتو از هر کرمی<tg-emoji emoji-id='5134654202894615343'>🪱</tg-emoji> در امان نگه داری\n\n";
-        $msg .= "<tg-emoji emoji-id='6226426402682441481'>⚠️</tg-emoji> تو ثبتشون دقت کن چون فقط یک بار میتونی ثبت کنی و امکان ویرایش وجود نداره.";
+        $msg .= "<tg-emoji emoji-id='6226426402682441481'>⚠️</tg-emoji> برای ثبت یا ویرایش موارد لیست سفید، از منوی زیر استفاده کن.";
 
         if ($withSummary) {
             $msg .= "\n\n" . $this->buildRegisteredSummary($local, $whitelist);
@@ -392,7 +382,7 @@ class WhitelistConversation extends Conversation
 
         $line = static function (string $type, string $title) use ($targets): string {
             $value = data_get($targets->get($type), 'value', 'ثبت نشده');
-            return "{$title}: {$value}";
+            return "{$title}: <code>{$value}</code>";
         };
 
         $msg = "<tg-emoji emoji-id='5197269100878907942'>✍️</tg-emoji> موارد ثبت‌شده شما:\n";
