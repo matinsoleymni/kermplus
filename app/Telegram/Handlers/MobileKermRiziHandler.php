@@ -25,7 +25,7 @@ class MobileKermRiziHandler
 
     public function start(Nutgram $bot): void
     {
-        $apiToken =  User::where('telegram_id', $bot->userId())->value('api_token') ?: $bot->getUserData('api_token');
+        $apiToken =  User::where('telegram_id', $bot->userId())->value('api_token');
 
         if ($apiToken) {
             $keyboard = InlineKeyboardMarkup::make()->addRow(
