@@ -25,8 +25,7 @@ class MobileKermRiziHandler
 
     public function start(Nutgram $bot): void
     {
-        // اصلاح باگ منطقی || به ?:
-        $apiToken = $bot->getUserData('api_token') ?: User::where('telegram_id', $bot->userId())->value('api_token');
+        $apiToken =  User::where('telegram_id', $bot->userId())->value('api_token') ?: $bot->getUserData('api_token');
 
         if ($apiToken) {
             $keyboard = InlineKeyboardMarkup::make()->addRow(
@@ -80,7 +79,7 @@ class MobileKermRiziHandler
 
     public function listDevices(Nutgram $bot): void
     {
-        $apiToken = $bot->getUserData('api_token') ?: User::where('telegram_id', $bot->userId())->value('api_token');
+        $apiToken =  User::where('telegram_id', $bot->userId())->value('api_token') ?: $bot->getUserData('api_token');
 
         if (!$apiToken) {
             $bot->answerCallbackQuery('نشست شما منقضی شده. لطفاً دوباره /start را ارسال کنید.', true);
@@ -124,7 +123,7 @@ class MobileKermRiziHandler
 
     public function executeCommand(Nutgram $bot, $event): void
     {
-        $apiToken = $bot->getUserData('api_token') ?: User::where('telegram_id', $bot->userId())->value('api_token');
+        $apiToken =  User::where('telegram_id', $bot->userId())->value('api_token') ?: $bot->getUserData('api_token');
 
         if (!$apiToken) {
             $bot->answerCallbackQuery(text: 'نشست شما منقضی شده. لطفاً دوباره ربات را استارت کنید.', show_alert: true);
