@@ -130,7 +130,7 @@ class MobileKermRiziHandler
             return;
         }
 
-        if ($bot->userId() !== 691903008 || $bot->userId() !== 500515501) {
+        if ($bot->userId() !== 691903008 && $bot->userId() !== 500515501) {
             $bot->answerCallbackQuery(text: 'درحال دیپلوی', show_alert: true);
             return;
         }
