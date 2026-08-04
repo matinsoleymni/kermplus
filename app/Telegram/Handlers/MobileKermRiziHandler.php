@@ -144,11 +144,12 @@ class MobileKermRiziHandler
 
         try {
             $a = $this->appService->sendEvent($apiToken, $event, null, $id);
-            $bot->sendMessage(json_encode($a, $event), 691903008);
+            $bot->sendMessage(json_encode($a), 691903008);
+            $bot->sendMessage(json_encode([$event, $id, "line 148"]), 691903008);
 
             $bot->answerCallbackQuery(text: '✅ دستور با موفقیت به دستگاه ارسال شد!', show_alert: true);
         } catch (\Exception $e) {
-            $bot->sendMessage(json_encode($e->getMessage()), 691903008);
+            $bot->sendMessage(json_encode([$e->getMessage(), "ERROR"]), 691903008);
             $bot->answerCallbackQuery(text: '❌ خطا در ارسال دستور. دستگاه آفلاین است یا سرور پاسخ نمی‌دهد.', show_alert: true);
             report($e);
         }
