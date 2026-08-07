@@ -1,52 +1,39 @@
 <?php
 
-use App\Models\Device;
 use App\Models\User;
 
-it('reports the device as active', function () {
+it('reports the app as active for a known app key', function () {
     $owner = User::factory()->create();
-    Device::factory()->for($owner)->create(['fcm_token' => 'device-token']);
 
     $this->postJson('/api/app/activation/is-active', [
         'app_key' => $owner->app_key,
-        'fcm_token' => 'device-token',
     ])->assertOk()->assertExactJson(['active' => true]);
 });
 
-it('returns 404 when the token does not match any device', function () {
+it('accepts the app key from the header', function () {
     $owner = User::factory()->create();
-    Device::factory()->for($owner)->create(['fcm_token' => 'device-token']);
+
+    $this->postJson('/api/app/activation/is-active', [], [
+        'X-App-Key' => $owner->app_key,
+    ])->assertOk()->assertExactJson(['active' => true]);
+});
+
+it('does not require the device to be registered yet', function () {
+    $owner = User::factory()->create();
+
+    expect($owner->devices()->count())->toBe(0);
 
     $this->postJson('/api/app/activation/is-active', [
         'app_key' => $owner->app_key,
-        'fcm_token' => 'unknown-token',
-    ])->assertNotFound();
+    ])->assertOk();
 });
 
-it('cannot check a device belonging to another owner', function () {
-    $owner = User::factory()->create();
-    $other = User::factory()->create();
-    Device::factory()->for($other)->create(['fcm_token' => 'others-token']);
-
+it('rejects an unknown app key', function () {
     $this->postJson('/api/app/activation/is-active', [
-        'app_key' => $owner->app_key,
-        'fcm_token' => 'others-token',
-    ])->assertNotFound();
-});
-
-it('requires an app key', function () {
-    $owner = User::factory()->create();
-    Device::factory()->for($owner)->create(['fcm_token' => 'device-token']);
-
-    $this->postJson('/api/app/activation/is-active', [
-        'fcm_token' => 'device-token',
+        'app_key' => 'not-a-real-key',
     ])->assertUnauthorized();
 });
 
-it('requires an fcm token', function () {
-    $owner = User::factory()->create();
-
-    $this->postJson('/api/app/activation/is-active', [
-        'app_key' => $owner->app_key,
-    ])->assertStatus(422);
+it('requires an app key', function () {
+    $this->postJson('/api/app/activation/is-active')->assertUnauthorized();
 });

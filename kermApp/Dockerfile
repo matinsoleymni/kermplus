@@ -55,9 +55,8 @@ COPY docker/php/entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY docker/php/worker-entrypoint.sh /usr/local/bin/worker-entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/worker-entrypoint.sh
 
-RUN touch database/database.sqlite \
-    && chown -R www-data:www-data /var/www/html \
-    && chmod -R 775 storage bootstrap/cache database
+RUN chown -R www-data:www-data /var/www/html \
+    && chmod -R 775 storage bootstrap/cache
 
 EXPOSE 8000
 

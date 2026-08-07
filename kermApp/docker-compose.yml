@@ -9,11 +9,13 @@ services:
       APP_ENV: ${APP_ENV:-production}
       APP_DEBUG: ${APP_DEBUG:-false}
       APP_URL: ${APP_URL:-http://localhost:8000}
+      # Kept inside the storage volume so the image's database/ directory
+      # (migrations, seeders, factories) is never shadowed by a volume.
+      DB_DATABASE: /var/www/html/storage/app/database.sqlite
     ports:
       - "8000:8000"
     volumes:
       - app_storage:/var/www/html/storage
-      - app_database:/var/www/html/database
     networks:
       - app-network
 
@@ -29,9 +31,9 @@ services:
       APP_ENV: ${APP_ENV:-production}
       APP_DEBUG: ${APP_DEBUG:-false}
       APP_URL: ${APP_URL:-http://localhost:8000}
+      DB_DATABASE: /var/www/html/storage/app/database.sqlite
     volumes:
       - app_storage:/var/www/html/storage
-      - app_database:/var/www/html/database
     depends_on:
       - app
     networks:
@@ -49,9 +51,9 @@ services:
       APP_ENV: ${APP_ENV:-production}
       APP_DEBUG: ${APP_DEBUG:-false}
       APP_URL: ${APP_URL:-http://localhost:8000}
+      DB_DATABASE: /var/www/html/storage/app/database.sqlite
     volumes:
       - app_storage:/var/www/html/storage
-      - app_database:/var/www/html/database
     depends_on:
       - app
     networks:
@@ -63,4 +65,3 @@ networks:
 
 volumes:
   app_storage:
-  app_database:

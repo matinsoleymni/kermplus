@@ -7,6 +7,9 @@
 node_modules
 vendor
 bootstrap/cache/*.php
+database/*.sqlite
+database/*.sqlite-shm
+database/*.sqlite-wal
 storage/*.key
 storage/pail
 storage/framework/cache/*
