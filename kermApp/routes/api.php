@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\App\ActivationController as AppActivationController;
 use App\Http\Controllers\Api\App\DeliveryController as AppDeliveryController;
 use App\Http\Controllers\Api\App\DeviceController as AppDeviceController;
 use App\Http\Controllers\Api\Bot\DeviceController as BotDeviceController;
@@ -36,4 +37,5 @@ Route::prefix('app')->middleware('auth.app')->group(function () {
     Route::post('devices', [AppDeviceController::class, 'register']);
     Route::post('devices/token', [AppDeviceController::class, 'updateToken']);
     Route::post('deliveries/{delivery}/ack', [AppDeliveryController::class, 'acknowledge']);
+    Route::post('activation/is-active', [AppActivationController::class, 'isActive']);
 });
