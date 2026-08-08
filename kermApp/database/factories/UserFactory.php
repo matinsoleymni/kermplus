@@ -42,9 +42,7 @@ class UserFactory extends Factory
      */
     public function inactiveApp(): static
     {
-        return $this->state(fn (array $attributes) => [
-            'is_app_active' => false,
-        ]);
+        return $this->afterCreating(fn (User $user) => $user->setAppActivation(false));
     }
 
     /**

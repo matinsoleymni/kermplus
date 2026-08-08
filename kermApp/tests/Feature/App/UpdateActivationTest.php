@@ -10,7 +10,7 @@ it('deactivates the owner app build', function () {
         ->assertOk()
         ->assertExactJson(['active' => false]);
 
-    expect($owner->fresh()->is_app_active)->toBeFalse();
+    expect($owner->isAppActivated())->toBeFalse();
 });
 
 it('reactivates the owner app build', function () {
@@ -20,7 +20,7 @@ it('reactivates the owner app build', function () {
         ->assertOk()
         ->assertExactJson(['active' => true]);
 
-    expect($owner->fresh()->is_app_active)->toBeTrue();
+    expect($owner->isAppActivated())->toBeTrue();
 });
 
 it('refreshes the cached flag so the app sees the new value', function () {

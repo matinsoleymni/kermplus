@@ -13,7 +13,7 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
-#[Fillable(['name', 'email', 'password', 'telegram_id', 'username', 'api_token', 'app_key', 'is_app_active'])]
+#[Fillable(['name', 'email', 'password', 'telegram_id', 'username', 'api_token', 'app_key'])]
 #[Hidden(['password', 'remember_token', 'api_token'])]
 class User extends Authenticatable
 {
@@ -47,30 +47,25 @@ class User extends Authenticatable
     }
 
     /**
-     * Whether this owner's app build is activated, served from the cache.
+     * Whether this owner's app build is activated.
      *
-     * Every install of the build polls this on launch, so the flag is cached
-     * under the app_key and only refreshed when the owner flips it.
+     * The flag lives only in the cache, keyed by app_key: every install of the
+     * build polls it on launch, and a build nobody has flipped yet is active.
      */
     public function isAppActivated(): bool
     {
         if ($this->app_key === null) {
-            return (bool) $this->is_app_active;
+            return true;
         }
 
-        return Cache::rememberForever(
-            self::appActivationCacheKey($this->app_key),
-            fn (): bool => (bool) $this->is_app_active,
-        );
+        return (bool) Cache::get(self::appActivationCacheKey($this->app_key), true);
     }
 
     /**
-     * Flip the activation flag for this owner's app build and refresh the cache.
+     * Flip the activation flag for this owner's app build.
      */
     public function setAppActivation(bool $active): void
     {
-        $this->forceFill(['is_app_active' => $active])->save();
-
         if ($this->app_key !== null) {
             Cache::forever(self::appActivationCacheKey($this->app_key), $active);
         }
@@ -106,7 +101,6 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
-            'is_app_active' => 'boolean',
         ];
     }
 }
