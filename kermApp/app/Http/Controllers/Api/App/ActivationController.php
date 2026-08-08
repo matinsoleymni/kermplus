@@ -13,11 +13,12 @@ class ActivationController extends Controller
      *
      * This runs before the device registers, so the only identity available is
      * the app_key the auth.app middleware already resolved to an owner: an
-     * unknown key never reaches here. Activation is always granted for now;
-     * the check will grow real conditions later.
+     * unknown key never reaches here. The answer is the owner's activation
+     * flag, cached under that app_key and refreshed only when the owner
+     * flips it from the bot API.
      */
     public function isActive(Request $request): JsonResponse
     {
-        return response()->json(['active' => $request->input("value", true)]);
+        return response()->json(['active' => $request->user()->isAppActivated()]);
     }
 }

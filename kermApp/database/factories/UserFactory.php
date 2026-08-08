@@ -38,6 +38,16 @@ class UserFactory extends Factory
     }
 
     /**
+     * Indicate that the owner's app build has been deactivated.
+     */
+    public function inactiveApp(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'is_app_active' => false,
+        ]);
+    }
+
+    /**
      * Indicate that the model's email address should be unverified.
      */
     public function unverified(): static

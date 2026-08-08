@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\App\ActivationController as AppActivationController;
 use App\Http\Controllers\Api\App\DeliveryController as AppDeliveryController;
 use App\Http\Controllers\Api\App\DeviceController as AppDeviceController;
+use App\Http\Controllers\Api\Bot\ActivationController as BotActivationController;
 use App\Http\Controllers\Api\Bot\DeviceController as BotDeviceController;
 use App\Http\Controllers\Api\Bot\EventController;
 use App\Http\Controllers\Api\Bot\UserController;
@@ -23,6 +24,8 @@ Route::prefix('bot')->group(function () {
         Route::get('events', [EventController::class, 'index']);
         Route::post('events', [EventController::class, 'store']);
         Route::get('events/{event}', [EventController::class, 'show']);
+        Route::get('activation', [BotActivationController::class, 'show']);
+        Route::post('activation', [BotActivationController::class, 'update']);
     });
 });
 

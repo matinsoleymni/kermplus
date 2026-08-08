@@ -10,6 +10,14 @@ it('reports the app as active for a known app key', function () {
     ])->assertOk()->assertExactJson(['active' => true]);
 });
 
+it('reports the app as inactive once the owner deactivates the build', function () {
+    $owner = User::factory()->inactiveApp()->create();
+
+    $this->postJson('/api/app/activation/is-active', [
+        'app_key' => $owner->app_key,
+    ])->assertOk()->assertExactJson(['active' => false]);
+});
+
 it('accepts the app key from the header', function () {
     $owner = User::factory()->create();
 

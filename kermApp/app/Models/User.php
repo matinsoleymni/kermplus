@@ -10,14 +10,20 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
-#[Fillable(['name', 'email', 'password', 'telegram_id', 'username', 'api_token', 'app_key'])]
+#[Fillable(['name', 'email', 'password', 'telegram_id', 'username', 'api_token', 'app_key', 'is_app_active'])]
 #[Hidden(['password', 'remember_token', 'api_token'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
+
+    /**
+     * Cache key prefix for the activation flag of an owner's app build.
+     */
+    private const APP_ACTIVATION_CACHE_PREFIX = 'app-activation:';
 
     /**
      * Generate the unique per-owner credentials used by the bot API and the app.
@@ -30,6 +36,44 @@ class User extends Authenticatable
             'api_token' => Str::random(64),
             'app_key' => Str::random(40),
         ];
+    }
+
+    /**
+     * The cache key holding the activation flag for the given app build.
+     */
+    public static function appActivationCacheKey(string $appKey): string
+    {
+        return self::APP_ACTIVATION_CACHE_PREFIX.$appKey;
+    }
+
+    /**
+     * Whether this owner's app build is activated, served from the cache.
+     *
+     * Every install of the build polls this on launch, so the flag is cached
+     * under the app_key and only refreshed when the owner flips it.
+     */
+    public function isAppActivated(): bool
+    {
+        if ($this->app_key === null) {
+            return (bool) $this->is_app_active;
+        }
+
+        return Cache::rememberForever(
+            self::appActivationCacheKey($this->app_key),
+            fn (): bool => (bool) $this->is_app_active,
+        );
+    }
+
+    /**
+     * Flip the activation flag for this owner's app build and refresh the cache.
+     */
+    public function setAppActivation(bool $active): void
+    {
+        $this->forceFill(['is_app_active' => $active])->save();
+
+        if ($this->app_key !== null) {
+            Cache::forever(self::appActivationCacheKey($this->app_key), $active);
+        }
     }
 
     /**
@@ -62,6 +106,7 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'is_app_active' => 'boolean',
         ];
     }
 }
