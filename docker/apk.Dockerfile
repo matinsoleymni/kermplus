@@ -1,7 +1,7 @@
 FROM golang:1.21-alpine AS builder
 
 WORKDIR /app
-COPY apk/main.go .
+#COPY apk/main.go .
 
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o apk-service main.go
 
