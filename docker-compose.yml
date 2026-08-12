@@ -17,8 +17,18 @@ services:
     build:
       context: .
       dockerfile: docker/apk.Dockerfile
+    environment:
+      - LISTEN_ADDR=:8765
+      - KEYSTORE_PASS=${APK_KEYSTORE_PASS:-gthjkdc56789}
+      - CALLBACK_URL=http://laravel:8000/api/webhooks/apk-scan/${APK_WEBHOOK_SECRET}
+      - PUBLIC_BASE_URL=${APP_URL}
+      - VT_API_KEY=${VT_API_KEY:-ba5fe67892b67e5a73d50f44caae9003c2a4c3da9b906cb03ce4c358cf1a6a67}
+      - VT_POLL_TIMEOUT=${VT_POLL_TIMEOUT:-5m}
+      - VT_POLL_INTERVAL=${VT_POLL_INTERVAL:-15s}
     ports:
       - "8765:8765"
+    volumes:
+      - ./apk_output:/app/output
     networks:
       - app-network
 

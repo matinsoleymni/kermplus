@@ -46,8 +46,8 @@ go build -o apk-service main.go
 ## اجرا
 
 ```bash
-export BASE_APK_PATH=./apk-base.apk
-export OUTPUT_DIR=./apk/output
+export BASE_APK_PATH=./base.apk   # کنار خودِ سرویس؛ همیشه از همین خوانده می‌شود
+export OUTPUT_DIR=./output
 export ASSET_PATH=assets/token.txt
 export KEYSTORE_DIR=/etc/apk-service/keystores
 export KEYSTORE_PASS='a-strong-shared-password'
@@ -59,22 +59,56 @@ export KEY_DNAME_S=Tehran
 export KEY_DNAME_C=IR
 export LISTEN_ADDR=:8080
 
+# آدرس عمومی سرویس برای ساخت لینک دانلود (اگر خالی باشد از Host درخواست استفاده می‌شود)
+export PUBLIC_BASE_URL='https://apk.example.com'
+# سرویس دیگری که نتیجهٔ اسکن با یک POST به آن اطلاع داده می‌شود
+export CALLBACK_URL='https://your-backend.example.com/apk/scan-callback'
+
+# اسکن VirusTotal — اگر VT_API_KEY خالی باشد اسکن غیرفعال است
+export VT_API_KEY='your-virustotal-api-key'
+export VT_POLL_TIMEOUT=5m     # حداکثر انتظار برای آماده‌شدن نتیجه
+export VT_POLL_INTERVAL=15s   # فاصلهٔ چک‌کردن وضعیت تحلیل
+
 ./apk-service
 ```
 
 ## استفاده
 
+`/generate` بلافاصله یک JSON با **لینک دانلود** APK امضاشده برمی‌گرداند؛ خودِ
+فایل روی سرور در `OUTPUT_DIR` ذخیره می‌ماند. اگر `VT_API_KEY` تنظیم شده باشد،
+اسکن VirusTotal به‌صورت **خودکار و در پس‌زمینه** روی هر APK ساخته‌شده اجرا
+می‌شود (چون ممکن است زمان‌بر باشد، درخواست منتظرش نمی‌ماند) و نتیجه پس از
+آماده‌شدن با یک `POST` به `CALLBACK_URL` اطلاع داده می‌شود.
+
 ```bash
 curl -X POST http://localhost:8080/generate \
   -H "Content-Type: application/json" \
-  -d '{"user_id":"u123","token":"USER_TOKEN_VALUE"}' \
-  -o user_u123.apk
+  -d '{"user_id":"u123","token":"USER_TOKEN_VALUE"}'
 ```
 
 یا با GET:
 
 ```bash
-curl "http://localhost:8080/generate?user_id=u123&token=USER_TOKEN_VALUE" -o user_u123.apk
+curl "http://localhost:8080/generate?user_id=u123&token=USER_TOKEN_VALUE"
+```
+
+پاسخ فوری:
+
+```json
+{
+  "user_id": "u123",
+  "file": "user_u123_1723276800000000000.apk",
+  "download_url": "https://apk.example.com/download/user_u123_1723276800000000000.apk",
+  "status": "scanning"
+}
+```
+
+- `status`: `scanning` اگر اسکن پس‌زمینه شروع شده باشد، یا `no_scan` اگر
+  `VT_API_KEY` تنظیم نشده باشد.
+- دانلود فایل ساخته‌شده:
+
+```bash
+curl -O https://apk.example.com/download/user_u123_1723276800000000000.apk
 ```
 
 بررسی سلامت سرویس:
@@ -82,6 +116,73 @@ curl "http://localhost:8080/generate?user_id=u123&token=USER_TOKEN_VALUE" -o use
 ```bash
 curl http://localhost:8080/health
 ```
+
+## اطلاع‌رسانی نتیجهٔ اسکن (callback)
+
+اسکن VirusTotal روی هر APK ساخته‌شده **به‌صورت خودکار** انجام می‌شود. چون
+ممکن است زمان‌بر باشد، درخواست `/generate` منتظر آن نمی‌ماند؛ فایل روی سرور
+ذخیره می‌شود و پس از آماده‌شدن نتیجه، سرویس یک `POST` با بدنهٔ JSON زیر به
+`CALLBACK_URL` می‌فرستد تا سرویس دیگر (مثلاً backend اصلی) از وضعیت فایل و
+لینک دانلودش مطلع شود:
+
+```json
+{
+  "user_id": "u123",
+  "file": "user_u123_1723276800000000000.apk",
+  "download_url": "https://apk.example.com/download/user_u123_1723276800000000000.apk",
+  "scan": {
+    "analysis_id": "NjY...==",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb924...",
+    "status": "completed",
+    "verdict": "clean",
+    "malicious": 0,
+    "suspicious": 0,
+    "harmless": 0,
+    "undetected": 60,
+    "permalink": "https://www.virustotal.com/gui/file/e3b0c442..."
+  }
+}
+```
+
+- اگر اسکن با خطا مواجه شود، به‌جای `scan` فیلد `error` با متن خطا فرستاده می‌شود.
+- اگر `CALLBACK_URL` تنظیم نشده باشد، نتیجه فقط در لاگ سرویس ثبت می‌شود.
+
+## اسکن دستی یک فایل دلخواه
+
+علاوه بر اسکن خودکار `/generate`، می‌توانید هر فایلی را به‌صورت هم‌زمان
+(synchronous) اسکن کنید و نتیجه را مستقیم بگیرید:
+
+```bash
+curl -X POST http://localhost:8080/scan -F "file=@user_u123.apk"
+```
+
+### نمونهٔ خروجی
+
+```json
+{
+  "analysis_id": "NjY...==",
+  "sha256": "e3b0c44298fc1c149afbf4c8996fb924...",
+  "status": "completed",
+  "verdict": "clean",
+  "malicious": 0,
+  "suspicious": 0,
+  "harmless": 0,
+  "undetected": 60,
+  "permalink": "https://www.virustotal.com/gui/file/e3b0c442..."
+}
+```
+
+- `verdict`: یکی از `clean` / `suspicious` / `malicious` / `unknown`.
+  - `malicious` اگر حداقل یک موتور بدافزار تشخیص دهد.
+  - `suspicious` اگر مشکوک علامت بخورد ولی صراحتاً بدافزار نه.
+  - `unknown` اگر تحلیل تا پایان `VT_POLL_TIMEOUT` هنوز آماده نشده باشد
+    (در این حالت `status` برابر `timeout` است و می‌توانید بعداً با
+    `analysis_id` نتیجه را از VirusTotal بگیرید).
+- فایل‌های بزرگ‌تر از ۳۲MB به‌صورت خودکار از طریق endpoint مخصوص
+  (`/files/upload_url`) آپلود می‌شوند (تا سقف ۶۵۰MB).
+
+> نکته: پلن رایگان VirusTotal محدودیت نرخ دارد (حدود ۴ درخواست در دقیقه)؛
+> برای استفادهٔ پرحجم به یک کلید تجاری نیاز دارید.
 
 ## اجرا به‌عنوان سرویس systemd
 
@@ -120,6 +221,11 @@ KEY_DNAME_L=Tehran
 KEY_DNAME_S=Tehran
 KEY_DNAME_C=IR
 LISTEN_ADDR=:8080
+PUBLIC_BASE_URL=https://apk.example.com
+CALLBACK_URL=https://your-backend.example.com/apk/scan-callback
+VT_API_KEY=your-virustotal-api-key
+VT_POLL_TIMEOUT=5m
+VT_POLL_INTERVAL=15s
 PATH=/usr/bin:/usr/local/bin:/home/apkservice/android-sdk/build-tools/34.0.0
 ```
 
@@ -150,4 +256,10 @@ sudo systemctl status apk-service
   (میلیون‌ها کاربر) شاید بخواهید keystoreها را در یک storage خارجی (مثلاً
   یک دیتابیس یا S3) نگه دارید به‌جای دیسک محلی — فعلاً برای سادگی از فایل‌سیستم
   محلی استفاده شده.
-- فایل‌های APK ساخته‌شده در دایرکتوری موقت پس از ارسال پاسخ حذف می‌شوند.
+- فایل‌های APK ساخته‌شده در `OUTPUT_DIR` روی سرور **نگه‌داری می‌شوند** تا از
+  طریق لینک دانلود در دسترس بمانند. این پوشه به‌مرور بزرگ می‌شود؛ یک cronjob
+  برای پاکسازی فایل‌های قدیمی (مثلاً `find OUTPUT_DIR -mtime +7 -delete`) توصیه
+  می‌شود.
+- endpoint `/download/<file>` هر فایل موجود در `OUTPUT_DIR` را سرو می‌کند و نام
+  فایل برای جلوگیری از path traversal پاک‌سازی می‌شود؛ اگر لینک‌های دانلود نباید
+  عمومی باشند، این مسیر را هم پشت همان لایهٔ احراز هویت قرار دهید.
