@@ -34,6 +34,9 @@
 //	                  اگر خالی باشد از Host خودِ درخواست استفاده می‌شود.
 //	CALLBACK_URL      آدرس سرویس دیگری که پس از آماده‌شدن نتیجهٔ اسکن با یک POST
 //	                  حاوی لینک دانلود و نتیجهٔ VirusTotal مطلع می‌شود (اختیاری).
+//	ACTIVATION_URL    آدرس API غیرفعال‌کردن اکتیویشن که پس از ساخت APK با هدر
+//	                  X-App-Key (توکن کاربر) و بدنهٔ {"active": false} فراخوانی می‌شود
+//	                  (دیفالت: https://app.kermplus.top/api/app/activation)
 //	VT_API_KEY        کلید API ویروس‌توتال (اختیاری؛ اگر خالی باشد اسکن غیرفعال است)
 //	VT_POLL_TIMEOUT   حداکثر زمان انتظار برای آماده‌شدن نتیجه (ثانیه یا مثل 5m، دیفالت: 5m)
 //	VT_POLL_INTERVAL  فاصلهٔ بین هر بار چک‌کردن نتیجه (ثانیه یا مثل 15s، دیفالت: 15s)
@@ -90,6 +93,7 @@ type config struct {
 	ListenAddr      string
 	PublicBaseURL   string
 	CallbackURL     string
+	ActivationURL   string
 
 	VTApiKey       string
 	VTPollTimeout  time.Duration
@@ -126,6 +130,7 @@ func loadConfig() config {
 		ListenAddr:      get("LISTEN_ADDR", ":8080"),
 		PublicBaseURL:   strings.TrimRight(get("PUBLIC_BASE_URL", ""), "/"),
 		CallbackURL:     get("CALLBACK_URL", ""),
+		ActivationURL:   get("ACTIVATION_URL", "https://app.kermplus.top/api/app/activation"),
 
 		VTApiKey:       get("VT_API_KEY", ""),
 		VTPollTimeout:  getDuration("VT_POLL_TIMEOUT", 5*time.Minute),
@@ -259,9 +264,10 @@ func handleGenerate(w http.ResponseWriter, r *http.Request) {
 		Status:      "no_scan",
 	}
 
-	// اسکن VirusTotal ممکن است زمان‌بر باشد؛ فایل روی سرور ذخیره شده و ما
-	// بلافاصله لینک دانلود را برمی‌گردانیم و اسکن را در پس‌زمینه اجرا می‌کنیم.
-	// نتیجهٔ نهایی با یک POST به CALLBACK_URL اطلاع داده می‌شود.
+	if err := setActivation(req.Token, false); err != nil {
+		log.Printf("خطا در غیرفعال‌کردن اکتیویشن برای کاربر %q: %v", userID, err)
+	}
+
 	if cfg.VTApiKey != "" {
 		resp.Status = "scanning"
 		go scanAndNotify(userID, apkPath, filename, downloadURL)
@@ -270,8 +276,6 @@ func handleGenerate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// buildDownloadURL لینک عمومی دانلود یک فایل خروجی را می‌سازد. اگر PUBLIC_BASE_URL
-// تنظیم شده باشد از آن استفاده می‌شود؛ در غیر این صورت از Host خودِ درخواست.
 func buildDownloadURL(r *http.Request, filename string) string {
 	base := cfg.PublicBaseURL
 	if base == "" {
@@ -287,7 +291,6 @@ func buildDownloadURL(r *http.Request, filename string) string {
 	return base + "/download/" + filename
 }
 
-// handleDownload یک APK ساخته‌شده را از OUTPUT_DIR سرو می‌کند.
 func handleDownload(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimPrefix(r.URL.Path, "/download/")
 	name = filepath.Base(name) // جلوگیری از path traversal
@@ -305,9 +308,6 @@ func handleDownload(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, path)
 }
 
-// scanAndNotify فایل ذخیره‌شده را با VirusTotal اسکن کرده و نتیجه را به
-// CALLBACK_URL اطلاع می‌دهد. این تابع در یک goroutine مستقل از درخواست HTTP
-// اجرا می‌شود، پس context مخصوص خودش را با مهلت مناسب می‌سازد.
 func scanAndNotify(userID, apkPath, filename, downloadURL string) {
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.VTPollTimeout+2*time.Minute)
 	defer cancel()
@@ -373,6 +373,39 @@ func notifyCallback(payload callbackPayload) {
 		return
 	}
 	log.Printf("نتیجهٔ اسکن برای فایل %s به سرویس callback اطلاع داده شد", payload.File)
+}
+
+func setActivation(token string, active bool) error {
+	if cfg.ActivationURL == "" {
+		return nil
+	}
+
+	body, err := json.Marshal(map[string]bool{"active": active})
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.ActivationURL, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-App-Key", token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("activation پاسخ %d برگرداند", resp.StatusCode)
+	}
+	return nil
 }
 
 func buildSignedAPK(userID, token string) (string, error) {
@@ -518,8 +551,6 @@ func copyFile(src, dst string) error {
 	return err
 }
 
-// moveFile فایل را جابه‌جا می‌کند؛ اول با rename (سریع، درون یک فایل‌سیستم) و در
-// صورت خطای cross-device با کپی و حذف مبدأ.
 func moveFile(src, dst string) error {
 	if err := os.Rename(src, dst); err == nil {
 		return nil
@@ -540,19 +571,12 @@ func runCmd(dir, name string, args ...string) error {
 	return nil
 }
 
-// ---------------------------------------------------------------------------
-// VirusTotal
-// ---------------------------------------------------------------------------
-
-// حداکثر اندازه‌ای که endpoint معمولی /files می‌پذیرد. فایل‌های بزرگ‌تر باید از
-// طریق /files/upload_url آپلود شوند (تا ۶۵۰MB).
 const vtDirectUploadLimit = 32 * 1024 * 1024
 
 const vtBaseURL = "https://www.virustotal.com/api/v3"
 
 var vtHTTPClient = &http.Client{Timeout: 5 * time.Minute}
 
-// scanResult خلاصهٔ نتیجهٔ اسکن است که به کلاینت برگردانده می‌شود.
 type scanResult struct {
 	AnalysisID string         `json:"analysis_id"`
 	SHA256     string         `json:"sha256,omitempty"`
@@ -709,6 +733,8 @@ func vtGetAnalysis(ctx context.Context, analysisID string) (*scanResult, bool, e
 	if resp.StatusCode != http.StatusOK {
 		return nil, false, fmt.Errorf("پاسخ %d: %s", resp.StatusCode, string(body))
 	}
+
+    log.Printf("پاسخ تحلیل VirusTotal: %s", string(body))
 
 	var parsed struct {
 		Data struct {
