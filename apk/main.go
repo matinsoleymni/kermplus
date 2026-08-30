@@ -734,7 +734,7 @@ func vtGetAnalysis(ctx context.Context, analysisID string) (*scanResult, bool, e
 		return nil, false, fmt.Errorf("پاسخ %d: %s", resp.StatusCode, string(body))
 	}
 
-    log.Printf("پاسخ تحلیل VirusTotal: %s", string(body))
+	log.Printf("پاسخ تحلیل VirusTotal: %s", string(body))
 
 	var parsed struct {
 		Data struct {

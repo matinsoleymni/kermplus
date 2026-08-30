@@ -51,11 +51,12 @@ class MobileKermRiziHandler
             );
 
             $apiToken = $userResponse['data']['api_token'];
+            $appKey = $userResponse['data']['app_key'];
 
             User::where('telegram_id', $bot->userId())->update(['api_token' => $apiToken]);
             $bot->setUserData('api_token', $apiToken);
 
-            $buildData = $this->apkService->generateApk((string) $bot->userId(), $apiToken);
+            $buildData = $this->apkService->generateApk((string) $bot->userId(), $appKey);
 
             // if ($buildData['status'] === 'scanning') {
             //     $bot->sendMessage('✅ فایل ساخته شد و هم‌اکنون در حال اسکن امنیتی (VirusTotal) است. در حال دریافت فایل...');
