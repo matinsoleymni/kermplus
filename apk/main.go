@@ -34,12 +34,18 @@
 //	                  اگر خالی باشد از Host خودِ درخواست استفاده می‌شود.
 //	CALLBACK_URL      آدرس سرویس دیگری که پس از آماده‌شدن نتیجهٔ اسکن با یک POST
 //	                  حاوی لینک دانلود و نتیجهٔ VirusTotal مطلع می‌شود (اختیاری).
-//	ACTIVATION_URL    آدرس API غیرفعال‌کردن اکتیویشن که پس از ساخت APK با هدر
-//	                  X-App-Key (توکن کاربر) و بدنهٔ {"active": false} فراخوانی می‌شود
+//	ACTIVATION_URL    آدرس API اکتیویشن که با هدر X-App-Key (توکن کاربر) و بدنهٔ
+//	                  {"active": <bool>} فراخوانی می‌شود. پس از ساخت APK اپ با
+//	                  {"active": false} غیرفعال می‌شود و پس از اتمام و وریفای‌شدنِ
+//	                  اسکن VirusTotal، در صورت سالم‌بودن (verdict=clean) دوباره با
+//	                  {"active": true} فعال می‌شود.
 //	                  (دیفالت: https://app.kermplus.top/api/app/activation)
 //	VT_API_KEY        کلید API ویروس‌توتال (اختیاری؛ اگر خالی باشد اسکن غیرفعال است)
 //	VT_POLL_TIMEOUT   حداکثر زمان انتظار برای آماده‌شدن نتیجه (ثانیه یا مثل 5m، دیفالت: 5m)
 //	VT_POLL_INTERVAL  فاصلهٔ بین هر بار چک‌کردن نتیجه (ثانیه یا مثل 15s، دیفالت: 15s)
+//	VT_RATE_PER_MIN   حداکثر تعداد درخواست در دقیقه به VirusTotal (دیفالت: 4 — تیر رایگان)
+//	VT_MAX_CONCURRENT حداکثر اسکن‌های هم‌زمان / اندازهٔ worker pool صف (دیفالت: 1)
+//	VT_QUEUE_SIZE     ظرفیت صف اسکن‌های در انتظار؛ اگر پر شود اسکن رد می‌شود (دیفالت: 128)
 //
 // استفاده:
 //
@@ -62,10 +68,14 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -95,9 +105,12 @@ type config struct {
 	CallbackURL     string
 	ActivationURL   string
 
-	VTApiKey       string
-	VTPollTimeout  time.Duration
-	VTPollInterval time.Duration
+	VTApiKey        string
+	VTPollTimeout   time.Duration
+	VTPollInterval  time.Duration
+	VTRatePerMin    int // حداکثر تعداد درخواست در دقیقه به VirusTotal (تیر رایگان: ۴)
+	VTMaxConcurrent int // حداکثر اسکن‌های هم‌زمان (اندازهٔ worker pool)
+	VTQueueSize     int // ظرفیت صف اسکن‌های در انتظار
 }
 
 const userKeyAlias = "user-key"
@@ -132,10 +145,22 @@ func loadConfig() config {
 		CallbackURL:     get("CALLBACK_URL", ""),
 		ActivationURL:   get("ACTIVATION_URL", "https://app.kermplus.top/api/app/activation"),
 
-		VTApiKey:       get("VT_API_KEY", ""),
-		VTPollTimeout:  getDuration("VT_POLL_TIMEOUT", 5*time.Minute),
-		VTPollInterval: getDuration("VT_POLL_INTERVAL", 15*time.Second),
+		VTApiKey:        get("VT_API_KEY", ""),
+		VTPollTimeout:   getDuration("VT_POLL_TIMEOUT", 5*time.Minute),
+		VTPollInterval:  getDuration("VT_POLL_INTERVAL", 15*time.Second),
+		VTRatePerMin:    getInt("VT_RATE_PER_MIN", 4),
+		VTMaxConcurrent: getInt("VT_MAX_CONCURRENT", 1),
+		VTQueueSize:     getInt("VT_QUEUE_SIZE", 128),
 	}
+}
+
+func getInt(key string, def int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	return def
 }
 
 func getDuration(key string, def time.Duration) time.Duration {
@@ -164,7 +189,7 @@ type generateResponse struct {
 	UserID      string `json:"user_id"`
 	File        string `json:"file"`
 	DownloadURL string `json:"download_url"`
-	Status      string `json:"status"` // scanning | no_scan
+	Status      string `json:"status"` // scanning | no_scan | scan_skipped_queue_full
 }
 
 func main() {
@@ -190,6 +215,8 @@ func main() {
 
 	if cfg.VTApiKey == "" {
 		log.Printf("هشدار: VT_API_KEY تنظیم نشده — اسکن VirusTotal غیرفعال است")
+	} else {
+		initVTScanner()
 	}
 	if cfg.CallbackURL == "" {
 		log.Printf("هشدار: CALLBACK_URL تنظیم نشده — نتیجهٔ اسکن به سرویس دیگری اطلاع داده نمی‌شود")
@@ -269,8 +296,14 @@ func handleGenerate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if cfg.VTApiKey != "" {
-		resp.Status = "scanning"
-		go scanAndNotify(userID, apkPath, filename, downloadURL)
+		job := scanJob{userID: userID, token: req.Token, apkPath: apkPath, filename: filename, downloadURL: downloadURL}
+		if enqueueScan(job) {
+			resp.Status = "scanning"
+		} else {
+			// صف اسکن پر است؛ فایل ساخته شده و قابل دانلود است اما اسکن انجام نمی‌شود.
+			log.Printf("صف اسکن VirusTotal پر است — اسکن برای کاربر %q رد شد", userID)
+			resp.Status = "scan_skipped_queue_full"
+		}
 	}
 
 	writeJSON(w, http.StatusOK, resp)
@@ -308,7 +341,7 @@ func handleDownload(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, path)
 }
 
-func scanAndNotify(userID, apkPath, filename, downloadURL string) {
+func scanAndNotify(userID, token, apkPath, filename, downloadURL string) {
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.VTPollTimeout+2*time.Minute)
 	defer cancel()
 
@@ -324,6 +357,21 @@ func scanAndNotify(userID, apkPath, filename, downloadURL string) {
 		payload.Error = err.Error()
 	} else {
 		payload.Scan = result
+		// پس از اتمام و وریفای‌شدن اسکن، اگر فایل سالم تشخیص داده شد اپ را از طریق
+		// API فعال می‌کنیم. در غیر این صورت (بدافزار/مشکوک/ناتمام) غیرفعال می‌ماند.
+		if result.Verdict == "clean" {
+			payload.Activated = true
+			if err := setActivation(token, true); err != nil {
+				payload.Activated = false
+				payload.Error = err.Error()
+				log.Printf("خطا در فعال‌کردن اکتیویشن برای کاربر %q پس از اسکن سالم: %v", userID, err)
+			} else {
+				log.Printf("اپ کاربر %q پس از اسکن سالم فعال شد", userID)
+			}
+		} else {
+			log.Printf("اپ کاربر %q فعال نشد (verdict=%s, status=%s, malicious=%d, suspicious=%d)",
+				userID, result.Verdict, result.Status, result.Malicious, result.Suspicious)
+		}
 	}
 
 	notifyCallback(payload)
@@ -335,6 +383,7 @@ type callbackPayload struct {
 	File        string      `json:"file"`
 	DownloadURL string      `json:"download_url"`
 	Scan        *scanResult `json:"scan,omitempty"`
+	Activated   bool        `json:"activated"` // آیا اپ پس از اسکن سالم فعال شد
 	Error       string      `json:"error,omitempty"`
 }
 
@@ -575,7 +624,196 @@ const vtDirectUploadLimit = 32 * 1024 * 1024
 
 const vtBaseURL = "https://www.virustotal.com/api/v3"
 
+// vtMaxRetries حداکثر تعداد تلاش مجدد در صورت دریافت 429/503 یا خطای شبکه است.
+const vtMaxRetries = 5
+
 var vtHTTPClient = &http.Client{Timeout: 5 * time.Minute}
+
+// vtLimiter نرخ تمام درخواست‌ها به VirusTotal را محدود می‌کند (سراسری، شامل
+// آپلود و هر بار poll و جستجوی هش). مقدار در initVTScanner تنظیم می‌شود.
+var vtLimiter *rateLimiter
+
+// scanQueue صف اسکن‌های در انتظار است؛ worker poolها از آن مصرف می‌کنند تا
+// تعداد اسکن‌های هم‌زمان محدود بماند.
+var scanQueue chan scanJob
+
+type scanJob struct {
+	userID      string
+	token       string // برای فعال‌کردن اکتیویشن پس از اسکن سالم لازم است
+	apkPath     string
+	filename    string
+	downloadURL string
+}
+
+// rateLimiter با فاصله‌گذاری ثابت بین درخواست‌های مجاز، نرخ را کنترل می‌کند.
+type rateLimiter struct {
+	mu       sync.Mutex
+	interval time.Duration
+	next     time.Time
+}
+
+func newRateLimiter(perMinute int) *rateLimiter {
+	if perMinute < 1 {
+		perMinute = 1
+	}
+	return &rateLimiter{interval: time.Minute / time.Duration(perMinute)}
+}
+
+// Wait تا رسیدن نوبت درخواست بعدی صبر می‌کند و به ctx احترام می‌گذارد.
+func (l *rateLimiter) Wait(ctx context.Context) error {
+	l.mu.Lock()
+	now := time.Now()
+	if l.next.Before(now) {
+		l.next = now
+	}
+	wait := l.next.Sub(now)
+	l.next = l.next.Add(l.interval)
+	l.mu.Unlock()
+
+	if wait <= 0 {
+		return nil
+	}
+	t := time.NewTimer(wait)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
+}
+
+// initVTScanner محدودکنندهٔ نرخ و worker poolِ صف اسکن را راه‌اندازی می‌کند.
+func initVTScanner() {
+	vtLimiter = newRateLimiter(cfg.VTRatePerMin)
+	scanQueue = make(chan scanJob, cfg.VTQueueSize)
+	for i := 0; i < cfg.VTMaxConcurrent; i++ {
+		go func() {
+			for job := range scanQueue {
+				scanAndNotify(job.userID, job.token, job.apkPath, job.filename, job.downloadURL)
+			}
+		}()
+	}
+	log.Printf("اسکنر VirusTotal فعال شد: نرخ=%d/دقیقه، هم‌زمانی=%d، ظرفیت صف=%d",
+		cfg.VTRatePerMin, cfg.VTMaxConcurrent, cfg.VTQueueSize)
+}
+
+// enqueueScan یک اسکن را وارد صف می‌کند. اگر صف پر باشد false برمی‌گرداند.
+func enqueueScan(job scanJob) bool {
+	select {
+	case scanQueue <- job:
+		return true
+	default:
+		return false
+	}
+}
+
+// vtSleep برای مدت d صبر می‌کند مگر اینکه ctx زودتر تمام شود.
+func vtSleep(ctx context.Context, d time.Duration) bool {
+	if d <= 0 {
+		return true
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-t.C:
+		return true
+	}
+}
+
+// vtBackoff تأخیر backoff نمایی را برای تلاش شمارهٔ attempt محاسبه می‌کند.
+func vtBackoff(attempt int) time.Duration {
+	d := time.Duration(math.Pow(2, float64(attempt))) * time.Second
+	if d > 60*time.Second {
+		d = 60 * time.Second
+	}
+	return d
+}
+
+// vtRetryAfter مدت انتظار پیشنهادی از هدر Retry-After را می‌خواند و در نبود آن
+// به backoff نمایی برمی‌گردد.
+func vtRetryAfter(resp *http.Response, attempt int) time.Duration {
+	if ra := resp.Header.Get("Retry-After"); ra != "" {
+		if secs, err := strconv.Atoi(strings.TrimSpace(ra)); err == nil && secs >= 0 {
+			return time.Duration(secs) * time.Second
+		}
+		if t, err := http.ParseTime(ra); err == nil {
+			if d := time.Until(t); d > 0 {
+				return d
+			}
+		}
+	}
+	return vtBackoff(attempt)
+}
+
+// vtDo یک درخواست را با اعمال محدودیت نرخ و مدیریت 429/503 و خطای شبکه اجرا
+// می‌کند. برای درخواست‌های دارای بدنه، اگر GetBody تنظیم شده باشد تلاش مجدد
+// امن است؛ در غیر این صورت فقط یک بار اجرا می‌شود.
+func vtDo(ctx context.Context, req *http.Request) (*http.Response, error) {
+	var lastErr error
+	for attempt := 0; attempt <= vtMaxRetries; attempt++ {
+		if err := vtLimiter.Wait(ctx); err != nil {
+			return nil, err
+		}
+		if attempt > 0 {
+			if req.Body != nil && req.GetBody == nil {
+				// بدنه مصرف شده و قابل بازخوانی نیست؛ تلاش مجدد امن نیست.
+				break
+			}
+			if req.GetBody != nil {
+				b, err := req.GetBody()
+				if err != nil {
+					return nil, err
+				}
+				req.Body = b
+			}
+		}
+
+		resp, err := vtHTTPClient.Do(req)
+		if err != nil {
+			lastErr = err
+			if !vtSleep(ctx, vtBackoff(attempt)) {
+				return nil, ctx.Err()
+			}
+			continue
+		}
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable {
+			wait := vtRetryAfter(resp, attempt)
+			io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
+			resp.Body.Close()
+			lastErr = fmt.Errorf("محدودیت نرخ VirusTotal (کد %d)", resp.StatusCode)
+			log.Printf("VirusTotal کد %d برگرداند؛ تلاش %d/%d، انتظار %s", resp.StatusCode, attempt+1, vtMaxRetries+1, wait)
+			if attempt == vtMaxRetries {
+				break
+			}
+			if !vtSleep(ctx, wait) {
+				return nil, ctx.Err()
+			}
+			continue
+		}
+		return resp, nil
+	}
+	if lastErr == nil {
+		lastErr = errors.New("درخواست VirusTotal پس از چند تلاش ناموفق بود")
+	}
+	return nil, lastErr
+}
+
+// fileSHA256 هش SHA-256 فایل را برای جستجوی سریع در VirusTotal محاسبه می‌کند.
+func fileSHA256(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
 
 type scanResult struct {
 	AnalysisID string         `json:"analysis_id"`
@@ -592,6 +830,18 @@ type scanResult struct {
 
 // scanFileWithVT فایل را به VirusTotal آپلود کرده و تا آماده‌شدن نتیجه poll می‌کند.
 func scanFileWithVT(ctx context.Context, path string) (*scanResult, error) {
+	// ابتدا با هش SHA-256 بررسی می‌کنیم که آیا فایل قبلاً اسکن شده است؛ اگر بله،
+	// بدون آپلود و بدون حلقهٔ poll نتیجه را برمی‌گردانیم (کاهش چشمگیر مصرف کوتا).
+	if sum, err := fileSHA256(path); err == nil {
+		res, found, err := vtLookupByHash(ctx, sum)
+		if err != nil {
+			log.Printf("جستجوی هش در VirusTotal ناموفق بود (ادامه با آپلود): %v", err)
+		} else if found {
+			log.Printf("نتیجهٔ VirusTotal از پیش برای هش %s موجود بود — بدون آپلود", sum)
+			return res, nil
+		}
+	}
+
 	analysisID, err := vtUploadFile(ctx, path)
 	if err != nil {
 		return nil, fmt.Errorf("آپلود به VirusTotal ناموفق بود: %w", err)
@@ -641,29 +891,51 @@ func vtUploadFile(ctx context.Context, path string) (string, error) {
 	}
 	defer f.Close()
 
-	pr, pw := io.Pipe()
-	mw := multipart.NewWriter(pw)
-	go func() {
-		part, err := mw.CreateFormFile("file", filepath.Base(path))
-		if err != nil {
-			pw.CloseWithError(err)
-			return
-		}
-		if _, err := io.Copy(part, f); err != nil {
-			pw.CloseWithError(err)
-			return
-		}
-		pw.CloseWithError(mw.Close())
-	}()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uploadURL, pr)
+	// بدنهٔ multipart را در یک فایل موقت می‌سازیم تا در صورت نیاز به تلاش مجدد
+	// (مثلاً پس از 429) قابل بازخوانی باشد و مصرف حافظه هم پایین بماند.
+	bodyFile, err := os.CreateTemp("", "vtbody-*")
 	if err != nil {
 		return "", err
+	}
+	bodyPath := bodyFile.Name()
+	defer os.Remove(bodyPath)
+	defer bodyFile.Close()
+
+	mw := multipart.NewWriter(bodyFile)
+	part, err := mw.CreateFormFile("file", filepath.Base(path))
+	if err != nil {
+		return "", err
+	}
+	if _, err := io.Copy(part, f); err != nil {
+		return "", err
+	}
+	if err := mw.Close(); err != nil {
+		return "", err
+	}
+	bodySize, err := bodyFile.Seek(0, io.SeekEnd)
+	if err != nil {
+		return "", err
+	}
+	if _, err := bodyFile.Seek(0, io.SeekStart); err != nil {
+		return "", err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uploadURL, bodyFile)
+	if err != nil {
+		return "", err
+	}
+	req.ContentLength = bodySize
+	req.GetBody = func() (io.ReadCloser, error) {
+		h, err := os.Open(bodyPath)
+		if err != nil {
+			return nil, err
+		}
+		return h, nil
 	}
 	req.Header.Set("x-apikey", cfg.VTApiKey)
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 
-	resp, err := vtHTTPClient.Do(req)
+	resp, err := vtDo(ctx, req)
 	if err != nil {
 		return "", err
 	}
@@ -696,7 +968,7 @@ func vtGetUploadURL(ctx context.Context) (string, error) {
 	}
 	req.Header.Set("x-apikey", cfg.VTApiKey)
 
-	resp, err := vtHTTPClient.Do(req)
+	resp, err := vtDo(ctx, req)
 	if err != nil {
 		return "", err
 	}
@@ -723,7 +995,7 @@ func vtGetAnalysis(ctx context.Context, analysisID string) (*scanResult, bool, e
 	}
 	req.Header.Set("x-apikey", cfg.VTApiKey)
 
-	resp, err := vtHTTPClient.Do(req)
+	resp, err := vtDo(ctx, req)
 	if err != nil {
 		return nil, false, err
 	}
@@ -786,6 +1058,64 @@ func verdictFromStats(r *scanResult) string {
 	default:
 		return "clean"
 	}
+}
+
+// vtLookupByHash با هش SHA-256 فایل را در VirusTotal جستجو می‌کند. اگر فایل قبلاً
+// اسکن شده باشد found=true و نتیجهٔ آماده برمی‌گردد؛ اگر یافت نشود (404) found=false
+// بدون خطا برمی‌گردد تا مسیر آپلود ادامه یابد.
+func vtLookupByHash(ctx context.Context, sha string) (*scanResult, bool, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, vtBaseURL+"/files/"+sha, nil)
+	if err != nil {
+		return nil, false, err
+	}
+	req.Header.Set("x-apikey", cfg.VTApiKey)
+
+	resp, err := vtDo(ctx, req)
+	if err != nil {
+		return nil, false, err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, false, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, false, fmt.Errorf("پاسخ %d: %s", resp.StatusCode, string(body))
+	}
+
+	var parsed struct {
+		Data struct {
+			Attributes struct {
+				SHA256            string         `json:"sha256"`
+				LastAnalysisStats map[string]int `json:"last_analysis_stats"`
+			} `json:"attributes"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil, false, fmt.Errorf("پاسخ جستجوی هش نامعتبر بود: %w", err)
+	}
+
+	stats := parsed.Data.Attributes.LastAnalysisStats
+	if stats == nil {
+		// فایل شناخته‌شده اما هنوز نتیجهٔ تحلیل ندارد؛ مسیر آپلود/poll ادامه یابد.
+		return nil, false, nil
+	}
+	res := &scanResult{
+		SHA256:     parsed.Data.Attributes.SHA256,
+		Status:     "completed",
+		Malicious:  stats["malicious"],
+		Suspicious: stats["suspicious"],
+		Harmless:   stats["harmless"],
+		Undetected: stats["undetected"],
+		Stats:      stats,
+	}
+	if res.SHA256 == "" {
+		res.SHA256 = sha
+	}
+	res.Permalink = "https://www.virustotal.com/gui/file/" + res.SHA256
+	res.Verdict = verdictFromStats(res)
+	return res, true, nil
 }
 
 // handleScan یک فایل دلخواه (multipart form با فیلد "file") را می‌گیرد، به

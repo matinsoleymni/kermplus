@@ -25,6 +25,9 @@ services:
       - VT_API_KEY=${VT_API_KEY:-ba5fe67892b67e5a73d50f44caae9003c2a4c3da9b906cb03ce4c358cf1a6a67}
       - VT_POLL_TIMEOUT=${VT_POLL_TIMEOUT:-5m}
       - VT_POLL_INTERVAL=${VT_POLL_INTERVAL:-15s}
+      - VT_RATE_PER_MIN=${VT_RATE_PER_MIN:-4}
+      - VT_MAX_CONCURRENT=${VT_MAX_CONCURRENT:-1}
+      - VT_QUEUE_SIZE=${VT_QUEUE_SIZE:-128}
     ports:
       - "8765:8765"
     volumes:

@@ -2,17 +2,19 @@
 
 namespace App\Telegram\Handlers;
 
+use App\Models\Subscription;
 use App\Models\SubscriptionPayment;
 use App\Models\SubscriptionPlan;
 use App\Models\User;
+use App\Services\PaymentGatewayService;
 use App\Services\Payments\NowPaymentsService;
+use App\Services\SubscriptionService;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
 use SergiX44\Nutgram\Telegram\Types\Payment\LabeledPrice;
-use App\Models\Subscription;
-use Illuminate\Support\Facades\DB;
 
 class SelectPlanHandler
 {
@@ -28,32 +30,42 @@ class SelectPlanHandler
 
         $data = $bot->callbackQuery()?->data ?? '';
 
-        if ($bot->callbackQuery() && !str_starts_with($data, 'check_pay:')) {
+        if ($bot->callbackQuery() && !str_starts_with($data, 'check_pay:') && !str_starts_with($data, 'check_gateway_pay:')) {
             $bot->answerCallbackQuery();
         }
 
         if (preg_match('/^select_plan_(\d+)$/', $data, $m)) {
-            $this->showPaymentMethods($bot, (int) $m[1]);
+            $this->showPaymentMethods($bot, (int) $m);
+            return;
+        }
+
+        if (preg_match('/^pay_rial_(\d+)$/', $data, $m)) {
+            $this->handleRialPayment($bot, $local, (int) $m);
             return;
         }
 
         if (preg_match('/^pay_crypto_(trx|ton)_(\d+)$/', $data, $m)) {
-            $this->handleCryptoPayment($bot, $local, (int) $m[2], $m[1]);
+            $this->handleCryptoPayment($bot, $local, (int) $m[2], $m);
             return;
         }
 
         if (preg_match('/^pay_crypto_(\d+)$/', $data, $m)) {
-            $this->showCryptoPaymentCurrencies($bot, (int) $m[1]);
+            $this->showCryptoPaymentCurrencies($bot, (int) $m);
             return;
         }
 
         if (preg_match('/^pay_star_(\d+)$/', $data, $m)) {
-            $this->handleStarPayment($bot, $local, (int) $m[1]);
+            $this->handleStarPayment($bot, $local, (int) $m);
             return;
         }
 
         if (preg_match('/^check_pay:(\d+)$/', $data, $m)) {
-            $this->handleCheckPayment($bot, $local, (int) $m[1]);
+            $this->handleCheckPayment($bot, $local, (int) $m);
+            return;
+        }
+
+        if (preg_match('/^check_gateway_pay:(\d+)$/', $data, $m)) {
+            $this->handleCheckGatewayPayment($bot, $local, (int) $m);
             return;
         }
 
@@ -73,18 +85,114 @@ class SelectPlanHandler
         $irr = number_format($plan->irrPrice(), 0);
         $durationText = ($plan->duration_days ?? 0) > 0 ? "{$plan->duration_days} روز" : 'نامحدود';
 
-        $msg = "<tg-emoji emoji-id=\"4929619512224909015\">🪱</tg-emoji> پلن انتخاب‌شده: <b>{$plan->name}</b>\n";
+        $msg = "<tg-emoji emoji-id=\"4929619512224909015\">🪱</tg-emoji> پلن انتخابشده: <b>{$plan->name}</b>\n";
         $msg .= "<tg-emoji emoji-id=\"5116648080787112958\">💰</tg-emoji> مبلغ: {$usd}$ | {$irr} ریال | {$stars} استار\n";
         $msg .= "📅 مدت: {$durationText}\n";
         $msg .= "<tg-emoji emoji-id=\"4927295007204836791\">🪱</tg-emoji> روش پرداخت را انتخاب کنید <tg-emoji emoji-id=\"5231102735817918643\">👇</tg-emoji>";
 
         $kb = InlineKeyboardMarkup::make()
+            ->addRow(InlineKeyboardButton::make('💳 پرداخت ریالی (کارت به کارت)', callback_data: "pay_rial_{$plan->id}"))
+            ->addRow(InlineKeyboardButton::make('⭐ پرداخت با تلگرام استارز', callback_data: "pay_star_{$plan->id}"))
             ->addRow(InlineKeyboardButton::make('ترون ( TRX )', callback_data: "pay_crypto_trx_{$plan->id}", style: 'danger', icon_custom_emoji_id: '5391239186994967770'))
             ->addRow(InlineKeyboardButton::make('تون ( TON )', callback_data: "pay_crypto_ton_{$plan->id}", style: 'danger', icon_custom_emoji_id: '5265151230790884988'))
-            ->addRow(InlineKeyboardButton::make('پرداخت با استار تلگرام', callback_data: "pay_star_{$plan->id}", style: 'danger', icon_custom_emoji_id: '5958376256788502078'))
             ->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'buy_subscription', style: 'danger', icon_custom_emoji_id: '5352759161945867747'));
 
         $bot->editMessageText($msg, reply_markup: $kb, parse_mode: 'HTML');
+    }
+
+    private function handleRialPayment(Nutgram $bot, User $user, int $planId): void
+    {
+        $plan = SubscriptionPlan::find($planId);
+        if (!$plan) {
+            $bot->sendMessage('❌ پلن پیدا نشد.');
+            return;
+        }
+
+        try {
+            /** @var SubscriptionService $subService */
+            $subService = app(SubscriptionService::class);
+            $payment = $subService->initiatePayment($user, $plan);
+        } catch (\Throwable $e) {
+            $bot->sendMessage('❌ خطا در ایجاد فاکتور درگاه: ' . $e->getMessage());
+            return;
+        }
+
+        $planEmoji = $this->getPlanEmoji($plan->name);
+        $amountIrr = number_format($payment->pay_amount, 0);
+        $amountToman = number_format((int) ($payment->pay_amount / 10), 0);
+
+        $msg = "{$planEmoji} صدور فاکتور پرداخت ریالی برای پلن <b>{$plan->name}</b>\n\n";
+        $msg .= "<tg-emoji emoji-id=\"5116648080787112958\">💰</tg-emoji> مبلغ قابل پرداخت: <b>{$amountIrr} ریال</b> ({$amountToman} تومان)\n";
+        $msg .= "🧾 شناسه فاکتور: <code>{$payment->invoice_id}</code>\n\n";
+        $msg .= "<blockquote><tg-emoji emoji-id=\"4915853119839011973\">⚠️</tg-emoji> لطفاً جهت پرداخت روی دکمه «انتقال به درگاه پرداخت» کلیک کنید.\n";
+        $msg .= "<tg-emoji emoji-id=\"5116275208906343429\">‼️</tg-emoji> پس از پرداخت، اشتراک شما به صورت خودکار فعال می‌شود. در صورت تمایل می‌توانید دکمه «بررسی پرداخت» را نیز لمس کنید.</blockquote>";
+
+        $keyboard = InlineKeyboardMarkup::make()
+            ->addRow(InlineKeyboardButton::make('💳 انتقال به درگاه پرداخت', url: $payment->invoice_url))
+            ->addRow(InlineKeyboardButton::make('🔄 بررسی پرداخت', callback_data: "check_gateway_pay:{$payment->id}"))
+            ->addRow(InlineKeyboardButton::make('بازگشت', callback_data: "select_plan_{$plan->id}", style: 'danger', icon_custom_emoji_id: '5352759161945867747'));
+
+        $bot->editMessageText($msg, reply_markup: $keyboard, parse_mode: 'HTML');
+    }
+
+    private function handleCheckGatewayPayment(Nutgram $bot, User $user, int $paymentId): void
+    {
+        $payment = SubscriptionPayment::where('id', $paymentId)
+            ->where('user_id', $user->id)
+            ->first();
+
+        if (!$payment) {
+            $bot->answerCallbackQuery(text: '❌ فاکتوری با این مشخصات یافت نشد.', show_alert: true);
+            return;
+        }
+
+        if ($payment->isPaid()) {
+            $bot->answerCallbackQuery(text: '✅ این فاکتور قبلاً تایید و فعال شده است.', show_alert: true);
+            return;
+        }
+
+        try {
+            /** @var PaymentGatewayService $gateway */
+            $gateway = app(PaymentGatewayService::class);
+            $invoice = $gateway->getInvoice($payment->invoice_id);
+            $status = $invoice['status'] ?? 'PENDING';
+        } catch (\Throwable $e) {
+            $bot->answerCallbackQuery(text: '❌ خطا در استعلام از درگاه. لطفا دقایقی بعد تلاش کنید.', show_alert: true);
+            return;
+        }
+
+        if ($status === PaymentGatewayService::STATUS_PAID) {
+            /** @var SubscriptionService $subService */
+            $subService = app(SubscriptionService::class);
+            $subService->fulfillPayment($payment);
+
+            $plan = $payment->plan;
+            $successMsg = "🎉 <b>پرداخت شما با موفقیت تایید شد!</b>\n\n";
+            $successMsg .= "🎁 پلن <b>" . ($plan->name ?? '') . "</b> برای شما فعال گردید.\n";
+
+            $bot->editMessageText($successMsg, parse_mode: 'HTML');
+            $bot->answerCallbackQuery(text: '🎉 پرداخت با موفقیت تایید و پلن فعال شد!', show_alert: true);
+            return;
+        }
+
+        if ($status === PaymentGatewayService::STATUS_UNDER_REVIEW) {
+            $bot->answerCallbackQuery(
+                text: '⏳ تراکنش شما در حال بررسی در درگاه است. لطفاً ۲ دقیقه دیگر مجدداً دکمه را لمس کنید.',
+                show_alert: true
+            );
+            return;
+        }
+
+        if (in_array($status, [PaymentGatewayService::STATUS_REJECTED, PaymentGatewayService::STATUS_CANCELED], true)) {
+            $payment->update(['status' => strtolower($status)]);
+            $bot->answerCallbackQuery(text: '❌ این پرداخت لغو یا رد شده است.', show_alert: true);
+            return;
+        }
+
+        $bot->answerCallbackQuery(
+            text: '❌ هنوز پرداختی برای این فاکتور ثبت نشده است.',
+            show_alert: true
+        );
     }
 
     private function showCryptoPaymentCurrencies(Nutgram $bot, int $planId): void
@@ -127,7 +235,6 @@ class SelectPlanHandler
 
         $assetLabel = mb_strtoupper($payCurrency);
         $usdAmount = $plan->usdPrice();
-        $durationText = ($plan->duration_days ?? 0) > 0 ? "{$plan->duration_days} روز" : 'نامحدود';
         $orderId = 'SUB-' . $plan->id . '-' . $assetLabel . '-' . Str::upper(Str::random(6)) . '-U' . $user->id;
 
         try {
@@ -174,38 +281,24 @@ class SelectPlanHandler
             $currencyEmoji = '<tg-emoji emoji-id="5265151230790884988">💎</tg-emoji>';
             $currencyPersian = 'تون';
         } else {
-            // پیش‌فرض برای سایر ارزها در صورت وجود
             $currencyEmoji = '🪙';
             $currencyPersian = strtoupper($payCurrencyRaw);
         }
 
-        $planEmoji = '';
-        $planName = $plan->name ?? '';
+        $planEmoji = $this->getPlanEmoji($plan->name);
 
-        if (mb_stripos($planName, 'پرو') !== false || mb_stripos($planName, 'pro') !== false) {
-            $planEmoji = '<tg-emoji emoji-id="6244241334320762892">💎</tg-emoji>';
-        } elseif (mb_stripos($planName, 'پلاس') !== false || mb_stripos($planName, 'plus') !== false) {
-            $planEmoji = '<tg-emoji emoji-id="5433758796289685818">👑</tg-emoji>';
-        } else {
-            $planEmoji = '⭐';
-        }
-
-        $msg = "{$planEmoji} پرداخت {$payAmount} {$currencyPersian}{$currencyEmoji} برای فعالسازی پلن {$planEmoji} <b>{$planName}</b>\n\n";
-
+        $msg = "{$planEmoji} پرداخت {$payAmount} {$currencyPersian}{$currencyEmoji} برای فعالسازی پلن {$planEmoji} <b>{$plan->name}</b>\n\n";
         $msg .= "<tg-emoji emoji-id=\"5116648080787112958\">💰</tg-emoji> والت:\n";
         $msg .= "<code>{$payAddress}</code>\n\n";
 
-        // بررسی وجود Memo/Tag و نمایش آن (به ویژه برای شبکه‌هایی مثل تون)
         if (!empty($payment['payin_extra_id'])) {
             $msg .= "🧾 Memo/Tag:\n";
             $msg .= "<code>{$payment['payin_extra_id']}</code>\n\n";
         }
 
-        // بخش هشدارها در قالب blockquote تلگرام
         $msg .= "<blockquote><tg-emoji emoji-id=\"4915853119839011973\">⚠️</tg-emoji> شما تنها 30 دقیقه فرصت دارید تا {$payAmount} {$currencyPersian} را به والت فوق واریز کنید.\n";
         $msg .= "<tg-emoji emoji-id=\"5116275208906343429\">‼️</tg-emoji> درصورتی که کمتر از مقدار فوق واریز شود، اشتراک برای شما فعال نخواهد شد.</blockquote>\n\n";
-
-        $msg .= "<tg-emoji emoji-id=\"5116159438062879454\">🙏</tg-emoji> پس از واریز، روی دکمه‌ی زیر کلیک کنید تا وضعیت پرداخت شما بررسی شود.";
+        $msg .= "<tg-emoji emoji-id=\"5116159438062879454\">🙏</tg-emoji> پس از واریز، روی دکمهی زیر کلیک کنید تا وضعیت پرداخت شما بررسی شود.";
 
         $keyboard = InlineKeyboardMarkup::make()
             ->addRow(InlineKeyboardButton::make('بررسی خرید', callback_data: 'check_pay:' . ($payment['payment_id'] ?? ''), style: 'danger', icon_custom_emoji_id: '6296367896398399651'))
@@ -223,7 +316,6 @@ class SelectPlanHandler
         }
 
         $stars = $plan->starsPrice();
-
         $payload = 'STAR-SUB-' . $plan->id . '-' . Str::upper(Str::random(6)) . '-U' . $user->id;
         $price = new LabeledPrice(label: $plan->name, amount: $stars);
         $invoiceDescription = "🪱 جهت پرداخت هزینه استارزی برای ارتقای ربات کرم پلاس به نسخه پلاس به صورت دائمی با استارز ⭐️ ، لطفا روی دکمه زیر کلیک کنید 👇";
@@ -260,6 +352,21 @@ class SelectPlanHandler
         ]);
     }
 
+    private function getPlanEmoji(?string $planName): string
+    {
+        $name = (string) $planName;
+
+        if (mb_stripos($name, 'پرو') !== false || mb_stripos($name, 'pro') !== false) {
+            return '<tg-emoji emoji-id="6244241334320762892">💎</tg-emoji>';
+        }
+
+        if (mb_stripos($name, 'پلاس') !== false || mb_stripos($name, 'plus') !== false) {
+            return '<tg-emoji emoji-id="5433758796289685818">👑</tg-emoji>';
+        }
+
+        return '⭐';
+    }
+
     private function planSectionTitle(SubscriptionPlan $plan): string
     {
         $planName = mb_strtolower(trim((string) $plan->name));
@@ -267,7 +374,7 @@ class SelectPlanHandler
         return match ($planName) {
             'pro' => "<tg-emoji emoji-id=\"6244241334320762892\">💎</tg-emoji> <b>اشتراک پرو</b> <tg-emoji emoji-id=\"6244241334320762892\">💎</tg-emoji>",
             'plus' => "<tg-emoji emoji-id=\"5433758796289685818\">👑</tg-emoji> <b>اشتراک پلاس</b> <tg-emoji emoji-id=\"5433758796289685818\">👑</tg-emoji>",
-            default => "<tg-emoji emoji-id=\"4929619512224909015\">🪱</tg-emoji> پلن انتخاب‌شده: <b>{$plan->name}</b>",
+            default => "<tg-emoji emoji-id=\"4929619512224909015\">🪱</tg-emoji> پلن انتخابشده: <b>{$plan->name}</b>",
         };
     }
 
@@ -296,9 +403,7 @@ class SelectPlanHandler
         }
 
         if ($status === 'finished') {
-
             DB::transaction(function () use ($payment, $statusInfo, $user) {
-
                 $payment->update([
                     'status' => 'finished',
                     'meta' => array_merge($payment->meta ?? [], $statusInfo)

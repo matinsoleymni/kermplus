@@ -13,17 +13,11 @@ class ApkBuilderService
 
     public function __construct()
     {
-        // آدرس سرویس Go رو از کانفیگ می‌خونیم
         $this->baseUrl = rtrim(config('services.apk_builder.base_url'), '/');
     }
 
-    /**
-     * مرحله ۱: درخواست بیلد APK و دریافت اطلاعات (JSON)
-     * خروجی شامل: user_id, file, download_url, status
-     */
     public function generateApk(string $userId, string $token): array
     {
-        // استفاده از POST طبق توضیحات سرویس برای ارسال دیتای ساختاریافته
         $response = Http::timeout(120)
             ->post("{$this->baseUrl}/generate", [
                 'user_id' => $userId,
@@ -42,15 +36,10 @@ class ApkBuilderService
         return $response->json();
     }
 
-    /**
-     * مرحله ۲ (اختیاری): دانلود فایل APK از URL داده شده در خروجی مرحله قبل
-     * در صورتی استفاده می‌شود که نخواهید لینک دانلود مستقیم Go را به کاربر بدهید.
-     */
     public function downloadApkFromServer(string $downloadUrl): string
     {
         $tempPath = storage_path('app/apks/' . Str::random(10) . '_app.apk');
 
-        // ایجاد پوشه در صورت عدم وجود
         if (!file_exists(dirname($tempPath))) {
             mkdir(dirname($tempPath), 0755, true);
         }

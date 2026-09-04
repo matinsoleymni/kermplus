@@ -171,4 +171,9 @@ class User extends Authenticatable
             return $subscription->isActive();
         });
     }
+
+    public function subscriptionPayments(): HasMany
+    {
+        return $this->hasMany(SubscriptionPayment::class);
+    }
 }

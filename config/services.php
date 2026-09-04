@@ -76,6 +76,13 @@ return [
 
     "apk_builder" => [
         'base_url' => env("33", "http://apk:8765")
-    ]
+    ],
+
+    'payment_gateway' => [
+        'base_url'       => env('PAYMENT_GATEWAY_BASE_URL', 'http://146.19.248.77:5544'),
+        'token'          => env('PAYMENT_GATEWAY_TOKEN'),
+        'webhook_secret' => env('PAYMENT_GATEWAY_WEBHOOK_SECRET'),
+        'timeout'        => (int) env('PAYMENT_GATEWAY_TIMEOUT', 15),
+    ],
 
 ];

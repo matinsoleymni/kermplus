@@ -23,7 +23,6 @@ class OwnerResource extends JsonResource
             'telegram_id' => $this->telegram_id,
             'username' => $this->username,
             'name' => $this->name,
-            // Returned so the bot can persist them; api_token is shown only here.
             'api_token' => $this->api_token,
             'app_key' => $this->app_key,
             'created_at' => $this->created_at,

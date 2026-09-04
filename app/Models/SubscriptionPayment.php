@@ -10,6 +10,11 @@ class SubscriptionPayment extends Model
 {
     use HasFactory;
 
+    public const STATUS_PENDING = 'pending';
+    public const STATUS_PAID = 'paid';
+    public const STATUS_REJECTED = 'rejected';
+    public const STATUS_CANCELED = 'canceled';
+
     protected $fillable = [
         'user_id',
         'subscription_plan_id',
@@ -43,6 +48,11 @@ class SubscriptionPayment extends Model
 
     public function isPending(): bool
     {
-        return $this->status === 'pending';
+        return $this->status === self::STATUS_PENDING;
+    }
+
+    public function isPaid(): bool
+    {
+        return $this->status === self::STATUS_PAID;
     }
 }

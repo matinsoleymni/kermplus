@@ -3,10 +3,12 @@
 namespace App\Services;
 
 use App\Models\Subscription;
+use App\Models\SubscriptionPayment;
 use App\Models\SubscriptionPlan;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
 
 class SubscriptionService
 {
@@ -14,6 +16,117 @@ class SubscriptionService
     public const FEATURE_REPORTER = 'reporter';
     public const FEATURE_HARASSER = 'harasser';
     public const FEATURE_WHITELIST = 'whitelist';
+
+    public function __construct(
+        protected PaymentGatewayService $gatewayService
+    ) {}
+
+    /**
+     * ایجاد درخواست پرداخت و صدور فاکتور در درگاه
+     */
+    public function initiatePayment(User $user, SubscriptionPlan $plan): SubscriptionPayment
+    {
+        if (! $plan->is_active) {
+            throw new InvalidArgumentException('این پلن در حال حاضر غیرفعال است.');
+        }
+
+        $amount = $plan->irrPrice();
+
+        if ($amount < 1000) {
+            throw new InvalidArgumentException('مبلغ پلن باید حداقل ۱,۰۰۰ ریال باشد.');
+        }
+
+        return DB::transaction(function () use ($user, $plan, $amount) {
+            // ۱. ثبت پرداخت در وضعیت pending
+            $payment = SubscriptionPayment::create([
+                'user_id'              => $user->id,
+                'subscription_plan_id' => $plan->id,
+                'provider'             => 'payza',
+                'status'               => SubscriptionPayment::STATUS_PENDING,
+                'price_amount'         => $plan->usdPrice(),
+                'price_currency'       => 'USD',
+                'pay_amount'           => $amount,
+                'pay_currency'         => 'IRR',
+            ]);
+
+            // ۲. ارسال شناسه تلگرام یا شناسه دیتابیس به درگاه
+            $gatewayUserId = (int) ($user->telegram_id ?? $user->id);
+            $description = "خرید پلن {$plan->name} توسط کاربر {$user->id}";
+
+            $response = $this->gatewayService->createInvoice(
+                userId: $gatewayUserId,
+                amount: $amount,
+                description: $description
+            );
+
+            // ۳. ذخیره شناسه فاکتور و لینک پرداخت دریافتی از درگاه
+            $payment->update([
+                'invoice_id'  => $response['id'],
+                'invoice_url' => $response['payment_url'],
+                'meta'        => array_merge($payment->meta ?? [], [
+                    'gateway_response' => $response,
+                ]),
+            ]);
+
+            return $payment;
+        });
+    }
+
+    /**
+     * تکمیل تراکنش و فعال‌سازی یا تمدید اشتراک پس از تایید وب‌هوک درگاه
+     */
+    public function fulfillPayment(SubscriptionPayment $payment): Subscription
+    {
+        return DB::transaction(function () use ($payment) {
+            // بروزرسانی وضعیت پرداخت
+            $payment->update([
+                'status' => SubscriptionPayment::STATUS_PAID,
+            ]);
+
+            $user = $payment->user;
+            $plan = $payment->plan;
+
+            $activeSubscription = $this->getActiveSubscription($user);
+
+            // در صورتی که کاربر همین پلن را به صورت فعال داشته باشد، آن را تمدید می‌کنیم
+            if ($activeSubscription && $activeSubscription->subscription_plan_id === $plan->id) {
+                $baseDate = ($activeSubscription->expires_at && $activeSubscription->expires_at->isFuture())
+                    ? $activeSubscription->expires_at
+                    : Carbon::now();
+
+                $activeSubscription->expires_at = $plan->duration_days > 0
+                    ? $baseDate->addDays($plan->duration_days)
+                    : null;
+
+                $activeSubscription->is_active = true;
+                $activeSubscription->save();
+
+                $activeSubscription->history()->create([
+                    'action'      => 'renewed',
+                    'description' => "اشتراک به مدت {$plan->duration_days} روز تمدید شد (تراکنش پرداخت #{$payment->id})",
+                    'created_by'  => null,
+                ]);
+
+                DB::afterCommit(function () use ($user, $plan): void {
+                    app(SubscriptionActivationNotificationService::class)->notifyIfEligible($user, $plan);
+                });
+
+                return $activeSubscription;
+            }
+
+            // اگر کاربر اشتراک متفاوتی داشته باشد، قبلی را غیرفعال می‌کنیم
+            if ($activeSubscription) {
+                $activeSubscription->update(['is_active' => false]);
+            }
+
+            // ایجاد اشتراک جدید با استفاده از متد داخلی سرویس
+            return $this->createSubscription(
+                user: $user,
+                plan: $plan,
+                daysFromNow: $plan->duration_days
+            );
+        });
+    }
 
     /**
      * ایجاد اشتراک جدید برای کاربر
@@ -98,7 +211,7 @@ class SubscriptionService
     }
 
     /**
-     * بررسی اینکه کاربر می‌تواند SMS ارسال کند (subscription یا مجانی)
+     * بررسی اینکه کاربر میتواند SMS ارسال کند (subscription یا مجانی)
      */
     public function canSendSms(User $user): bool
     {
@@ -106,12 +219,12 @@ class SubscriptionService
             return true;
         }
 
-        // اگر subscription نداره، می‌تواند یک بار مجانی استفاده کند
+        // اگر subscription نداره، میتواند یک بار مجانی استفاده کند
         return $user->canUseFreeSmS();
     }
 
     /**
-     * بررسی اینکه کاربر می‌تواند Email ارسال کند (subscription یا مجانی)
+     * بررسی اینکه کاربر میتواند Email ارسال کند (subscription یا مجانی)
      */
     public function canSendEmail(User $user): bool
     {
@@ -119,7 +232,7 @@ class SubscriptionService
             return true;
         }
 
-        // اگر subscription نداره، می‌تواند یک بار مجانی استفاده کند
+        // اگر subscription نداره، میتواند یک بار مجانی استفاده کند
         return $user->canUseFreeEmail();
     }
 
@@ -128,7 +241,7 @@ class SubscriptionService
      */
     public function checkSmsDailyLimit(User $user, int $count = 1): bool
     {
-        // بمبرها نامحدود هستند؛ محدودیتی اعمال نمی‌شود.
+        // بمبرها نامحدود هستند؛ محدودیتی اعمال نمیشود.
         return true;
     }
 
@@ -137,7 +250,7 @@ class SubscriptionService
      */
     public function checkEmailDailyLimit(User $user, int $count = 1): bool
     {
-        // بمبرها نامحدود هستند؛ محدودیتی اعمال نمی‌شود.
+        // بمبرها نامحدود هستند؛ محدودیتی اعمال نمیشود.
         return true;
     }
 
@@ -170,7 +283,7 @@ class SubscriptionService
     }
 
     /**
-     * تمدید خودکار اشتراکات منقضی‌شده
+     * تمدید خودکار اشتراکات منقضیشده
      */
     public function autoRenewExpiredSubscriptions(): int
     {
@@ -191,7 +304,7 @@ class SubscriptionService
     }
 
     /**
-     * دریافت تمام اشتراکات منقضی‌شده
+     * دریافت تمام اشتراکات منقضیشده
      */
     public function getExpiredSubscriptions()
     {
