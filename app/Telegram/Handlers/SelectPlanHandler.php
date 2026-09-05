@@ -35,37 +35,37 @@ class SelectPlanHandler
         }
 
         if (preg_match('/^select_plan_(\d+)$/', $data, $m)) {
-            $this->showPaymentMethods($bot, (int) $m);
+            $this->showPaymentMethods($bot, (int) $m[1]);
             return;
         }
 
         if (preg_match('/^pay_rial_(\d+)$/', $data, $m)) {
-            $this->handleRialPayment($bot, $local, (int) $m);
+            $this->handleRialPayment($bot, $local, (int) $m[1]);
             return;
         }
 
         if (preg_match('/^pay_crypto_(trx|ton)_(\d+)$/', $data, $m)) {
-            $this->handleCryptoPayment($bot, $local, (int) $m[2], $m);
+            $this->handleCryptoPayment($bot, $local, (int) $m[2], $m[1]);
             return;
         }
 
         if (preg_match('/^pay_crypto_(\d+)$/', $data, $m)) {
-            $this->showCryptoPaymentCurrencies($bot, (int) $m);
+            $this->showCryptoPaymentCurrencies($bot, (int) $m[1]);
             return;
         }
 
         if (preg_match('/^pay_star_(\d+)$/', $data, $m)) {
-            $this->handleStarPayment($bot, $local, (int) $m);
+            $this->handleStarPayment($bot, $local, (int) $m[1]);
             return;
         }
 
         if (preg_match('/^check_pay:(\d+)$/', $data, $m)) {
-            $this->handleCheckPayment($bot, $local, (int) $m);
+            $this->handleCheckPayment($bot, $local, (int) $m[1]);
             return;
         }
 
         if (preg_match('/^check_gateway_pay:(\d+)$/', $data, $m)) {
-            $this->handleCheckGatewayPayment($bot, $local, (int) $m);
+            $this->handleCheckGatewayPayment($bot, $local, (int) $m[1]);
             return;
         }
 
@@ -86,7 +86,7 @@ class SelectPlanHandler
         $durationText = ($plan->duration_days ?? 0) > 0 ? "{$plan->duration_days} روز" : 'نامحدود';
 
         $msg = "<tg-emoji emoji-id=\"4929619512224909015\">🪱</tg-emoji> پلن انتخابشده: <b>{$plan->name}</b>\n";
-        $msg .= "<tg-emoji emoji-id=\"5116648080787112958\">💰</tg-emoji> مبلغ: {$usd}$ | {$irr} ریال | {$stars} استار\n";
+        $msg .= "<tg-emoji emoji-id=\"5116648080787112958\">💰</tg-emoji> مبلغ: {$usd}$ | {$irr} تومان | {$stars} استار\n";
         $msg .= "📅 مدت: {$durationText}\n";
         $msg .= "<tg-emoji emoji-id=\"4927295007204836791\">🪱</tg-emoji> روش پرداخت را انتخاب کنید <tg-emoji emoji-id=\"5231102735817918643\">👇</tg-emoji>";
 
@@ -119,10 +119,9 @@ class SelectPlanHandler
 
         $planEmoji = $this->getPlanEmoji($plan->name);
         $amountIrr = number_format($payment->pay_amount, 0);
-        $amountToman = number_format((int) ($payment->pay_amount / 10), 0);
 
         $msg = "{$planEmoji} <b>{$plan->name}</b>\n\n";
-        $msg .= "<tg-emoji emoji-id=\"5116648080787112958\">💰</tg-emoji> مبلغ قابل پرداخت: <b>{$amountIrr} ریال</b> ({$amountToman} تومان)\n";
+        $msg .= "<tg-emoji emoji-id=\"5116648080787112958\">💰</tg-emoji> مبلغ قابل پرداخت: <b>{$amountIrr} تومان</b>\n";
         $msg .= "🧾 شناسه فاکتور: <code>{$payment->invoice_id}</code>\n\n";
         $msg .= "<blockquote><tg-emoji emoji-id=\"4915853119839011973\">⚠️</tg-emoji> لطفاً جهت پرداخت روی دکمه «انتقال به درگاه پرداخت» کلیک کنید.\n";
         $msg .= "<tg-emoji emoji-id=\"5116275208906343429\">‼️</tg-emoji> پس از پرداخت، اشتراک شما به صورت خودکار فعال می‌شود..</blockquote>";

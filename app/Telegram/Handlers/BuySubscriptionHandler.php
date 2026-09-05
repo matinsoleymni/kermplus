@@ -133,10 +133,9 @@ class BuySubscriptionHandler
     {
         if ($method === 'rial') {
             $irr = $plan->irrPrice();
-            $toman = number_format((int) ($irr / 10), 0);
             $irrFormatted = number_format($irr, 0);
 
-            return "💳 قیمت: {$toman} تومان ({$irrFormatted} ریال)";
+            return "💳 قیمت: {$irrFormatted} تومان";
         }
 
         if ($method === 'star') {

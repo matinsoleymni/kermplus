@@ -123,11 +123,13 @@ $bot->onCallbackQueryData('user_referral', ReferralHandler::class);
 $bot->onCallbackQueryData('referral_send_banner', ReferralHandler::class);
 $bot->onCallbackQueryData('referral_claim', ReferralHandler::class);
 $bot->onCallbackQueryData('select_plan_{id}', SelectPlanHandler::class);
+$bot->onCallbackQueryData('pay_rial_{id}', SelectPlanHandler::class);
 $bot->onCallbackQueryData('pay_crypto_{id}', SelectPlanHandler::class);
 $bot->onCallbackQueryData('pay_crypto_trx_{id}', SelectPlanHandler::class);
 $bot->onCallbackQueryData('pay_crypto_ton_{id}', SelectPlanHandler::class);
 $bot->onCallbackQueryData('pay_star_{id}', SelectPlanHandler::class);
 $bot->onCallbackQueryData('check_pay:{id}', SelectPlanHandler::class);
+$bot->onCallbackQueryData('check_gateway_pay:{id}', SelectPlanHandler::class);
 $bot->onCallbackQueryData('user_stats', UserStatsHandler::class);
 $bot->onCallbackQueryData('main_menu', MainMenuHandler::class);
 
