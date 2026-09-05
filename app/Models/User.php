@@ -34,6 +34,7 @@ class User extends Authenticatable
         'free_sms_used',
         'free_email_used',
         'referrals_redeemed',
+        'timer_expires_at',
     ];
 
     /**
@@ -175,5 +176,67 @@ class User extends Authenticatable
     public function subscriptionPayments(): HasMany
     {
         return $this->hasMany(SubscriptionPayment::class);
+    }
+
+    public function isTimerReady(): bool
+    {
+        // اگر اصلاً تایمری ست نشده باشد یا زمانش گذشته باشد، آماده است
+        return ! $this->timer_expires_at || $this->timer_expires_at->isPast();
+    }
+
+    /**
+     * استارت زدن تایمر جدید (فقط بعد از انجام عملیات فراخوانی شود)
+     */
+    public function startNewCooldown(int $minHours = 12, int $maxHours = 24): \Carbon\Carbon
+    {
+        $randomMinutes = random_int($minHours * 60, $maxHours * 60);
+        $expiresAt = now()->addMinutes($randomMinutes);
+
+        $this->update([
+            'timer_expires_at' => $expiresAt,
+        ]);
+
+        return $expiresAt;
+    }
+
+    /**
+     * درصد پیشرفت زمان سپری‌شده (اختیاری برای نوار پیشرفت گرافیکی)
+     */
+    public function getTimerProgressPercent(int $totalHours = 18): int
+    {
+        if ($this->isTimerReady()) {
+            return 100;
+        }
+
+        $totalSeconds = $totalHours * 3600;
+        $remainingSeconds = now()->diffInSeconds($this->timer_expires_at);
+        $passedSeconds = max(0, $totalSeconds - $remainingSeconds);
+
+        return min(100, (int) round(($passedSeconds / $totalSeconds) * 100));
+    }
+
+    /**
+     * متن دقیق زمان باقیمانده
+     */
+    public function getRemainingTimerText(): string
+    {
+        if ($this->isTimerReady()) {
+            return 'آماده';
+        }
+
+        $diff = now()->diff($this->timer_expires_at);
+
+        $parts = [];
+        $hours = ($diff->days * 24) + $diff->h;
+
+        if ($hours > 0) {
+            $parts[] = "{$hours} ساعت";
+        }
+        if ($diff->i > 0) {
+            $parts[] = "{$diff->i} دقیقه";
+        }
+        $parts[] = "{$diff->s} ثانیه";
+
+        return implode(' و ', $parts);
     }
 }

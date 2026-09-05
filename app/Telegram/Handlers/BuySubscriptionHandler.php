@@ -25,15 +25,21 @@ class BuySubscriptionHandler
                 };
             })
             ->values();
+
         $data = $bot->callbackQuery()?->data ?? '';
 
         if ($plans->isEmpty()) {
-            $bot->sendMessage('❌ هیچ پلن موجود نیست.');
+            $bot->sendMessage('❌ هیچ پلنی موجود نیست.');
             return;
         }
 
         if ($bot->callbackQuery()) {
             $bot->answerCallbackQuery();
+        }
+
+        if ($data === 'buy_sub_rial') {
+            $this->showPlansForMethod($bot, $plans, 'rial');
+            return;
         }
 
         if ($data === 'buy_sub_crypto') {
@@ -59,10 +65,10 @@ class BuySubscriptionHandler
         $msg .= "<tg-emoji emoji-id=\"4927295007204836791\">🪱</tg-emoji> روش مورد نظرتون رو برای ارتقا انتخاب کنید <tg-emoji emoji-id=\"5231102735817918643\">👇</tg-emoji>";
 
         $keyboard = InlineKeyboardMarkup::make()
+            ->addRow(InlineKeyboardButton::make('پرداخت ریالی (کارت به کارت / درگاه)', callback_data: 'buy_sub_rial', style: 'danger', icon_custom_emoji_id: '5472250091332993630'))
             ->addRow(InlineKeyboardButton::make('پرداخت کریپتویی (ارز ترون یا تون)', callback_data: 'buy_sub_crypto', style: 'danger', icon_custom_emoji_id: '5361656830944624968'))
             ->addRow(InlineKeyboardButton::make('پرداخت با استارز (واحد پول تلگرام)', callback_data: 'buy_sub_star', style: 'danger', icon_custom_emoji_id: '5958376256788502078'))
             // ->addRow(InlineKeyboardButton::make('پرداخت با زیر مجموعه', callback_data: 'buy_sub_referral', style: 'danger', icon_custom_emoji_id: '4913497231492908158'))
-            ->addRow(InlineKeyboardButton::make('پرداخت تومانی (با کمی معطلی)', url: 'https://t.me/kermsup', style: 'danger', icon_custom_emoji_id: '5472250091332993630'))
             ->addRow(InlineKeyboardButton::make('بازگشت', callback_data: 'main_menu', style: 'danger', icon_custom_emoji_id: '5352759161945867747'));
 
         $bot->editMessageText($msg, reply_markup: $keyboard, parse_mode: 'HTML', disable_web_page_preview: true);
@@ -75,6 +81,7 @@ class BuySubscriptionHandler
     {
         $msg = $this->methodSectionIntro($method) . "\n\n";
         $chunks = [];
+
         foreach ($plans as $plan) {
             $durationText = ($plan->duration_days ?? 0) > 0 ? "{$plan->duration_days} روز" : 'نامحدود';
             $chunks[] = $this->planSectionTitle($plan) . "\n"
@@ -85,12 +92,15 @@ class BuySubscriptionHandler
         $msg .= implode("\n\n", $chunks);
 
         $keyboard = InlineKeyboardMarkup::make();
+
         foreach ($plans as $plan) {
             $callback = match ($method) {
+                'rial' => "pay_rial_{$plan->id}",
                 'crypto' => "pay_crypto_{$plan->id}",
                 'star' => "pay_star_{$plan->id}",
                 default => 'user_referral',
             };
+
             $keyboard->addRow(
                 InlineKeyboardButton::make(
                     $this->planButtonLabel($plan),
@@ -112,14 +122,23 @@ class BuySubscriptionHandler
         $msg .= "<tg-emoji emoji-id=\"5116093437300442328\">⚡️</tg-emoji> با پرداخت این مبلغ، شما به صورت کامل به برخی از قابلیت های ربات به طور دائمی دسترسی خواهید داشت و تمامی درخواست های شما با سرعت چندین برابری انجام خواهد شد.\n\n";
 
         return $msg . match ($method) {
-            'crypto' => "<tg-emoji emoji-id=\"4927295007204836791\">🪱</tg-emoji> برای ارتقا به نسخه پلاس لطفا رمز ارز مدنظر خودتون رو انتخاب کنید <tg-emoji emoji-id=\"5231102735817918643\">👇</tg-emoji>",
-            'star' => "<tg-emoji emoji-id=\"4927295007204836791\">🪱</tg-emoji> برای ارتقا به نسخه پلاس لطفا مقدار استارز مدنظر خودتون رو انتخاب کنید <tg-emoji emoji-id=\"5231102735817918643\">👇</tg-emoji>",
-            default => "<tg-emoji emoji-id=\"4927295007204836791\">🪱</tg-emoji> برای ارتقا به نسخه پلاس لطفا مقدار امتیاز مدنظر خودتون رو انتخاب کنید <tg-emoji emoji-id=\"5231102735817918643\">👇</tg-emoji>",
+            'rial' => "<tg-emoji emoji-id=\"4927295007204836791\">🪱</tg-emoji> برای پرداخت ریالی (کارت به کارت یا درگاه) پلن مدنظر خود را انتخاب کنید <tg-emoji emoji-id=\"5231102735817918643\">👇</tg-emoji>",
+            'crypto' => "<tg-emoji emoji-id=\"4927295007204836791\">🪱</tg-emoji> برای ارتقا لطفا رمز ارز مدنظر خودتون رو انتخاب کنید <tg-emoji emoji-id=\"5231102735817918643\">👇</tg-emoji>",
+            'star' => "<tg-emoji emoji-id=\"4927295007204836791\">🪱</tg-emoji> برای ارتقا لطفا مقدار استارز مدنظر خودتون رو انتخاب کنید <tg-emoji emoji-id=\"5231102735817918643\">👇</tg-emoji>",
+            default => "<tg-emoji emoji-id=\"4927295007204836791\">🪱</tg-emoji> برای ارتقا لطفا مقدار امتیاز مدنظر خودتون رو انتخاب کنید <tg-emoji emoji-id=\"5231102735817918643\">👇</tg-emoji>",
         };
     }
 
     private function planValueLineByMethod(SubscriptionPlan $plan, string $method): string
     {
+        if ($method === 'rial') {
+            $irr = $plan->irrPrice();
+            $toman = number_format((int) ($irr / 10), 0);
+            $irrFormatted = number_format($irr, 0);
+
+            return "💳 قیمت: {$toman} تومان ({$irrFormatted} ریال)";
+        }
+
         if ($method === 'star') {
             return "⭐️ قیمت استاری: " . number_format((float) $plan->starsPrice(), 0) . " استار";
         }

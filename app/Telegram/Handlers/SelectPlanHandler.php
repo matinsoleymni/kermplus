@@ -121,11 +121,11 @@ class SelectPlanHandler
         $amountIrr = number_format($payment->pay_amount, 0);
         $amountToman = number_format((int) ($payment->pay_amount / 10), 0);
 
-        $msg = "{$planEmoji} صدور فاکتور پرداخت ریالی برای پلن <b>{$plan->name}</b>\n\n";
+        $msg = "{$planEmoji} <b>{$plan->name}</b>\n\n";
         $msg .= "<tg-emoji emoji-id=\"5116648080787112958\">💰</tg-emoji> مبلغ قابل پرداخت: <b>{$amountIrr} ریال</b> ({$amountToman} تومان)\n";
         $msg .= "🧾 شناسه فاکتور: <code>{$payment->invoice_id}</code>\n\n";
         $msg .= "<blockquote><tg-emoji emoji-id=\"4915853119839011973\">⚠️</tg-emoji> لطفاً جهت پرداخت روی دکمه «انتقال به درگاه پرداخت» کلیک کنید.\n";
-        $msg .= "<tg-emoji emoji-id=\"5116275208906343429\">‼️</tg-emoji> پس از پرداخت، اشتراک شما به صورت خودکار فعال می‌شود. در صورت تمایل می‌توانید دکمه «بررسی پرداخت» را نیز لمس کنید.</blockquote>";
+        $msg .= "<tg-emoji emoji-id=\"5116275208906343429\">‼️</tg-emoji> پس از پرداخت، اشتراک شما به صورت خودکار فعال می‌شود..</blockquote>";
 
         $keyboard = InlineKeyboardMarkup::make()
             ->addRow(InlineKeyboardButton::make('💳 انتقال به درگاه پرداخت', url: $payment->invoice_url))
