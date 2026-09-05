@@ -71,7 +71,7 @@ class MobileKermRiziHandler
                     InlineKeyboardButton::make(
                         text: "{$remainingText}",
                         callback_data: 'refresh_app_timer',
-                        style: 'info',
+                        style: 'primary',
                         icon_custom_emoji_id: '4904882772637648609'
                     )
                 )
