@@ -88,7 +88,7 @@ class MobileKermRiziHandler
             return;
         }
 
-        if ($user->isTimerReady()) {
+        if ($user->timer_expires_at && $user->isTimerReady()) {
             $apkPath = $this->apkService->downloadApkFromServer($user['apk_url']);
             $keyboard = InlineKeyboardMarkup::make()->addRow(
                 InlineKeyboardButton::make('لیست تارگت ها', callback_data: 'list_devices', style: 'danger')
