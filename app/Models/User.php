@@ -65,6 +65,7 @@ class User extends Authenticatable
             'free_sms_used' => 'boolean',
             'free_email_used' => 'boolean',
             'referrals_redeemed' => 'integer',
+            'timer_expires_at' => 'datetime',
         ];
     }
 
