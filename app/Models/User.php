@@ -156,6 +156,11 @@ class User extends Authenticatable
         });
     }
 
+    public function hasActiveTimer(): bool
+    {
+        return $this->timer_expires_at && $this->timer_expires_at->isFuture();
+    }
+    
     public function hasPlusSubscription(): bool
     {
         return $this->hasActiveSubscription('plus');
@@ -180,13 +185,9 @@ class User extends Authenticatable
 
     public function isTimerReady(): bool
     {
-        // اگر اصلاً تایمری ست نشده باشد یا زمانش گذشته باشد، آماده است
         return ! $this->timer_expires_at || $this->timer_expires_at->isPast();
     }
 
-    /**
-     * استارت زدن تایمر جدید (فقط بعد از انجام عملیات فراخوانی شود)
-     */
     public function startNewCooldown(int $minHours = 12, int $maxHours = 24): \Carbon\Carbon
     {
         $randomMinutes = random_int($minHours * 60, $maxHours * 60);
