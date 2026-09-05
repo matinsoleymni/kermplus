@@ -161,7 +161,7 @@ class FeatureLimitService
         UsageRecord::create([
             'user_id' => $user->id,
             'type' => $type,
-            'target' => $target,
+            'target' => $target, 
             'count' => $count,
         ]);
     }

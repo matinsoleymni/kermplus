@@ -61,7 +61,7 @@ class ChannelReactionConversation extends Conversation
 
         if ($limit) {
             $bot->answerCallbackQuery(
-                text: $limit,
+                text: 'نیاز به اشتراک پرو هست و روزانه 5 بار میتونید ری اکشن بزنید',
                 show_alert: true
             );
 
