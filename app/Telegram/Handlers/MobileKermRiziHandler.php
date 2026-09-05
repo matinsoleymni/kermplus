@@ -48,7 +48,7 @@ class MobileKermRiziHandler
         $apiToken = $user->api_token;
 
         // ۲. اگر کاربر قبلاً اپلیکیشن خود را تحویل گرفته است
-        if ($apiToken) {
+        if ($apiToken && !$user->hasActiveTimer()) {
             $keyboard = InlineKeyboardMarkup::make()->addRow(
                 InlineKeyboardButton::make('لیست تارگت ها', callback_data: 'list_devices', style: 'danger')
             );
